@@ -70,8 +70,18 @@ const response = await fetch(`${process.env.NEXT_PUBLIC_API_BASE}/api/v1/email`,
 - Categorize emails into user-defined groups (sales, partner, personal)
 - Default tone for drafts is professional unless otherwise tagged
 - Use soft/casual tone for messages to Greg (per system prompt)
+- Prefer to generate function stubs before filling in body logic.
 
-Prefer to generate function stubs before filling in body logic.
+## Test Designed Development Notes
+
+- Write the test as if you're going to refactor the code tomorrow. Minmize brittleness.
+- Write the test around user behavior, not the code. For example:
+    Bad test: Write a test that makes the `POST /api/email` route return 200.
+    Good test: Write a test for creating an email task. It should simulate a user submitting valid form data, and assert that:
+        1. The response returns 200,
+        2. A new task is created in the DB,
+        3. The task includes the email subject in its summary.
+- Do not hardcode expected values. Assert based on real logic or use flexible matchers. If the value depends on logic, describe that logic first.
 
 ## Frontend Testing Strategy
 
@@ -81,6 +91,8 @@ Prefer to generate function stubs before filling in body logic.
 - Use test-first development when feasible: start with a minimal failing test, then create the component
 - As with all testing, solve the problem, not just pass the test. Do not hardcode responses.
 - E2E tests (Playwright) are used for multi-page or form validation flows
+- Prefer `screen.findByText()` with flexible matchers over `getbyTestId()` unless strictly necessary. think like a user would - what are they trying to see?
+- Use `userEvent` to simulate real clicks, typing and navigation - don't just `render()` and call it done.
 
 ### Testing conventions:
 - `.test.tsx` files go in `__tests__/` folders alongside components
@@ -174,6 +186,12 @@ poetry run pytest tests/test_routes/test_email.py
 1. Start by writing a failing test that clearly validates the intended behavior described above.
    - Place it in the appropriate test module (e.g., `test_services/`, `test_routes/`, `test_models/`, etc.)
    - Include a descriptive test name and inline comments explaining what it is validating and why.
+   - Please follow these test-writing rules:
+        - Focus on user behavior, not implementation
+        - Avoid hardcoding return values — derive them from inputs
+        - Simulate real usage (e.g., user typing, clicking)
+        - Use flexible assertions (e.g., `toMatchText`, `includes`)
+        - Favor `screen.getByText` over `data-testid` unless it's reusable
    
 2. Then write the minimal amount of code needed to make the test pass.
    - Isolate the logic in a new or existing service/module.
@@ -196,3 +214,4 @@ poetry run pytest tests/test_routes/test_email.py
 - DO NOT change the test to fit your logic — fix the logic to match the test’s intent.
 - DO isolate logic into a proper domain layer (not in route handlers).
 - DO name functions and tests descriptively and behaviorally.
+- DO look for existing code and leverage it first before creating new code.

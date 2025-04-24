@@ -7,37 +7,46 @@ from app.models.assistant_task import AssistantTask
 from beanie import init_beanie
 import motor.motor_asyncio
 import asyncio
-from app.api.routers import email
+from app.api.routers import email, tasks
 from dotenv import load_dotenv
 import os
+from motor.motor_asyncio import AsyncIOMotorClient
 
 load_dotenv()
-MONGODB_URI = os.getenv("MONGODB_URI")
+MONGODB_URI = os.getenv(
+    "MONGODB_URI", "mongodb://localhost:27017"
+)  # Default to local MongoDB
 MONGODB_DB = os.getenv("MONGODB_DB", "email_assistant")
 
 
 async def init_db():
-    client = motor.motor_asyncio.AsyncIOMotorClient(MONGODB_URI)
+    """Initialize database connection"""
+    client = AsyncIOMotorClient(MONGODB_URI)
     await init_beanie(
         database=client[MONGODB_DB],
         document_models=[EmailMessage, AssistantTask],
     )
+    return client
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    await init_db()
+    client = await init_db()
+    app.state.motor_client = client
     yield
+    client.close()
 
 
-app = FastAPI(lifespan=lifespan)
+app = FastAPI(title="Email Assistant API", lifespan=lifespan)
 
-app.include_router(email.router, prefix="/api/v1")
+# Include routers
+app.include_router(email.router)  # router already has prefix in its definition
+app.include_router(tasks.router)  # router already has prefix in its definition
 
 
 @app.get("/")
-def read_root():
-    return {"message": "Hello from FastAPI with Poetry!"}
+async def read_root():
+    return {"message": "Welcome to Email Assistant API"}
 
 
 @app.post("/api/v1/email")

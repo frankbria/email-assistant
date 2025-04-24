@@ -1,7 +1,6 @@
-// app/page.tsx
+// frontend/app/page.tsx
 'use client'
 
-import React from 'react'
 import { useEffect, useState } from 'react'
 import { TaskCard } from '@/components/TaskCard'
 
@@ -55,4 +54,4 @@ export default function Page() {
       ))}
     </div>
   )
-}
+} 

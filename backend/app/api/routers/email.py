@@ -2,11 +2,12 @@
 from fastapi import APIRouter, Body
 from app.models.email_message import EmailMessage
 from app.models.assistant_task import AssistantTask
+from beanie import PydanticObjectId
 
-router = APIRouter()
+router = APIRouter(prefix="/api/v1/email", tags=["email"])
 
 
-@router.post("/email")
+@router.post("/")
 async def create_email_task(
     sender: str = Body(..., embed=True),
     subject: str = Body(..., embed=True),

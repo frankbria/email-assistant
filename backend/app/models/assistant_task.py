@@ -1,9 +1,16 @@
 # backend/app/models/assistant_task.py
-from beanie import Document, Link
+from beanie import Document
 from pydantic import Field
-from .email_message import EmailMessage
+from typing import Optional, List
+from app.models.email_message import EmailMessage
 
 
 class AssistantTask(Document):
-    email: Link[EmailMessage]
-    # Add more fields as needed (e.g., context, summary, actions)
+    email: EmailMessage = Field(...)
+    context: Optional[str] = None
+    summary: Optional[str] = None
+    suggested_actions: List[str] = Field(default_factory=list)
+    status: str = Field(default="pending")
+
+    class Settings:
+        name = "assistant_tasks"
