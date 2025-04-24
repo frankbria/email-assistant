@@ -1,0 +1,42 @@
+# Byte-compiled / optimized / DLL files
+__pycache__/
+*.py[cod]
+*.so
+
+# Poetry
+.poetry/
+poetry.lock
+
+# Virtual environment
+.venv/
+
+# Env files
+.env
+.env.*
+
+# Test coverage reports
+htmlcov/
+.coverage
+.cache/
+coverage.xml
+*.cover
+*.log
+
+# Pytest
+.pytest_cache/
+
+# Environment variables
+.env
+.env.*
+!.env.example
+
+# IDE/Editor folders
+.vscode/
+.idea/
+
+# System files
+.DS_Store
+Thumbs.db
+
+# PRDs
+*prd.md
