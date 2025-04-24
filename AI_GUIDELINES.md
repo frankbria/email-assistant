@@ -167,3 +167,32 @@ poetry run pytest tests/test_routes/test_email.py
 - Prefer **functional test names** (`test_rejects_invalid_email`) over implementation-based ones
 - Focus on **behavioral testing** — what the app *does*, not how it's implemented
 - Avoid mocking until necessary — test real FastAPI flows first
+
+## AI Instructions for User Story PRD Presentation
+
+### INSTRUCTIONS:
+1. Start by writing a failing test that clearly validates the intended behavior described above.
+   - Place it in the appropriate test module (e.g., `test_services/`, `test_routes/`, `test_models/`, etc.)
+   - Include a descriptive test name and inline comments explaining what it is validating and why.
+   
+2. Then write the minimal amount of code needed to make the test pass.
+   - Isolate the logic in a new or existing service/module.
+   - Prefer small, well-named functions that express intent.
+   
+3. If the test passes for the right reason, expand coverage with at least 2 more test cases:
+   - One common or edge case
+   - One negative or invalid case (if applicable)
+
+4. Refactor the implementation only after the test passes.
+   - Improve clarity, eliminate duplication, but keep behavior unchanged.
+
+5. Return a summary that includes:
+   - What logic you implemented and where
+   - Which tests were added and what they verify
+   - Whether all tests pass, and what could break in future changes
+
+### CONSTRAINTS:
+- DO NOT hardcode expected values just to make the test pass.
+- DO NOT change the test to fit your logic — fix the logic to match the test’s intent.
+- DO isolate logic into a proper domain layer (not in route handlers).
+- DO name functions and tests descriptively and behaviorally.
