@@ -1,54 +1,132 @@
 // frontend/src/__tests__/page.test.tsx
+'use client'
 
 import React from 'react'
 import { describe, it, expect, vi, beforeEach } from 'vitest'
-import { render, screen } from '@testing-library/react'
+import { render, screen, waitForElementToBeRemoved } from '@testing-library/react'
+import userEvent from '@testing-library/user-event'
 import Page from '../app/page'
+import { AssistantTask } from '@/types/api'
 
-// Mock the fetch function
-const mockTasks = [
+// Mock tasks that represent real user data scenarios
+const mockTasks: AssistantTask[] = [
   {
     id: '1',
     email: {
       id: '1',
-      subject: 'Test Email',
-      sender: 'test@example.com',
-      body: 'This is a test email'
-    }
+      subject: 'Team Sync Tomorrow',
+      sender: 'manager@company.com',
+      body: 'Can we sync tomorrow at 2 PM to discuss the project timeline?'
+    },
+    context: 'Meeting Request',
+    summary: 'Schedule team sync meeting for tomorrow',
+    actions: ['Schedule', 'Reply', 'Hold for Later'],
+    status: 'pending'
   }
 ]
 
-describe('Home Page', () => {
+describe('Email Task Management Page', () => {
   beforeEach(() => {
-    // Mock fetch to return test data with proper response structure
+    vi.resetAllMocks()
+  })
+
+  it('allows users to view their email tasks', async () => {
+    // Simulate successful API response
     global.fetch = vi.fn().mockImplementation(() =>
       Promise.resolve({
         ok: true,
         json: () => Promise.resolve(mockTasks)
       })
     )
-  })
 
-  it('renders task cards for each task', async () => {
     render(<Page />)
 
-    // Wait for loading to disappear
-    await screen.findByText('Loading tasks...')
+    // User sees loading indicator while tasks are being fetched
+    expect(screen.getByText(/loading tasks/i)).toBeInTheDocument()
     
-    // Find the task card by its content
-    const subjectElement = await screen.findByText((content, element) => {
-      return (element?.className?.includes('text-gray-500') && 
-              element?.textContent?.includes(mockTasks[0].email.subject)) ?? false
-    })
-    const body = await screen.findByText(mockTasks[0].email.body)
+    // Loading indicator disappears when tasks arrive
+    await waitForElementToBeRemoved(() => screen.queryByText(/loading tasks/i))
 
-    expect(subjectElement).toBeInTheDocument()
-    expect(body).toBeInTheDocument()
+    // User should see the email subject as context
+    const emailContext = await screen.findByText(/Team Sync Tomorrow/i)
+    expect(emailContext).toBeInTheDocument()
+
+    // User should see the email content
+    const emailContent = await screen.findByText(/Can we sync tomorrow at 2 PM/i)
+    expect(emailContent).toBeInTheDocument()
+
+    // User should see action buttons
+    const scheduleButton = await screen.findByRole('button', { name: /schedule/i })
+    const replyButton = await screen.findByRole('button', { name: /reply/i })
+    expect(scheduleButton).toBeInTheDocument()
+    expect(replyButton).toBeInTheDocument()
   })
 
-  it('shows loading state while fetching tasks', () => {
+  it('shows empty state when no tasks are available', async () => {
+    // Simulate API response with no tasks
+    global.fetch = vi.fn().mockImplementation(() =>
+      Promise.resolve({
+        ok: true,
+        json: () => Promise.resolve([])
+      })
+    )
+
     render(<Page />)
-    const loading = screen.getByText('Loading tasks...')
-    expect(loading).toBeInTheDocument()
+
+    // Loading indicator should disappear
+    await waitForElementToBeRemoved(() => screen.queryByText(/loading tasks/i))
+
+    // User should see empty state message
+    const emptyMessage = await screen.findByText(/no tasks found/i)
+    expect(emptyMessage).toBeInTheDocument()
+
+    // User should see refresh button
+    const refreshButton = screen.getByRole('button', { name: /refresh/i })
+    expect(refreshButton).toBeInTheDocument()
+  })
+
+  it('handles API errors gracefully', async () => {
+    // Simulate API error
+    global.fetch = vi.fn().mockImplementation(() =>
+      Promise.resolve({
+        ok: false,
+        status: 500,
+        statusText: 'Internal Server Error'
+      })
+    )
+
+    render(<Page />)
+
+    // Wait for error state to appear
+    const errorBanner = await screen.findByText(/Error Loading Tasks/i)
+    expect(errorBanner).toBeInTheDocument()
+
+    // Verify error message
+    const errorMessage = screen.getByText(/failed to fetch tasks/i)
+    expect(errorMessage).toBeInTheDocument()
+
+    // Test retry functionality
+    const retryButton = screen.getByRole('button', { name: /retry/i })
+    expect(retryButton).toBeInTheDocument()
+
+    // Mock successful response for retry
+    global.fetch = vi.fn().mockImplementation(() =>
+      Promise.resolve({
+        ok: true,
+        json: () => Promise.resolve(mockTasks)
+      })
+    )
+
+    // Click retry and verify the flow
+    const user = userEvent.setup()
+    await user.click(retryButton)
+
+    // Verify task content appears after retry
+    const taskSubject = await screen.findByText(/Team Sync Tomorrow/i)
+    expect(taskSubject).toBeInTheDocument()
+
+    // Verify error message is gone
+    expect(screen.queryByText(/Error Loading Tasks/i)).not.toBeInTheDocument()
+    expect(screen.queryByText(/failed to fetch tasks/i)).not.toBeInTheDocument()
   })
 }) 

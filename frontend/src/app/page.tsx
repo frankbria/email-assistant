@@ -6,30 +6,10 @@ import { TaskCard } from '@/components/TaskCard'
 import { ErrorBoundary } from '@/components/ErrorBoundary'
 import { ErrorBanner } from '@/components/ErrorBanner'
 import { showToast } from '@/utils/toast'
-
-interface Task {
-  id: string
-  email: {
-    id: string
-    subject: string
-    sender: string
-    body: string
-  }
-}
-
-interface RawTask {
-  id?: string
-  _id?: string
-  email: {
-    id: string
-    subject: string
-    sender: string
-    body: string
-  }
-}
+import { AssistantTask, MongoDocument } from '@/types/api'
 
 function TaskList() {
-  const [tasks, setTasks] = useState<Task[]>([])
+  const [tasks, setTasks] = useState<AssistantTask[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
 
@@ -45,12 +25,13 @@ function TaskList() {
         },
         credentials: 'include',
       })
+      
       if (!response.ok) {
         throw new Error(`Failed to fetch tasks (${response.status})`)
       }
+      
       const data = await response.json()
-      // Ensure each task has a unique ID
-      const tasksWithIds = data.map((task: RawTask) => ({
+      const tasksWithIds = data.map((task: AssistantTask & MongoDocument) => ({
         ...task,
         id: task.id || task._id || `task-${Math.random().toString(36).substring(2, 11)}`
       }))
@@ -60,6 +41,8 @@ function TaskList() {
       const errorMessage = error instanceof Error ? error.message : 'Failed to load tasks'
       setError(errorMessage)
       showToast.error(errorMessage)
+      // Clear tasks on error
+      setTasks([])
     } finally {
       setLoading(false)
     }
@@ -69,9 +52,9 @@ function TaskList() {
     fetchTasks()
   }, [])
 
-  const handleRetry = () => {
+  const handleRetry = async () => {
     showToast.info('Retrying task fetch...')
-    fetchTasks()
+    await fetchTasks()
   }
 
   if (loading) {
@@ -106,7 +89,7 @@ function TaskList() {
           key={task.id}
           context={task.email.subject}
           summary={task.email.body}
-          actions={['Reply', 'Forward', 'Archive']}
+          actions={task.actions}
         />
       ))}
     </div>
