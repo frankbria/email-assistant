@@ -69,7 +69,7 @@ export default function Page() {
   }
 
   return (
-    <div className="space-y-4">
+    <div className="space-y-4 flex flex-col items-center">
       {tasks.map((task) => (
         <TaskCard
           key={task.id}

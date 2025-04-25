@@ -1,7 +1,5 @@
 # backend/tests/test_routes/test_email.py
 import pytest
-from fastapi.testclient import TestClient
-from app.main import app
 from app.models.email_message import EmailMessage
 from app.models.assistant_task import AssistantTask
 
