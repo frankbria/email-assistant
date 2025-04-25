@@ -9,7 +9,7 @@ class AssistantTask(Document):
     email: EmailMessage = Field(...)
     context: Optional[str] = None
     summary: Optional[str] = None
-    suggested_actions: List[str] = Field(default_factory=list)
+    actions: List[str] = Field(default_factory=list)
     status: str = Field(default="pending")
 
     class Settings:
