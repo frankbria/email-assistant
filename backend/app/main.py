@@ -8,6 +8,7 @@ from beanie import init_beanie
 import motor.motor_asyncio
 import asyncio
 from app.api.routers import email, tasks
+from app.middleware import setup_cors
 from dotenv import load_dotenv
 import os
 from motor.motor_asyncio import AsyncIOMotorClient
@@ -26,6 +27,9 @@ async def init_db():
         database=client[MONGODB_DB],
         document_models=[EmailMessage, AssistantTask],
     )
+    print("✅ Connecting to DB:", client.list_database_names())
+    print("🧠 Using database:", MONGODB_DB)
+
     return client
 
 
@@ -38,6 +42,9 @@ async def lifespan(app: FastAPI):
 
 
 app = FastAPI(title="Email Assistant API", lifespan=lifespan)
+
+# Setup CORS middleware
+setup_cors(app)
 
 # Include routers
 app.include_router(email.router)  # router already has prefix in its definition

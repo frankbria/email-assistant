@@ -10,6 +10,5 @@ router = APIRouter(prefix="/api/v1/tasks", tags=["tasks"])
 
 @router.get("/", response_model=List[AssistantTask])
 async def get_tasks():
-    """Get all tasks"""
     tasks = await AssistantTask.find_all().to_list()
-    return tasks
+    return tasks  # done!

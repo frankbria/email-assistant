@@ -3,7 +3,7 @@
 import React from 'react'
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { render, screen } from '@testing-library/react'
-import Page from '../../app/page'
+import Page from '../app/page'
 
 // Mock the fetch function
 const mockTasks = [
@@ -20,27 +20,31 @@ const mockTasks = [
 
 describe('Home Page', () => {
   beforeEach(() => {
-    // Mock fetch to return test data
+    // Mock fetch to return test data with proper response structure
     global.fetch = vi.fn().mockImplementation(() =>
       Promise.resolve({
+        ok: true,
         json: () => Promise.resolve(mockTasks)
       })
     )
   })
 
   it('renders task cards for each task', async () => {
-  render(<Page />)
+    render(<Page />)
 
-  // Use visible content — like subject or body text
-  const subject = await screen.findByText((text) =>
-    text.includes(mockTasks[0].email.subject)
-  )
-  const body = await screen.findByText(mockTasks[0].email.body)
+    // Wait for loading to disappear
+    await screen.findByText('Loading tasks...')
+    
+    // Find the task card by its content
+    const subjectElement = await screen.findByText((content, element) => {
+      return (element?.className?.includes('text-gray-500') && 
+              element?.textContent?.includes(mockTasks[0].email.subject)) ?? false
+    })
+    const body = await screen.findByText(mockTasks[0].email.body)
 
-  expect(subject).toBeInTheDocument()
-  expect(body).toBeInTheDocument()
-})
-
+    expect(subjectElement).toBeInTheDocument()
+    expect(body).toBeInTheDocument()
+  })
 
   it('shows loading state while fetching tasks', () => {
     render(<Page />)
