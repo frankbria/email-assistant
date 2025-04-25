@@ -8,6 +8,9 @@ import userEvent from '@testing-library/user-event'
 import Page from '../app/page'
 import { AssistantTask } from '@/types/api'
 
+// Default actions that should be present when none are specified
+const DEFAULT_ACTIONS = ['Reply', 'Forward', 'Archive']
+
 // Mock tasks that represent real user data scenarios
 const mockTasks: AssistantTask[] = [
   {
@@ -18,12 +21,27 @@ const mockTasks: AssistantTask[] = [
       sender: 'manager@company.com',
       body: 'Can we sync tomorrow at 2 PM to discuss the project timeline?'
     },
-    context: 'Meeting Request',
-    summary: 'Schedule team sync meeting for tomorrow',
+    context: 'Team Sync Tomorrow',
+    summary: 'Can we sync tomorrow at 2 PM to discuss the project timeline?',
     actions: ['Schedule', 'Reply', 'Hold for Later'],
     status: 'pending'
   }
 ]
+
+// Mock task with no specified actions (should get default actions)
+const mockTaskNoActions: AssistantTask = {
+  id: '2',
+  email: {
+    id: '2',
+    subject: 'Project Update',
+    sender: 'teammate@company.com',
+    body: 'Here is the latest project update.'
+  },
+  context: 'Project Update',
+  summary: 'Here is the latest project update.',
+  actions: [], // Empty actions should trigger defaults
+  status: 'pending'
+}
 
 describe('Email Task Management Page', () => {
   beforeEach(() => {
@@ -47,19 +65,21 @@ describe('Email Task Management Page', () => {
     // Loading indicator disappears when tasks arrive
     await waitForElementToBeRemoved(() => screen.queryByText(/loading tasks/i))
 
-    // User should see the email subject as context
-    const emailContext = await screen.findByText(/Team Sync Tomorrow/i)
-    expect(emailContext).toBeInTheDocument()
+    // User should see the task context
+    const taskContext = await screen.findByText(/Team Sync Tomorrow/i)
+    expect(taskContext).toBeInTheDocument()
 
-    // User should see the email content
-    const emailContent = await screen.findByText(/Can we sync tomorrow at 2 PM/i)
-    expect(emailContent).toBeInTheDocument()
+    // User should see the task summary
+    const taskSummary = await screen.findByText(/Can we sync tomorrow at 2 PM/i)
+    expect(taskSummary).toBeInTheDocument()
 
     // User should see action buttons
     const scheduleButton = await screen.findByRole('button', { name: /schedule/i })
     const replyButton = await screen.findByRole('button', { name: /reply/i })
+    const holdButton = await screen.findByRole('button', { name: /hold for later/i })
     expect(scheduleButton).toBeInTheDocument()
     expect(replyButton).toBeInTheDocument()
+    expect(holdButton).toBeInTheDocument()
   })
 
   it('shows empty state when no tasks are available', async () => {
@@ -122,8 +142,8 @@ describe('Email Task Management Page', () => {
     await user.click(retryButton)
 
     // Verify task content appears after retry
-    const taskSubject = await screen.findByText(/Team Sync Tomorrow/i)
-    expect(taskSubject).toBeInTheDocument()
+    const taskContext = await screen.findByText(/Team Sync Tomorrow/i)
+    expect(taskContext).toBeInTheDocument()
 
     // Verify error message is gone
     expect(screen.queryByText(/Error Loading Tasks/i)).not.toBeInTheDocument()
@@ -146,13 +166,13 @@ describe('Email Task Management Page', () => {
     const taskContainer = screen.getByText(/Team Sync Tomorrow/i).closest('div.rounded-2xl')
     expect(taskContainer).toHaveClass('rounded-2xl', 'shadow-sm', 'bg-white', 'p-4', 'space-y-2', 'w-96', 'flex', 'flex-col')
 
-    // Verify email subject with emoji
-    const subjectElement = screen.getByText(/🗂️.*Team Sync Tomorrow/i)
-    expect(subjectElement).toHaveClass('text-sm', 'text-gray-500', 'font-medium')
+    // Verify task context with emoji
+    const contextElement = screen.getByText(/🗂️.*Team Sync Tomorrow/i)
+    expect(contextElement).toHaveClass('text-sm', 'text-gray-500', 'font-medium')
 
-    // Verify email body
-    const bodyElement = screen.getByText(/Can we sync tomorrow at 2 PM/i)
-    expect(bodyElement).toHaveClass('text-base', 'text-gray-800')
+    // Verify task summary
+    const summaryElement = screen.getByText(/Can we sync tomorrow at 2 PM/i)
+    expect(summaryElement).toHaveClass('text-base', 'text-gray-800')
 
     // Verify action buttons container
     const buttonContainer = screen.getByRole('button', { name: /schedule/i }).parentElement
@@ -183,5 +203,41 @@ describe('Email Task Management Page', () => {
     expect(screen.getByRole('button', { name: /schedule/i })).toBeInTheDocument()
     expect(screen.getByRole('button', { name: /reply/i })).toBeInTheDocument()
     expect(screen.getByRole('button', { name: /hold for later/i })).toBeInTheDocument()
+  })
+
+  it('uses default actions when none are specified', async () => {
+    // Simulate successful API response with task having no actions
+    global.fetch = vi.fn().mockImplementation(() =>
+      Promise.resolve({
+        ok: true,
+        json: () => Promise.resolve([mockTaskNoActions])
+      })
+    )
+
+    render(<Page />)
+    await waitForElementToBeRemoved(() => screen.queryByText(/loading tasks/i))
+
+    // Verify task content
+    const taskContext = await screen.findByText(/Project Update/i)
+    expect(taskContext).toBeInTheDocument()
+
+    // Verify default actions are present
+    for (const action of DEFAULT_ACTIONS) {
+      const actionButton = screen.getByRole('button', { name: new RegExp(action, 'i') })
+      expect(actionButton).toBeInTheDocument()
+      expect(actionButton).toHaveClass(
+        'px-3',
+        'py-1',
+        'rounded-full',
+        'bg-muted',
+        'text-sm',
+        'text-gray-700',
+        'hover:bg-gray-200'
+      )
+    }
+
+    // Verify the number of buttons matches default actions
+    const actionButtons = screen.getAllByRole('button')
+    expect(actionButtons).toHaveLength(DEFAULT_ACTIONS.length)
   })
 }) 
