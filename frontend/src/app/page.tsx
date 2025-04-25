@@ -3,6 +3,8 @@
 
 import { useEffect, useState } from 'react'
 import { TaskCard } from '@/components/TaskCard'
+import { TaskCardSkeleton } from '@/components/TaskCardSkeleton'
+import { EmptyState } from '@/components/EmptyState'
 import { ErrorBoundary } from '@/components/ErrorBoundary'
 import { ErrorBanner } from '@/components/ErrorBanner'
 import { showToast } from '@/utils/toast'
@@ -64,7 +66,17 @@ function TaskList() {
   }
 
   if (loading) {
-    return <div className="text-center text-gray-500 pt-10">Loading tasks...</div>
+    return (
+      <div 
+        className="space-y-4 flex flex-col items-center"
+        role="region"
+        aria-label="Loading tasks"
+      >
+        <TaskCardSkeleton />
+        <TaskCardSkeleton />
+        <TaskCardSkeleton />
+      </div>
+    )
   }
 
   if (error) {
@@ -73,23 +85,21 @@ function TaskList() {
 
   if (tasks.length === 0) {
     return (
-      <div className="text-center pt-10">
-        <p className="text-gray-500 mb-4">No tasks found</p>
-        <button
-          onClick={() => {
+      <div className="flex justify-center pt-10">
+        <EmptyState
+          message="No tasks found"
+          actionLabel="Refresh tasks"
+          onAction={() => {
             showToast.info('Refreshing tasks...')
             fetchTasks()
           }}
-          className="px-4 py-2 text-sm bg-gray-100 text-gray-700 rounded-md hover:bg-gray-200"
-        >
-          Refresh
-        </button>
+        />
       </div>
     )
   }
 
   return (
-    <div className="space-y-4 flex flex-col items-center">
+    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
       {tasks.map((task) => {
         console.log('Rendering task:', task) // Debug task being rendered
         return (

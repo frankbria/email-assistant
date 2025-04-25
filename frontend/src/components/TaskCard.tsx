@@ -9,7 +9,7 @@ interface TaskCardProps {
 
 export function TaskCard({ context, summary, actions, onAction }: TaskCardProps) {
   return (
-    <div className="rounded-2xl shadow-sm bg-white p-4 space-y-2 w-96 flex flex-col">
+    <div className="w-full max-w-md rounded-2xl shadow-sm bg-white p-4 space-y-2 flex flex-col">
       <div className="text-sm text-gray-500 font-medium">🗂️ {context}</div>
       <div className="text-base text-gray-800">{summary}</div>
       <div className="flex flex-wrap gap-2 pt-2">
