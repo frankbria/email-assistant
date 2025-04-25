@@ -129,4 +129,59 @@ describe('Email Task Management Page', () => {
     expect(screen.queryByText(/Error Loading Tasks/i)).not.toBeInTheDocument()
     expect(screen.queryByText(/failed to fetch tasks/i)).not.toBeInTheDocument()
   })
+
+  it('renders TaskCard with correct content and handles interactions', async () => {
+    // Simulate successful API response
+    global.fetch = vi.fn().mockImplementation(() =>
+      Promise.resolve({
+        ok: true,
+        json: () => Promise.resolve(mockTasks)
+      })
+    )
+
+    render(<Page />)
+    await waitForElementToBeRemoved(() => screen.queryByText(/loading tasks/i))
+
+    // Verify TaskCard structure and styling
+    const taskContainer = screen.getByText(/Team Sync Tomorrow/i).closest('div.rounded-2xl')
+    expect(taskContainer).toHaveClass('rounded-2xl', 'shadow-sm', 'bg-white', 'p-4', 'space-y-2', 'w-96', 'flex', 'flex-col')
+
+    // Verify email subject with emoji
+    const subjectElement = screen.getByText(/🗂️.*Team Sync Tomorrow/i)
+    expect(subjectElement).toHaveClass('text-sm', 'text-gray-500', 'font-medium')
+
+    // Verify email body
+    const bodyElement = screen.getByText(/Can we sync tomorrow at 2 PM/i)
+    expect(bodyElement).toHaveClass('text-base', 'text-gray-800')
+
+    // Verify action buttons container
+    const buttonContainer = screen.getByRole('button', { name: /schedule/i }).parentElement
+    expect(buttonContainer).toHaveClass('flex', 'flex-wrap', 'gap-2', 'pt-2')
+
+    // Verify all action buttons are present with correct styling
+    const actionButtons = screen.getAllByRole('button')
+    expect(actionButtons).toHaveLength(3) // Schedule, Reply, Hold for Later
+
+    actionButtons.forEach(button => {
+      expect(button).toHaveClass(
+        'px-3',
+        'py-1',
+        'rounded-full',
+        'bg-muted',
+        'text-sm',
+        'text-gray-700',
+        'hover:bg-gray-200'
+      )
+    })
+
+    // Test button interactions
+    const user = userEvent.setup()
+    const scheduleButton = screen.getByRole('button', { name: /schedule/i })
+    await user.hover(scheduleButton)
+
+    // Verify button labels
+    expect(screen.getByRole('button', { name: /schedule/i })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: /reply/i })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: /hold for later/i })).toBeInTheDocument()
+  })
 }) 
