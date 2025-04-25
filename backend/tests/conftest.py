@@ -73,7 +73,7 @@ async def setup_test_data(test_db):
         email=email,
         context="test",
         summary="Test task summary",
-        suggested_actions=["action1", "action2"],
+        actions=["action1", "action2"],
         status="pending",
     )
     await task.insert()

@@ -15,8 +15,10 @@ class TaskUpdate(BaseModel):
 
 @router.get("/", response_model=List[AssistantTask])
 async def get_tasks():
+    # Fetch all tasks with their associated emails
+    # The model will handle default actions automatically
     tasks = await AssistantTask.find_all().to_list()
-    return tasks  # done!
+    return tasks
 
 
 @router.patch("/{task_id}", response_model=AssistantTask)

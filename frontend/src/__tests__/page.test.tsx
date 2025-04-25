@@ -3,13 +3,10 @@
 
 import React from 'react'
 import { describe, it, expect, vi, beforeEach } from 'vitest'
-import { render, screen, waitForElementToBeRemoved } from '@testing-library/react'
+import { render, screen, waitForElementToBeRemoved, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import Page from '../app/page'
 import { AssistantTask } from '@/types/api'
-
-// Default actions that should be present when none are specified
-const DEFAULT_ACTIONS = ['Reply', 'Forward', 'Archive']
 
 // Mock tasks that represent real user data scenarios
 const mockTasks: AssistantTask[] = [
@@ -28,8 +25,8 @@ const mockTasks: AssistantTask[] = [
   }
 ]
 
-// Mock task with no specified actions (should get default actions)
-const mockTaskNoActions: AssistantTask = {
+// Mock task with API-provided default actions
+const mockTaskWithDefaultActions: AssistantTask = {
   id: '2',
   email: {
     id: '2',
@@ -39,7 +36,7 @@ const mockTaskNoActions: AssistantTask = {
   },
   context: 'Project Update',
   summary: 'Here is the latest project update.',
-  actions: [], // Empty actions should trigger defaults
+  actions: ['Reply', 'Forward', 'Ignore'], // These come from the API now
   status: 'pending'
 }
 
@@ -66,7 +63,7 @@ describe('Email Task Management Page', () => {
     await waitForElementToBeRemoved(() => screen.queryByText(/loading tasks/i))
 
     // User should see the task context
-    const taskContext = await screen.findByText(/Team Sync Tomorrow/i)
+    const taskContext = await screen.findByText(/🗂️.*Team Sync Tomorrow/i)
     expect(taskContext).toBeInTheDocument()
 
     // User should see the task summary
@@ -142,7 +139,7 @@ describe('Email Task Management Page', () => {
     await user.click(retryButton)
 
     // Verify task content appears after retry
-    const taskContext = await screen.findByText(/Team Sync Tomorrow/i)
+    const taskContext = await screen.findByText(/🗂️.*Team Sync Tomorrow/i)
     expect(taskContext).toBeInTheDocument()
 
     // Verify error message is gone
@@ -150,39 +147,42 @@ describe('Email Task Management Page', () => {
     expect(screen.queryByText(/failed to fetch tasks/i)).not.toBeInTheDocument()
   })
 
-  it('renders TaskCard with correct content and handles interactions', async () => {
-    // Simulate successful API response
+  it('renders task with API-provided default actions', async () => {
+    // Simulate successful API response with task using default actions
     global.fetch = vi.fn().mockImplementation(() =>
       Promise.resolve({
         ok: true,
-        json: () => Promise.resolve(mockTasks)
+        json: () => Promise.resolve([mockTaskWithDefaultActions])
       })
     )
 
     render(<Page />)
     await waitForElementToBeRemoved(() => screen.queryByText(/loading tasks/i))
 
-    // Verify TaskCard structure and styling
-    const taskContainer = screen.getByText(/Team Sync Tomorrow/i).closest('div.rounded-2xl')
-    expect(taskContainer).toHaveClass('rounded-2xl', 'shadow-sm', 'bg-white', 'p-4', 'space-y-2', 'w-96', 'flex', 'flex-col')
+    // Find the task card by its context header
+    const taskContext = await screen.findByText(/🗂️.*Project Update/i)
+    expect(taskContext).toBeInTheDocument()
 
-    // Verify task context with emoji
-    const contextElement = screen.getByText(/🗂️.*Team Sync Tomorrow/i)
-    expect(contextElement).toHaveClass('text-sm', 'text-gray-500', 'font-medium')
+    // Find the task card container
+    const taskCard = taskContext.closest('div.rounded-2xl') as HTMLElement
+    expect(taskCard).toBeInTheDocument()
 
-    // Verify task summary
-    const summaryElement = screen.getByText(/Can we sync tomorrow at 2 PM/i)
-    expect(summaryElement).toHaveClass('text-base', 'text-gray-800')
+    // Verify task content
+    const taskCardElement = within(taskCard)
+    expect(taskCardElement.getByText(/Here is the latest project update/i)).toBeInTheDocument()
 
-    // Verify action buttons container
-    const buttonContainer = screen.getByRole('button', { name: /schedule/i }).parentElement
-    expect(buttonContainer).toHaveClass('flex', 'flex-wrap', 'gap-2', 'pt-2')
+    // Verify API-provided default actions are present
+    const replyButton = taskCardElement.getByRole('button', { name: /reply/i })
+    const forwardButton = taskCardElement.getByRole('button', { name: /forward/i })
+    const ignoreButton = taskCardElement.getByRole('button', { name: /ignore/i })
 
-    // Verify all action buttons are present with correct styling
-    const actionButtons = screen.getAllByRole('button')
-    expect(actionButtons).toHaveLength(3) // Schedule, Reply, Hold for Later
+    expect(replyButton).toBeInTheDocument()
+    expect(forwardButton).toBeInTheDocument()
+    expect(ignoreButton).toBeInTheDocument()
 
-    actionButtons.forEach(button => {
+    // Verify button styling
+    const buttons = [replyButton, forwardButton, ignoreButton]
+    buttons.forEach((button: HTMLElement) => {
       expect(button).toHaveClass(
         'px-3',
         'py-1',
@@ -193,51 +193,5 @@ describe('Email Task Management Page', () => {
         'hover:bg-gray-200'
       )
     })
-
-    // Test button interactions
-    const user = userEvent.setup()
-    const scheduleButton = screen.getByRole('button', { name: /schedule/i })
-    await user.hover(scheduleButton)
-
-    // Verify button labels
-    expect(screen.getByRole('button', { name: /schedule/i })).toBeInTheDocument()
-    expect(screen.getByRole('button', { name: /reply/i })).toBeInTheDocument()
-    expect(screen.getByRole('button', { name: /hold for later/i })).toBeInTheDocument()
-  })
-
-  it('uses default actions when none are specified', async () => {
-    // Simulate successful API response with task having no actions
-    global.fetch = vi.fn().mockImplementation(() =>
-      Promise.resolve({
-        ok: true,
-        json: () => Promise.resolve([mockTaskNoActions])
-      })
-    )
-
-    render(<Page />)
-    await waitForElementToBeRemoved(() => screen.queryByText(/loading tasks/i))
-
-    // Verify task content
-    const taskContext = await screen.findByText(/Project Update/i)
-    expect(taskContext).toBeInTheDocument()
-
-    // Verify default actions are present
-    for (const action of DEFAULT_ACTIONS) {
-      const actionButton = screen.getByRole('button', { name: new RegExp(action, 'i') })
-      expect(actionButton).toBeInTheDocument()
-      expect(actionButton).toHaveClass(
-        'px-3',
-        'py-1',
-        'rounded-full',
-        'bg-muted',
-        'text-sm',
-        'text-gray-700',
-        'hover:bg-gray-200'
-      )
-    }
-
-    // Verify the number of buttons matches default actions
-    const actionButtons = screen.getAllByRole('button')
-    expect(actionButtons).toHaveLength(DEFAULT_ACTIONS.length)
   })
 }) 

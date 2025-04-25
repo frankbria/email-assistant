@@ -29,5 +29,7 @@ def test_get_tasks(client):
     assert "body" in task["email"]
     assert "context" in task
     assert "summary" in task
-    assert "suggested_actions" in task
+    assert "actions" in task
+    assert isinstance(task["actions"], list)
+    assert len(task["actions"]) > 0
     assert "status" in task

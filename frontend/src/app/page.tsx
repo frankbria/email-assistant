@@ -31,10 +31,16 @@ function TaskList() {
       }
       
       const data = await response.json()
-      const tasksWithIds = data.map((task: AssistantTask & MongoDocument) => ({
-        ...task,
-        id: task.id || task._id || `task-${Math.random().toString(36).substring(2, 11)}`
-      }))
+      console.log('Raw task data from API:', data) // Debug log
+      
+      const tasksWithIds = data.map((task: AssistantTask & MongoDocument) => {
+        console.log('Processing task:', task) // Debug individual task
+        return {
+          ...task,
+          id: task.id || task._id || `task-${Math.random().toString(36).substring(2, 11)}`
+        }
+      })
+      console.log('Processed tasks:', tasksWithIds) // Debug processed tasks
       setTasks(tasksWithIds)
       showToast.success('Tasks loaded successfully')
     } catch (error) {
@@ -84,14 +90,17 @@ function TaskList() {
 
   return (
     <div className="space-y-4 flex flex-col items-center">
-      {tasks.map((task) => (
-        <TaskCard
-          key={task.id}
-          context={task.email.subject}
-          summary={task.email.body}
-          actions={task.actions}
-        />
-      ))}
+      {tasks.map((task) => {
+        console.log('Rendering task:', task) // Debug task being rendered
+        return (
+          <TaskCard
+            key={task.id}
+            context={task.email.subject}
+            summary={task.email.body}
+            actions={task.actions || []} // Ensure actions is never undefined
+          />
+        )
+      })}
     </div>
   )
 }
