@@ -20,28 +20,45 @@ async def init_db(settings: Settings = None):
     if settings is None:
         settings = get_settings()
 
-    client = AsyncIOMotorClient(settings.current_mongodb_uri)
+    print(f"🔑 Using MongoDB URI: {settings.current_mongodb_uri}")
+
+    client = AsyncIOMotorClient(
+        settings.current_mongodb_uri,
+        serverSelectionTimeoutMS=5000,
+        socketTimeoutMS=5000,
+        connectTimeoutMS=5000,
+        tls=True,
+    )
     await init_beanie(
         database=client[settings.current_mongodb_db],
         document_models=[EmailMessage, AssistantTask],
         allow_index_dropping=True,
     )
+
     print(f"✅ Connecting to DB: {settings.current_mongodb_uri}")
     print(f"🧠 Using database: {settings.current_mongodb_db}")
     print(
         f"Collections: {await client[settings.current_mongodb_db].list_collection_names()}"
     )
 
+    print("✅ Successfully initialized Beanie")
+
     return client
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
+    print("🔄 Starting lifespan")
     settings = get_settings()
     client = await init_db(settings)
+    print("✅ Successfully initialized DB")
+
     app.state.motor_client = client
     app.state.settings = settings
+    print("🌟 Lifespan: DB client assigned to app.state")
     yield
+
+    print("🌟 Lifespan: Shutting down DB")
     if client is not None:
         try:
             client.close()

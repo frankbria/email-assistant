@@ -1,11 +1,9 @@
 # backend/tests/test_routes/test_email.py
 import pytest
-from app.models.email_message import EmailMessage
-from app.models.assistant_task import AssistantTask
 
 
 def test_create_email_task(client):
-    """Test that POST /api/email creates a new email task"""
+    """Test that POST /api/v1/email creates a new email task"""
     payload = {
         "sender": "alice@example.com",
         "subject": "Test Subject",
@@ -16,17 +14,19 @@ def test_create_email_task(client):
     data = response.json()
     assert "email_id" in data
     assert "task_id" in data
-    # Fetch all tasks and find the newly created one by its email subject
+    print(f"🔄 Created email: {data}")
+
+    # Fetch all tasks and verify the created one
     tasks_resp = client.get("/api/v1/tasks/")
     assert tasks_resp.status_code == 200
     tasks = tasks_resp.json()
-    # locate the task whose embedded email.subject matches our payload
+    print(f"🔄 Fetched tasks: {tasks}")
+
     created = next(
         (t for t in tasks if t.get("email", {}).get("subject") == payload["subject"]),
         None,
     )
     assert created is not None, f"Task with subject '{payload['subject']}' not found"
-    # Ensure the task context field is present
     assert "context" in created
 
 
@@ -41,7 +41,7 @@ def test_email_task_context_integration(client, monkeypatch):
         "body": "Are you free to schedule a 1:1 next Tuesday?",
     }
 
-    # Stub classification to ensure consistent context
+    # ❗ Correct: async fake
     async def fake_classify(subject, body):
         return "scheduling"
 
@@ -55,13 +55,16 @@ def test_email_task_context_integration(client, monkeypatch):
         fake_classify,
     )
 
-    # Create the task
     resp = client.post("/api/v1/email", json=payload)
     assert resp.status_code == 200
 
-    # Fetch tasks and locate ours by subject
-    tasks = client.get("/api/v1/tasks/").json()
-    task = next(t for t in tasks if t["email"]["subject"] == payload["subject"])
+    tasks_resp = client.get("/api/v1/tasks/")
+    assert tasks_resp.status_code == 200
+    tasks = tasks_resp.json()
 
-    # It should have been classified as 'scheduling'
+    task = next(
+        (t for t in tasks if t["email"]["subject"] == payload["subject"]),
+        None,
+    )
+    assert task is not None, "Created task not found"
     assert task["context"] == "scheduling"

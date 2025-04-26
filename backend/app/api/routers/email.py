@@ -20,12 +20,15 @@ async def create_email_task(
     body: str = Body(..., embed=True),
     actions: Optional[List[str]] = Body(None, embed=True),
 ):
+    print("🔄 Creating email task in API")
     # Create and save the email, then map to a task
     email = EmailMessage(subject=subject, sender=sender, body=body)
     await email.insert()
+    print("✅ Email created and saved")
 
     # Use centralized mapping logic (includes defaults, classification, summary)
     task = await map_email_to_task(email, actions)
+    print("🔄 Mapping email to task")
     await task.insert()
-
+    print("✅ Task created and saved")
     return {"email_id": str(email.id), "task_id": str(task.id)}

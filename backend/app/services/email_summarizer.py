@@ -1,10 +1,12 @@
 # backend/app/services/email_summarizer.py
 
+import os
 import re
 from typing import Optional
 from app.models.email_message import EmailMessageBase
 from app.config import get_settings
 from app.services.ai_client import openai_client, OPENAI_MODEL, logger as ai_logger
+import openai
 
 
 def is_generic_subject(subject: str) -> bool:
@@ -51,11 +53,13 @@ async def generate_summary(email: EmailMessageBase) -> str:
     1. Using AI summarization if enabled,
     2. Falling back to smart heuristics.
     """
-    settings = get_settings()
+    # ❗ Dynamically recheck environment at runtime
+    use_ai_summary = os.getenv("USE_AI_SUMMARY", "false").lower() == "true"
 
-    if settings.use_ai_summary and openai_client:
+    if use_ai_summary and openai_client:
         try:
             prompt = f"Summarize the following email in one concise sentence:\nSubject: {email.subject}\nBody: {email.body}"
+            print("🔄 Sending summary prompt to OpenAI: ", prompt)
             response = await openai_client.chat.completions.create(
                 model=OPENAI_MODEL,
                 messages=[
@@ -69,9 +73,11 @@ async def generate_summary(email: EmailMessageBase) -> str:
             )
             summary = response.choices[0].message.content.strip()
             if summary:
+                print("✅ Received AI summary: ", summary)
                 return summary
         except Exception as e:
             ai_logger.error(f"AI summarization failed: {e}")
+            print("🔄 AI summarization failed: ", e)
 
     # Non-AI fallback path
     if not email.subject and not email.body:

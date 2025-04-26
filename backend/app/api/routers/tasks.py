@@ -18,6 +18,7 @@ class TaskUpdate(BaseModel):
 async def get_tasks():
     # Fetch all tasks with their associated emails
     # The model will handle default actions automatically
+    print("🔄 Fetching tasks")
     tasks = await AssistantTask.find_all().to_list()
     # Fill missing context via classifier using dynamic patchable module
     for t in tasks:

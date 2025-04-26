@@ -62,23 +62,29 @@ async def test_generate_summary_empty_content():
 async def test_generate_summary_ai(monkeypatch):
     # Enable AI summarization
     monkeypatch.setenv("USE_AI_SUMMARY", "true")
-    # Reload config and summarizer to pick up flag
+
+    # Reload modules if needed (optional after big env change)
     import app.config as config_module
 
     importlib.reload(config_module)
     importlib.reload(es_module)
-    # Stub OpenAI completion
+
+    # Stub OpenAI client call
     dummy = SimpleNamespace(
         choices=[SimpleNamespace(message=SimpleNamespace(content="AI result"))]
     )
 
-    async def fake_acreate(*args, **kwargs):
+    async def fake_create(*args, **kwargs):
         return dummy
 
-    monkeypatch.setenv("OPENAI_API_KEY", "test_key")
-    monkeypatch.setattr(es_module.openai.ChatCompletion, "acreate", fake_acreate)
+    # 🚨 Correct patch target!
+    monkeypatch.setattr(es_module.openai_client.chat.completions, "create", fake_create)
+
     email = EmailMessageBase(
         subject="Subj", body="Body text", sender="user@example.com"
     )
+
     result = await es_module.generate_summary(email)
+
+    # ✅ Now this assertion makes sense
     assert result == "AI result"

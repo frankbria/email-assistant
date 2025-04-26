@@ -4,10 +4,6 @@ from app.services.email_task_mapper import map_email_to_task
 from app.models.email_message import EmailMessage
 from app.models.assistant_task import AssistantTask
 
-# Prevent Beanie from requiring DB initialization in tests
-EmailMessage.get_motor_collection = lambda self: None
-AssistantTask.get_motor_collection = lambda self: None
-
 pytestmark = pytest.mark.asyncio
 
 

@@ -19,6 +19,7 @@ load_dotenv()
 os.environ["MONGODB_URI"] = os.getenv("MONGODB_TEST_URI", "mongodb://localhost:27017")
 os.environ["MONGODB_DB"] = os.getenv("MONGODB_TEST_DB", "email_assistant_test")
 os.environ["USE_AI_CONTEXT"] = "false"
+os.environ["USE_AI_SUMMARY"] = "false"
 os.environ["OPENAI_API_KEY"] = "test_key"
 os.environ["OPENAI_API_MODEL"] = "gpt-3-5-turbo"
 
@@ -36,6 +37,7 @@ async def test_db():
     """Initialize test database connection"""
     mongo_uri = os.environ["MONGODB_TEST_URI"]
     test_db_name = os.environ["MONGODB_TEST_DB"]
+    print(f"Using test database: {mongo_uri}/{test_db_name}")
 
     # Safety check to prevent production database access
     if "prod" in test_db_name.lower() or "production" in test_db_name.lower():

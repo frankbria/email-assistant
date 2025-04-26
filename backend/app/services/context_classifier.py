@@ -16,11 +16,14 @@ async def classify_context(subject: str, body: str) -> str:
     Unified context classifier. If USE_AI_CONTEXT is enabled, delegates to AI-based classifier;
     otherwise or on error, falls back to rule-based classifier.
     """
+    print("🔄 Classifying context in service")
     if USE_AI:
         try:
+            print("🔄 Using AI classifier")
             return await classify_context_ai(subject, body)
         except Exception as e:
             logging.error(f"AI classification error, falling back to rule-based: {e}")
+            print("🔄 Falling back to rule-based classifier")
     # Fallback to rule-based classification
     email = EmailMessageBase(subject=subject, body=body, sender="")
     return classify_context_rule(email)
