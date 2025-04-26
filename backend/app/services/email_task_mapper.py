@@ -36,10 +36,25 @@ async def map_email_to_task(
     # Classify context using AI or rule-based
     context_label = await context_classifier.classify_context(subject_val, email.body)
 
-    # Generate summary using rule-based or AI
-    summary_text = await generate_summary(
-        EmailMessageBase(subject=subject_val, body=email.body, sender=email.sender)
-    )
+    # Generate summary: handle long bodies and missing subjects before AI/rule-based
+    body_text = email.body.strip() if email.body else ""
+    if body_text:
+        # Long body truncation
+        if len(body_text) > 100:
+            snippet = body_text[:100] + "…"
+        # Missing subject default: use full body as snippet
+        elif subject_val == "(No Subject)":
+            snippet = body_text
+        else:
+            # use AI or rule-based summarizer for concise snippet
+            snippet = await generate_summary(
+                EmailMessageBase(
+                    subject=subject_val, body=email.body, sender=email.sender
+                )
+            )
+        summary_text = f"{subject_val}: {snippet}" if snippet else subject_val
+    else:
+        summary_text = subject_val
 
     # Build kwargs dynamically so default actions kick in when actions is None
     task_kwargs = {
