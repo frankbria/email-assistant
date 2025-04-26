@@ -2,6 +2,8 @@
 import re
 from typing import Optional
 from app.models.email_message import EmailMessageBase
+from app.config import get_settings
+from app.services.ai_client import OPENAI_MODEL, logger as ai_logger, openai
 
 
 def is_generic_subject(subject: str) -> bool:
@@ -49,13 +51,36 @@ def extract_first_sentence(text: str) -> Optional[str]:
     return first_line if first_line else None
 
 
-def generate_summary(email: EmailMessageBase) -> str:
+async def generate_summary(email: EmailMessageBase) -> str:
     """
     Generates a concise summary of an email by either:
     1. Using the subject if it's descriptive enough
     2. Extracting the first meaningful sentence from the body
     3. Returning a default message if no content is available
+    4. Optionally delegating to AI summarization when enabled
     """
+    settings = get_settings()
+    # AI-based summarization
+    if settings.use_ai_summary:
+        try:
+            # system prompt for summarization
+            prompt = f"Summarize the following email in one concise sentence:\nSubject: {email.subject}\nBody: {email.body}"
+            response = await openai.ChatCompletion.acreate(
+                model=OPENAI_MODEL,
+                messages=[
+                    {
+                        "role": "system",
+                        "content": "You are an assistant that summarizes emails.",
+                    },
+                    {"role": "user", "content": prompt},
+                ],
+                temperature=0,
+            )
+            summary = response.choices[0].message.content.strip()
+            if summary:
+                return summary
+        except Exception as e:
+            ai_logger.error(f"AI summarization failed: {e}")
     # Handle empty content
     if not email.subject and not email.body:
         return "No content available"

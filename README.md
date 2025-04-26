@@ -89,6 +89,7 @@ Create environment files to configure AI classification and the API base URL:
 OPENAI_API_KEY=your_api_key_here
 OPENAI_API_MODEL=gpt-3.5-turbo
 USE_AI_CONTEXT=true
+USE_AI_SUMMARY=true
 MONGODB_URI=<your_mongodb_uri>
 MONGODB_DB=<your_database_name>
 ```
@@ -100,7 +101,8 @@ NEXT_PUBLIC_API_BASE=http://localhost:8000
 
 - `OPENAI_API_KEY`: your OpenAI API key for context classification  
 - `OPENAI_API_MODEL`: OpenAI model to use (e.g., `gpt-3.5-turbo`)  
-- `USE_AI_CONTEXT`: set to `true` to enable AI-based classification; set to `false` (or omit) to use rule-based  
+- `USE_AI_CONTEXT`: set to `true` to enable AI-based classification; set to `false` (or omit) to use rule-based
+- `USE_AI_SUMMARY`: set to `true` to enable AI-based summary generation; set to `false` (or omit) to use rule-based  
 - `NEXT_PUBLIC_API_BASE`: base URL of the FastAPI backend  
 
 ## 🧪 Testing Instructions

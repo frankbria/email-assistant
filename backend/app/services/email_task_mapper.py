@@ -4,9 +4,10 @@ from typing import List, Optional
 import logging
 
 logger = logging.getLogger(__name__)
-from app.models.email_message import EmailMessage
+from app.models.email_message import EmailMessage, EmailMessageBase
 from app.models.assistant_task import AssistantTask
 import app.services.context_classifier as context_classifier
+from app.services.email_summarizer import generate_summary
 
 
 async def map_email_to_task(
@@ -35,13 +36,10 @@ async def map_email_to_task(
     # Classify context using AI or rule-based
     context_label = await context_classifier.classify_context(subject_val, email.body)
 
-    # Build summary: use subject_val if body empty, else subject_val + truncated snippet
-    trimmed = email.body.strip() if email.body else ""
-    if not trimmed:
-        summary_text = subject_val
-    else:
-        snippet = trimmed[:100] + ("…" if len(trimmed) > 100 else "")
-        summary_text = f"{subject_val}: {snippet}"
+    # Generate summary using rule-based or AI
+    summary_text = await generate_summary(
+        EmailMessageBase(subject=subject_val, body=email.body, sender=email.sender)
+    )
 
     # Build kwargs dynamically so default actions kick in when actions is None
     task_kwargs = {

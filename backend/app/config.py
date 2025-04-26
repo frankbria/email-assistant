@@ -26,6 +26,9 @@ class Settings(BaseSettings):
         "API_ENVIRONMENT", "test" if "pytest" in sys.modules else "development"
     )
 
+    # new flag for AI summarization
+    use_ai_summary: bool = False
+
     # CORS settings
     allow_origins: List[str] = [
         os.getenv("FRONTEND_ORIGIN"),
