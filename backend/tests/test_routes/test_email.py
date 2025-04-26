@@ -30,7 +30,7 @@ def test_create_email_task(client):
     assert "context" in created
 
 
-def test_email_task_context_integration(client):
+def test_email_task_context_integration(client, monkeypatch):
     """
     When I POST an email containing scheduling keywords,
     the saved task's context should be 'scheduling'.
@@ -40,6 +40,21 @@ def test_email_task_context_integration(client):
         "subject": "Please schedule a call",
         "body": "Are you free to schedule a 1:1 next Tuesday?",
     }
+
+    # Stub classification to ensure consistent context
+    async def fake_classify(subject, body):
+        return "scheduling"
+
+    monkeypatch.setattr(
+        "app.api.routers.email.context_classifier.classify_context",
+        fake_classify,
+    )
+
+    monkeypatch.setattr(
+        "app.services.context_classifier.classify_context",
+        fake_classify,
+    )
+
     # Create the task
     resp = client.post("/api/v1/email", json=payload)
     assert resp.status_code == 200

@@ -9,7 +9,7 @@ Below is a structured table of user stories (as they would apply to the final AI
 
 | # | User Story | Feature Description | Acceptance Criteria |
 |---|-------------|----------------------|----------------------|
-| 1 | As a busy professional, I want to capture an email into the assistant so it becomes a task, so that I don’t have to manually create tasks from important emails. | System accepts an incoming email and stores it as an EmailMessage and generates an associated AssistantTask. | - POST `/api/email` accepts `from`, `subject`, `body`.<br>- EmailMessage created in DB.<br>- AssistantTask generated and linked to email.<br>- Verified via sample test. |
+| 1 | As a busy professional, I want to capture an email into the assistant so it becomes a task, so that I don't have to manually create tasks from important emails. | System accepts an incoming email and stores it as an EmailMessage and generates an associated AssistantTask. | - POST `/api/email` accepts `from`, `subject`, `body`.<br>- EmailMessage created in DB.<br>- AssistantTask generated and linked to email.<br>- Verified via sample test. |
 
 ---
 
@@ -156,8 +156,8 @@ Each task should be visually represented as a distinct card within the UI. Each 
 - Retrieval of task list on page load.
 
 **Edge Cases:**  
-- If a task has missing sender/subject/summary, default to placeholders (“Unknown Sender”, “No Subject”).
-- If no tasks exist, display a “No Tasks Yet” empty state message.
+- If a task has missing sender/subject/summary, default to placeholders ("Unknown Sender", "No Subject").
+- If no tasks exist, display a "No Tasks Yet" empty state message.
 
 **Acceptance Criteria:**  
 - Each card includes sender, subject, summary, and action buttons.
@@ -176,10 +176,10 @@ Each task should be visually represented as a distinct card within the UI. Each 
 Each task card must include buttons (e.g., "Done," "Snooze") that allow the user to interact directly without needing to open a detailed view. For the initial version, actions may be mocked by updating UI state or logging to the console, simulating future behavior.
 
 **Inputs:**  
-- User click event on a task card’s action button.
+- User click event on a task card's action button.
 
 **Outputs:**  
-- Console log or UI state update showing action taken (e.g., “Task 123 marked Done”).
+- Console log or UI state update showing action taken (e.g., "Task 123 marked Done").
 
 **Constraints:**  
 - Button click must respond within 200ms to user interaction.
@@ -227,7 +227,7 @@ A bottom navigation bar should appear persistently across the app, especially op
 - Section pages (Task Queue, Training, History, Settings) must exist, even as stubs.
 
 **Edge Cases:**  
-- If navigation route is missing or invalid, fallback to “Inbox” or default section.
+- If navigation route is missing or invalid, fallback to "Inbox" or default section.
 - If a navigation icon fails to load, display fallback text label.
 
 **Acceptance Criteria:**  
@@ -240,8 +240,8 @@ A bottom navigation bar should appear persistently across the app, especially op
 
 ## 🔹 User Story 9: Active Tab Highlighting in Navigation
 
-> **As a user**, I want to always know which section of the app I’m in,  
-> **so that** I don’t get lost while navigating.
+> **As a user**, I want to always know which section of the app I'm in,  
+> **so that** I don't get lost while navigating.
 
 **Description:**  
 The bottom navigation bar should visually highlight the active tab based on the current route or page. As the user moves between different sections (Inbox, Training, History, Settings), the corresponding tab should update dynamically to reflect the active context without manual refresh or lag.
@@ -377,7 +377,7 @@ The application must reliably convert incoming email data into AssistantTask obj
 - UI must render task cards correctly (from Story 6).
 
 **Edge Cases:**  
-- If an incoming email lacks a subject, use a default title (“(No Subject)”).
+- If an incoming email lacks a subject, use a default title ("(No Subject)").
 - If body parsing fails, fallback to saving the raw email body in the task summary.
 - If duplicate emails are accidentally processed, prevent duplicate tasks if possible (optional for MVP).
 
@@ -395,7 +395,7 @@ The application must reliably convert incoming email data into AssistantTask obj
 > **so that** tasks are created with accurate metadata even when emails are forwarded manually.
 
 **Description:**  
-Forwarded emails often embed the original sender and subject inside the email body rather than preserving them in the headers. The assistant must detect common forwarding patterns (e.g., “From: Jane Doe <jane@example.com>”) inside the body and extract the correct metadata fields for task creation. This ensures task cards reflect the true context of the original conversation rather than the forwarding user.
+Forwarded emails often embed the original sender and subject inside the email body rather than preserving them in the headers. The assistant must detect common forwarding patterns (e.g., "From: Jane Doe <jane@example.com>") inside the body and extract the correct metadata fields for task creation. This ensures task cards reflect the true context of the original conversation rather than the forwarding user.
 
 **Inputs:**  
 - EmailMessage object containing forwarded message body as plaintext or HTML.
@@ -408,7 +408,7 @@ Forwarded emails often embed the original sender and subject inside the email bo
 **Constraints:**  
 - Parsing must support at least one known format (e.g., Gmail standard forwarded message format).
 - Extraction should complete within 300ms per email on average.
-- If no recognizable forwarded format is found, fallback to using the forwarding user’s metadata.
+- If no recognizable forwarded format is found, fallback to using the forwarding user's metadata.
 
 **Dependencies:**  
 - EmailMessage ingestion system must store full body text.
@@ -417,7 +417,7 @@ Forwarded emails often embed the original sender and subject inside the email bo
 **Edge Cases:**  
 - If multiple "From:" or "Subject:" fields are found, use the first instance.
 - If body format is irregular or corrupted, use fallback metadata without crashing.
-- If parsing produces invalid email addresses or empty subjects, default to placeholder values (“Unknown Sender”, “(No Subject)”).
+- If parsing produces invalid email addresses or empty subjects, default to placeholder values ("Unknown Sender", "(No Subject)").
 
 **Acceptance Criteria:**  
 - For emails containing standard forwarded message structures, the AssistantTask reflects the original sender and subject correctly.
@@ -431,7 +431,13 @@ Forwarded emails often embed the original sender and subject inside the email bo
 > **so that** tasks have predictable fields even if emails are partial, malformed, or forwarded.
 
 ### 🛠️ TASK
-- Define a clear mapping from EmailMessage fields to AssistantTask fields at the time of creation.
+- Define a clear mapping from EmailMessage fields to AssistantTask fields at the time of creation:
+  - `sender`: use `email.sender` or default to "Unknown Sender"
+  - `subject`: use `email.subject` or default to "(No Subject)"
+  - `summary`: if `email.body` is empty, use the subject; otherwise generate `"{subject}: {snippet}"` where `snippet` is the first 100 characters of the body with an ellipsis
+  - `context`: determined by the AI or rule-based classifier
+  - `actions`: use provided actions list or default to `["Reply", "Forward", "Archive"]`
+  - `status`: default to "pending"
 
 ### 🌟 INPUTS
 - `EmailMessage` object containing:

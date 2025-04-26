@@ -5,6 +5,7 @@ from typing import List
 from app.models.assistant_task import AssistantTask
 from beanie import PydanticObjectId
 from pydantic import BaseModel
+import app.services.context_classifier as context_classifier
 
 router = APIRouter(prefix="/api/v1/tasks", tags=["tasks"])
 
@@ -13,11 +14,17 @@ class TaskUpdate(BaseModel):
     status: str
 
 
-@router.get("/", response_model=List[AssistantTask])
+@router.get("/")
 async def get_tasks():
     # Fetch all tasks with their associated emails
     # The model will handle default actions automatically
     tasks = await AssistantTask.find_all().to_list()
+    # Fill missing context via classifier using dynamic patchable module
+    for t in tasks:
+        if not t.context:
+            t.context = await context_classifier.classify_context(
+                t.subject or t.email.subject, t.email.body
+            )
     return tasks
 
 

@@ -82,7 +82,7 @@ npm run dev
 ## ⚙️ Configuration
 
 Create environment files to configure AI classification and the API base URL:
- - Exmaples exist in .env.example files
+ - Examples exist in .env.example files
 
 **Backend** (in `backend/.env` or project root `.env`):
 ```dotenv

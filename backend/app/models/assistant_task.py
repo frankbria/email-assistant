@@ -21,5 +21,18 @@ class AssistantTask(Document):
             self.actions = ["Reply", "Forward", "Archive"]
         return self
 
+    @model_validator(mode="after")
+    def populate_sender_subject(self) -> "AssistantTask":
+        """
+        After validation, ensure sender and subject default from the linked email if unset.
+        """
+        # Default sender from email if not provided
+        if not self.sender and hasattr(self, "email"):
+            self.sender = self.email.sender
+        # Default subject from email if not provided
+        if not self.subject and hasattr(self, "email"):
+            self.subject = self.email.subject
+        return self
+
     class Settings:
         name = "assistant_tasks"
