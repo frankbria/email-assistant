@@ -1,20 +1,26 @@
 # backend/app/services/ai_client.py
 
 import os
-import openai
 import logging
-
-logger = logging.getLogger(__name__)
 from typing import Set
+import openai
+from dotenv import load_dotenv
 
-# Load OpenAI credentials from environment
+# Load environment variables from .env file
+load_dotenv()
+
+# Configure logging
+logger = logging.getLogger(__name__)
+
+# Load OpenAI credentials and model from environment
 OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
 OPENAI_MODEL = os.getenv("OPENAI_API_MODEL", "gpt-3.5-turbo")
 
-# Configure OpenAI client if key is present, otherwise log a warning
+# Initialize OpenAI client
 if OPENAI_API_KEY:
-    openai.api_key = OPENAI_API_KEY
+    openai_client = openai.AsyncOpenAI(api_key=OPENAI_API_KEY)
 else:
+    openai_client = None
     logger.warning(
         "Missing OPENAI_API_KEY environment variable; AI classification will always return 'other'"
     )
@@ -36,9 +42,9 @@ async def classify_context_ai(subject: str, body: str) -> str:
     scheduling, sales, support, partner, personal, or other.
     Returns the category label in lowercase; defaults to 'other' on error or invalid response.
     """
-    # (Removed early exit to ensure AI method and logging are exercised)
+    if not openai_client:
+        return "other"
 
-    # Dynamically create category list for the system prompt
     categories_str = ", ".join(sorted(_VALID_CATEGORIES))
     system_prompt = (
         f"You are an AI assistant that classifies emails into one of the following categories: {categories_str}. "
@@ -47,7 +53,7 @@ async def classify_context_ai(subject: str, body: str) -> str:
     user_prompt = f"Subject: {subject}\n\nBody: {body}"
 
     try:
-        response = await openai.ChatCompletion.acreate(
+        response = await openai_client.chat.completions.create(
             model=OPENAI_MODEL,
             messages=[
                 {"role": "system", "content": system_prompt},
