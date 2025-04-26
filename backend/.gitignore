@@ -10,10 +10,6 @@ poetry.lock
 # Virtual environment
 .venv/
 
-# Env files
-.env
-.env.*
-
 # Test coverage reports
 htmlcov/
 .coverage
@@ -27,8 +23,9 @@ coverage.xml
 
 # Environment variables
 .env
-.env.*
-!.env.example
+.env.local
+.env.production
+.env.development
 
 # IDE/Editor folders
 .vscode/

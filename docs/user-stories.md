@@ -10,10 +10,124 @@ Below is a structured table of user stories (as they would apply to the final AI
 | # | User Story | Feature Description | Acceptance Criteria |
 |---|-------------|----------------------|----------------------|
 | 1 | As a busy professional, I want to capture an email into the assistant so it becomes a task, so that I don’t have to manually create tasks from important emails. | System accepts an incoming email and stores it as an EmailMessage and generates an associated AssistantTask. | - POST `/api/email` accepts `from`, `subject`, `body`.<br>- EmailMessage created in DB.<br>- AssistantTask generated and linked to email.<br>- Verified via sample test. |
-| 2 | As a user, I want the assistant to analyze an email and tag the task with a context category, so that I can immediately understand what type of task it is (e.g. scheduling, sales, etc.). | Assistant determines a "context" label for the task (e.g., “Scheduling Request”) based on content. | - Predefined categories exist.<br>- Rule-based tagging (mock AI logic).<br>- Task context saved in DB.<br>- Verified via known keyword match. |
-| 3 | As a user, I want the assistant to distill the email into a concise task summary, so that I can quickly grasp the gist without reading the whole email. | Generates a one-line summary based on subject/body to describe the core of the email. | - Summary generated from subject/body.<br>- Summary saved in task.<br>- Summary shown in UI TaskCard.<br>- Confirmed via test case. |
-| 4 | As a user, I want the assistant to suggest a couple of quick actions for each task, so that I know how to respond or handle the email task with one click. | AssistantTask includes 2–3 action suggestions based on context (e.g., “Schedule Meeting”). | - Suggested actions assigned based on rule-based logic.<br>- Actions saved in task.<br>- Buttons rendered in UI.<br>- Buttons log to console (mock). |
-| 5 | As a user, I want to view all my pending email-tasks on a dedicated page, so that I can review and manage what needs my attention in one place. | `/` page lists all AssistantTasks pulled from the backend. | - `/` route exists.<br>- `GET /api/tasks` fetches tasks.<br>- Tasks rendered in UI.<br>- Two test emails produce two cards. |
+
+---
+
+## 🔹 User Story 2: AI Context Detection (Category)
+
+> **As a user**, I want the assistant to analyze an email and tag the task with a context category,  
+> **so that** I can immediately understand what type of task it is (e.g., scheduling, sales, etc.).
+
+### 🛠️ TASK
+- Use basic AI (Claude/OpenAI) or rule-based mock to assign a **context label** to each email-task (e.g., "Scheduling Request", "Sales Opportunity", "Internal Update", "Customer Complaint").
+
+### 🌟 INPUTS
+- Email `subject`
+- Email `body`
+
+### 🏱 OUTPUTS
+- `context: str` field filled with a category label.
+
+Example categories:
+- Scheduling
+- Sales
+- Support
+- Internal
+- Other
+
+### 🯩 DEPENDENCIES
+- AssistantTask model must have a `context` field.
+- Email ingestion already functional.
+
+### ⚡ EDGE CASES
+- Empty subject/body → default context to "Other".
+- AI fails to generate → fallback to "Other".
+- (Optional later) Low-confidence classifications → label "Uncategorized".
+
+### ✅ ACCEPTANCE TESTS
+- Every new task has a non-null context.
+- Contexts are limited to predefined allowed values.
+- Empty or malformed emails do not break categorization.
+
+---
+
+## 🔹 User Story 3: AI Summary Generation
+
+> **As a user**, I want the assistant to distill the email into a concise task summary,  
+> **so that** I can quickly grasp the gist without reading the whole email.
+
+### 🛠️ TASK
+- Use AI summarization (Claude/OpenAI) or simple rule-based fallback to create a **1-line summary** from subject + body.
+
+### 🌟 INPUTS
+- Email `subject`
+- Email `body`
+
+### 🏱 OUTPUTS
+- `summary: str` field filled with a 1-sentence summary.
+
+Example:
+
+| Email | Summary |
+|:---|:---|
+| Subject: "Lunch tomorrow?"<br>Body: "Are you free to grab lunch at 1pm?" | "Schedule lunch meeting for tomorrow at 1pm." |
+| Subject: "New pricing" <br> Body: "Attached are new prices for next quarter." | "Review new pricing proposals for Q2." |
+
+### 🯩 DEPENDENCIES
+- AssistantTask model must have a `summary` field.
+
+### ⚡ EDGE CASES
+- Empty body → fallback to summarizing subject alone.
+- Very long body → truncate to first ~500 characters before summarizing.
+- Blank/failed summary → fallback to "Follow up on email."
+
+### ✅ ACCEPTANCE TESTS
+- Every task has a usable 1-line summary.
+- Summary length between 50–150 characters.
+- Empty/garbled inputs handled gracefully without breaking UI.
+
+---
+
+## 🔹 User Story 4: AI Action Suggestion
+
+> **As a user**, I want the assistant to suggest a couple of quick actions for each task,  
+> **so that** I know how to respond or handle the email task with one click.
+
+### 🛠️ TASK
+- Use AI (or rule-based mock) to suggest 2–3 **quick actions** based on the email content/context.
+
+Example actions:
+- Reply
+- Forward
+- Schedule Meeting
+- Follow Up
+- Archive
+- Request Info
+
+### 🌟 INPUTS
+- Context (from Story 2)
+- Summary (from Story 3)
+- Email `subject` and `body`
+
+### 🏱 OUTPUTS
+- `actions: List[str]` field populated with 2–3 action strings.
+
+### 🯩 DEPENDENCIES
+- AssistantTask model must have an `actions` field.
+- Context and Summary preferably already generated.
+
+### ⚡ EDGE CASES
+- Vague emails → fallback to generic `Reply` and `Archive`.
+- Too many/few actions → enforce exactly 2–3.
+- Invalid action names → validate against allowed action set.
+
+### ✅ ACCEPTANCE TESTS
+- Every task displays 2–3 suggested actions.
+- Actions are relevant and usable (no blank/malformed options).
+- No task missing action buttons after creation.
+
+---
+
 
 ---
 
@@ -310,4 +424,46 @@ Forwarded emails often embed the original sender and subject inside the email bo
 - Parsing fallback logic is applied gracefully when structure is unrecognized.
 - At least one successful test case is created and validated using a sample Gmail-forwarded email.
 - No task creation process crashes or produces empty critical fields even with non-standard forwarded bodies.
+
+## 🔹 User Story 14: Email-to-AssistantTask Mapping and Creation
+
+> **As a system,** I need to consistently transform an incoming email into a structured AssistantTask,  
+> **so that** tasks have predictable fields even if emails are partial, malformed, or forwarded.
+
+### 🛠️ TASK
+- Define a clear mapping from EmailMessage fields to AssistantTask fields at the time of creation.
+
+### 🌟 INPUTS
+- `EmailMessage` object containing:
+  - sender (string)
+  - subject (string)
+  - body (string)
+
+### 🏱 OUTPUTS
+- `AssistantTask` document created with:
+  - `email` (linked EmailMessage)
+  - `sender`
+  - `subject`
+  - `summary` (initially = subject or subject+snippet of body)
+  - `context` (initially = "Uncategorized" if no AI yet)
+  - `actions` (default to `["Reply", "Archive"]` if no AI yet)
+  - `status` (default = "pending")
+
+### 🯩 DEPENDENCIES
+- Email ingestion endpoint must pass data cleanly to the creation pipeline.
+- AssistantTask model must exist and support all fields.
+
+### ⚡ EDGE CASES
+- No sender → populate with "Unknown Sender"
+- No subject → populate with "(No Subject)"
+- Empty body → still create task; body becomes empty string
+- Invalid email formats → log and create minimal AssistantTask if possible
+
+### ✅ ACCEPTANCE TESTS
+- Every valid EmailMessage produces one AssistantTask.
+- No AssistantTask has missing critical fields (`sender`, `subject`).
+- Default values used when email fields are missing or corrupted.
+- No crashes when processing malformed email data.
+
+---
 

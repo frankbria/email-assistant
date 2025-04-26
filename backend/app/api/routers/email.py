@@ -3,6 +3,7 @@ from fastapi import APIRouter, Body
 from typing import List, Optional
 from app.models.email_message import EmailMessage
 from app.models.assistant_task import AssistantTask
+from app.services.context_classifier import classify_context
 from beanie import PydanticObjectId
 
 router = APIRouter(prefix="/api/v1/email", tags=["email"])
@@ -19,12 +20,14 @@ async def create_email_task(
     email = EmailMessage(subject=subject, sender=sender, body=body)
     await email.insert()
 
-    # Create task with email context and actions (if provided)
+    # Determine context using AI or rule-based classifier
+    context_label = await classify_context(subject, body)
+    # Create task with classified context and actions (if provided)
     task = AssistantTask(
         email=email,
-        context=subject,  # Use email subject as initial context
+        context=context_label,
         summary=body,  # Use email body as initial summary
-        actions=actions,  # This will be None if not provided, triggering model defaults
+        actions=actions,  # None will fall back to default actions
     )
     await task.insert()
 
