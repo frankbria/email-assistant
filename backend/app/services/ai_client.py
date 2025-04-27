@@ -11,6 +11,7 @@ load_dotenv()
 
 # Configure logging
 logger = logging.getLogger(__name__)
+ai_logger = logging.getLogger("ai_client")
 
 # Load OpenAI credentials and model from environment
 OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")

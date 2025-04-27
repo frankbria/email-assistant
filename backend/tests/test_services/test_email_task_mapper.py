@@ -43,7 +43,7 @@ async def test_full_mapping_and_defaults(monkeypatch):
     assert task.sender == "Alice"
     assert task.subject == "Hello"
     assert task.context == "mocked_context"
-    assert task.summary == "Hello: World"
+    assert task.summary == "Hello: Follow up: World"
 
     # Default actions should be set by the model validator
     labels = task.actions

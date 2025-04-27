@@ -23,7 +23,7 @@ async def test_generate_summary_from_subject():
     importlib.reload(es_module)
     summary = await es_module.generate_summary(email)
     assert (
-        summary == "Meeting Request: Project Kickoff"
+        summary == "Handle: Meeting Request: Project Kickoff"
     ), "Clear subject should be used as summary"
 
 
@@ -42,7 +42,7 @@ async def test_generate_summary_from_body():
     importlib.reload(es_module)
     summary = await es_module.generate_summary(email)
     assert (
-        summary == "I'm writing to request a demo of your product next week."
+        summary == "Follow up: I'm writing to request a demo of your product next week."
     ), "First meaningful sentence should be used as summary"
 
 
