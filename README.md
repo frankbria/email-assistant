@@ -90,6 +90,7 @@ OPENAI_API_KEY=your_api_key_here
 OPENAI_API_MODEL=gpt-3.5-turbo
 USE_AI_CONTEXT=true
 USE_AI_SUMMARY=true
+USE_AI_ACTIONS=true
 MONGODB_URI=<your_mongodb_uri>
 MONGODB_DB=<your_database_name>
 ```
@@ -103,7 +104,24 @@ NEXT_PUBLIC_API_BASE=http://localhost:8000
 - `OPENAI_API_MODEL`: OpenAI model to use (e.g., `gpt-3.5-turbo`)  
 - `USE_AI_CONTEXT`: set to `true` to enable AI-based classification; set to `false` (or omit) to use rule-based
 - `USE_AI_SUMMARY`: set to `true` to enable AI-based summary generation; set to `false` (or omit) to use rule-based  
+- `USE_AI_ACTIONS`: set to `true` to enable AI-powered action suggestions; set to `false` (or omit) to use rule-based strategies
 - `NEXT_PUBLIC_API_BASE`: base URL of the FastAPI backend  
+
+## 🎯 Action Suggestions
+
+The assistant suggests relevant actions for each email task based on its content and context. This can be powered by either:
+
+1. **AI-based suggestions** (when `USE_AI_ACTIONS=true`):
+   - Uses OpenAI to analyze email content and context
+   - Generates contextually relevant actions (e.g., "Schedule Meeting" for calendar requests)
+   - Falls back to rule-based if AI is unavailable
+
+2. **Rule-based suggestions** (default):
+   - Uses predefined strategies based on email context
+   - Provides common actions like Reply, Forward, Archive
+   - Ensures at least 2-3 relevant actions per task
+
+Each task will always have 2-3 suggested actions, regardless of the suggestion method used.
 
 ## 🧪 Testing Instructions
 

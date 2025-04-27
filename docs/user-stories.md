@@ -88,21 +88,67 @@ Example:
 
 ---
 
-## 🔹 User Story 4: AI Action Suggestion
+## 🔹 User Story 4: AI-Powered Action Suggestions
 
-> **As a user**, I want the assistant to suggest a couple of quick actions for each task,  
-> **so that** I know how to respond or handle the email task with one click.
+### Overview
+As an email assistant user, I want the system to suggest relevant actions for each email task, so I can quickly decide how to handle each request.
 
-### 🛠️ TASK
-- Use AI (or rule-based mock) to suggest 2–3 **quick actions** based on the email content/context.
+### Implementation Details
 
-Example actions:
-- Reply
-- Forward
-- Schedule Meeting
-- Follow Up
-- Archive
-- Request Info
+#### Action Suggestion System
+- **AI-Powered Suggestions** (when enabled):
+  - Uses OpenAI to analyze email content and context
+  - Generates 2-3 contextually relevant actions
+  - Example: For a meeting request, suggests "Schedule Meeting", "Reply", "Forward to Team"
+  - Falls back to rule-based suggestions if AI fails or is disabled
+
+- **Rule-Based Suggestions** (default fallback):
+  - Uses predefined strategies based on email context
+  - Provides common actions like Reply, Forward, Archive
+  - Context-specific actions (e.g., "Schedule" for calendar-related emails)
+  - Always ensures at least 2 actions are available
+
+#### Configuration
+- Toggle AI suggestions with `USE_AI_ACTIONS` environment variable
+- Set to `true` to enable AI-powered suggestions
+- Set to `false` or omit to use rule-based suggestions only
+
+#### Technical Implementation
+- Action suggestions are generated during task creation
+- Each action includes:
+  - Label (e.g., "Schedule Meeting")
+  - Action type (e.g., "schedule")
+  - Handler function name
+- Actions are stored with the task and displayed in the UI
+- Minimum of 2, maximum of 3 actions per task
+
+### Example Actions by Context
+
+1. **Scheduling Context**:
+   - Schedule Meeting
+   - Propose New Time
+   - Forward to Calendar Manager
+
+2. **Sales Context**:
+   - Schedule Demo
+   - Send Pricing
+   - Forward to Sales Team
+
+3. **Support Context**:
+   - Create Support Ticket
+   - Forward to Support
+   - Reply with Template
+
+4. **Default Context**:
+   - Reply
+   - Forward
+   - Archive
+
+### Benefits
+- Faster email processing with suggested actions
+- Context-aware suggestions improve relevance
+- Consistent fallback to ensure basic actions are always available
+- Flexible between AI and rule-based approaches
 
 ### 🌟 INPUTS
 - Context (from Story 2)
@@ -125,9 +171,6 @@ Example actions:
 - Every task displays 2–3 suggested actions.
 - Actions are relevant and usable (no blank/malformed options).
 - No task missing action buttons after creation.
-
----
-
 
 ---
 
@@ -164,8 +207,6 @@ Each task should be visually represented as a distinct card within the UI. Each 
 - Cards maintain consistent layout and styling across devices.
 - Verified visually in browser on both desktop and mobile widths.
 - Action buttons are visually present but may be mock-interactive (console logs acceptable).
-
-
 
 ## 🔹 User Story 7: Direct Action on Task Cards
 
