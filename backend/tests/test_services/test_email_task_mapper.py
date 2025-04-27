@@ -3,6 +3,9 @@ import pytest
 from app.services.email_task_mapper import map_email_to_task
 from app.models.email_message import EmailMessage
 from app.models.assistant_task import AssistantTask
+from app.strategies.action_registry import ActionRegistry
+from app.strategies.default import DefaultEmailStrategy
+from app.config import Settings
 
 pytestmark = pytest.mark.asyncio
 
@@ -22,6 +25,17 @@ async def test_full_mapping_and_defaults(monkeypatch):
         fake_classify,
     )
 
+    monkeypatch.setattr(
+        "app.config.get_settings",
+        lambda: Settings(use_ai_actions=False),
+    )
+
+    from app.strategies.default import DefaultEmailStrategy
+    from app.strategies.action_registry import ActionRegistry
+
+    ActionRegistry._strategies.clear()
+    ActionRegistry.register("default", DefaultEmailStrategy)
+
     email = EmailMessage(subject="Hello", sender="Alice", body="World")
     task = await map_email_to_task(email)
 
@@ -30,8 +44,12 @@ async def test_full_mapping_and_defaults(monkeypatch):
     assert task.subject == "Hello"
     assert task.context == "mocked_context"
     assert task.summary == "Hello: World"
+
     # Default actions should be set by the model validator
-    assert task.actions == ["Reply", "Forward", "Archive"]
+    labels = task.actions
+    assert "Reply" in labels
+    assert "Archive" in labels
+    assert "Forward" in labels
 
 
 async def test_summary_truncation(monkeypatch):

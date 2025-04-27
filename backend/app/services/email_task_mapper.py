@@ -8,6 +8,7 @@ from app.models.email_message import EmailMessage, EmailMessageBase
 from app.models.assistant_task import AssistantTask
 import app.services.context_classifier as context_classifier
 from app.services.email_summarizer import generate_summary
+from app.services.action_suggester import suggest_actions
 
 
 async def map_email_to_task(
@@ -57,16 +58,33 @@ async def map_email_to_task(
         summary_text = f"{subject_val}: {snippet}" if snippet else subject_val
     else:
         summary_text = subject_val
+
+    print("🔄 Suggesting actions")
+    # Get suggested actions if not provided
+    if actions is None:
+        try:
+            suggested_actions = await suggest_actions(
+                EmailMessageBase(
+                    subject=subject_val,
+                    body=email.body,
+                    sender=sender_val,
+                    context=context_label,
+                )
+            )
+            actions = [action.label for action in suggested_actions]
+        except Exception as e:
+            logger.error(f"Error suggesting actions: {e}")
+            actions = ["Reply", "Forward", "Archive"]  # fallback or default action
+
     print("🔄 Building task kwargs")
-    # Build kwargs dynamically so default actions kick in when actions is None
+    # Build task with all collected data
     task_kwargs = {
         "email": email,
         "sender": sender_val,
         "subject": subject_val,
         "context": context_label,
         "summary": summary_text,
+        "actions": actions,
     }
-    if actions is not None:
-        task_kwargs["actions"] = actions
     task = AssistantTask(**task_kwargs)
     return task

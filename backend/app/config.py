@@ -29,6 +29,9 @@ class Settings(BaseSettings):
     # new flag for AI summarization
     use_ai_summary: bool = False
 
+    # new flag for AI action suggestions
+    use_ai_actions: bool = False
+
     # CORS settings
     allow_origins: List[str] = [
         os.getenv("FRONTEND_ORIGIN"),

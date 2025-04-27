@@ -5,6 +5,7 @@ description = "AI-Based Email Assistant"
 authors = ["Frank Bria <frank@frankbria.com>"]
 license = "mit"
 readme = "README.md"
+packages = [{include = "app"}]
 
 [tool.poetry.dependencies]
 python = "^3.10"
@@ -28,8 +29,12 @@ pytest-timeout = "^2.3.1"
 
 [tool.pytest.ini_options]
 pythonpath = [
-  "."
+    ".",
+    "app",
+    "../backend"
 ]
+testpaths = ["tests"]
+addopts = "-v"
 
 
 [build-system]

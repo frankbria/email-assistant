@@ -1,4 +1,10 @@
 # backend/tests/conftest.py
+import os
+import sys
+
+sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
+
+
 import pytest
 from fastapi.testclient import TestClient
 from app.main import app
@@ -8,9 +14,11 @@ from app.models.email_message import EmailMessage
 from app.models.assistant_task import AssistantTask
 from beanie import init_beanie
 import motor.motor_asyncio
-import os
+from motor.motor_asyncio import AsyncIOMotorClient
 from dotenv import load_dotenv
 from unittest.mock import patch
+from app.config import Settings
+from app.strategies.action_registry import ActionRegistry
 
 # Load environment variables
 load_dotenv()
@@ -43,12 +51,8 @@ async def test_db():
     if "prod" in test_db_name.lower() or "production" in test_db_name.lower():
         raise ValueError("Test is attempting to use production database! Aborting.")
 
-    client = motor.motor_asyncio.AsyncIOMotorClient(mongo_uri)
+    client = AsyncIOMotorClient(mongo_uri)
     db = client[test_db_name]
-
-    # Clear all collections before tests
-    for collection in await db.list_collection_names():
-        await db.drop_collection(collection)
 
     # Initialize Beanie with test database
     await init_beanie(
@@ -64,7 +68,7 @@ async def test_db():
     client.close()
 
 
-@pytest.fixture(autouse=True)
+@pytest.fixture
 async def setup_test_data(test_db):
     """Setup test data for each test"""
     # Create test email
@@ -110,3 +114,50 @@ async def async_client():
         transport=httpx.ASGITransport(app=app), base_url="http://test"
     ) as client:
         yield client
+
+
+@pytest.fixture
+def disable_ai(monkeypatch):
+    """Disable AI features for testing"""
+
+    class MockSettings(Settings):
+        use_ai_actions: bool = False
+        use_ai_summary: bool = False
+        use_ai_context: bool = False
+        use_ai_context_classification: bool = False
+
+    monkeypatch.setattr(
+        "app.services.action_suggester.get_settings", lambda: MockSettings()
+    )
+    monkeypatch.setattr(
+        "app.services.email_summarizer.get_settings", lambda: MockSettings()
+    )
+    monkeypatch.setattr("app.config.get_settings", lambda: MockSettings())
+
+    yield  # Nothing to return; just patches
+
+
+@pytest.fixture(autouse=True, scope="function")
+def reset_registry_and_disable_ai(monkeypatch):
+    """
+    Auto-fixture that:
+    - Clears ActionRegistry between tests
+    - Forces AI settings OFF unless manually overridden
+    """
+
+    # Clear registered strategies
+    ActionRegistry._strategies.clear()
+
+    # Force settings to disable AI
+    # Force settings to disable AI
+    monkeypatch.setattr(
+        "app.config.get_settings",
+        lambda: Settings(
+            use_ai_summary=False, use_ai_context=False, use_ai_actions=False
+        ),
+    )
+
+    yield
+
+    # (Optional) re-clear after test (but usually not needed if autouse=True)
+    ActionRegistry._strategies.clear()
