@@ -9,6 +9,7 @@ import { ErrorBoundary } from '@/components/ErrorBoundary'
 import { ErrorBanner } from '@/components/ErrorBanner'
 import { showToast } from '@/utils/toast'
 import { AssistantTask, MongoDocument } from '@/types/api'
+import { getCategoryIcon } from '@/utils/categoryIcon'
 
 function TaskList() {
   const [tasks, setTasks] = useState<AssistantTask[]>([])
@@ -102,12 +103,17 @@ function TaskList() {
     <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
       {tasks.map((task) => {
         console.log('Rendering task:', task) // Debug task being rendered
+        const contextCategory = typeof task.context === 'string' ? task.context : undefined;
         return (
           <TaskCard
             key={task.id}
-            context={task.email.subject}
-            summary={task.email.body}
-            actions={task.actions || []} // Ensure actions is never undefined
+            summary={task.summary || 'Task from incoming email'}
+            contextCategory={contextCategory}
+            categoryIcon={getCategoryIcon(contextCategory)}
+            suggestedActions={task.suggested_actions || task.actions || []}
+            subject={task.email?.subject}
+            sender={task.email?.sender}
+            body={task.email?.body}
           />
         )
       })}

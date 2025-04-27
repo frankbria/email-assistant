@@ -14,6 +14,7 @@ export interface AssistantTask {
   summary: string | null
   actions: string[]
   status: string
+  suggested_actions?: string[]
 }
 
 export type APIResponse<T> = {

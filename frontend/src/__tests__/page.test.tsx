@@ -2,7 +2,7 @@
 'use client'
 
 import React from 'react'
-import { describe, it, expect, vi, beforeEach } from 'vitest'
+import { describe, it, expect, vi, beforeEach, beforeAll } from 'vitest'
 import { render, screen } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import Page from '@/app/page'
@@ -10,6 +10,23 @@ import Page from '@/app/page'
 // Mock fetch globally
 const mockFetch = vi.fn()
 global.fetch = mockFetch
+
+// Mock window.matchMedia for all tests (for useIsMobile and responsive logic)
+beforeAll(() => {
+  Object.defineProperty(window, 'matchMedia', {
+    writable: true,
+    value: (query: string) => ({
+      matches: false, // Set to true to simulate mobile in specific tests
+      media: query,
+      onchange: null,
+      addEventListener: () => {},
+      removeEventListener: () => {},
+      addListener: () => {},
+      removeListener: () => {},
+      dispatchEvent: () => false,
+    }),
+  });
+});
 
 describe('Email Task Management Page', () => {
   beforeEach(() => {
