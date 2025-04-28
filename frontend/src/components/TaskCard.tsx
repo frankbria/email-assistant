@@ -1,5 +1,13 @@
 // components/TaskCard.tsx
 import { useState, useRef, useLayoutEffect } from 'react';
+import { Button } from "@/components/ui/button";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuTrigger,
+  DropdownMenuItem,
+} from "@/components/ui/dropdown-menu";
+import { ChevronDown } from "lucide-react";
 
 function useIsMobile() {
   if (typeof window === 'undefined') return false;
@@ -17,7 +25,16 @@ interface TaskCardProps {
   body?: string;
 }
 
-export function TaskCard({ summary, categoryIcon, contextCategory, suggestedActions, onAction, subject, sender, body }: TaskCardProps) {
+export function TaskCard({
+  summary,
+  categoryIcon,
+  contextCategory,
+  suggestedActions,
+  onAction,
+  subject,
+  sender,
+  body,
+}: TaskCardProps) {
   const [mobileExpanded, setMobileExpanded] = useState(false);
   const [hovered, setHovered] = useState(false);
   const [showBelow, setShowBelow] = useState(false);
@@ -33,17 +50,18 @@ export function TaskCard({ summary, categoryIcon, contextCategory, suggestedActi
     }
   }, [hovered, isMobile]);
 
-  // Only allow expand/collapse on click for mobile, and only on hover for desktop
   const handleClick = () => {
     if (isMobile) {
       setMobileExpanded((prev) => !prev);
     }
   };
+
   const handleMouseEnter = () => {
     if (!isMobile) {
       hoverTimeout.current = setTimeout(() => setHovered(true), 120);
     }
   };
+
   const handleMouseLeave = () => {
     if (!isMobile) {
       if (hoverTimeout.current) {
@@ -59,45 +77,65 @@ export function TaskCard({ summary, categoryIcon, contextCategory, suggestedActi
   return (
     <div
       ref={cardRef}
-      className="w-full max-w-md rounded-2xl bg-white shadow-sm hover:shadow-md hover:bg-gray-50 hover:border
-       hover:border-gray-300 p-4 space-y-2 flex flex-col transition-all duration-200 cursor-pointer relative"
+      className="w-full max-w-md rounded-2xl bg-white shadow-sm hover:shadow-md hover:bg-slate-50 hover:border hover:border-slate-300 p-4 space-y-2 flex flex-col transition-all duration-200 cursor-pointer relative"
       title={isMobile ? contextCategory : undefined}
       onClick={handleClick}
       onMouseEnter={handleMouseEnter}
       onMouseLeave={handleMouseLeave}
     >
-      <div className="flex items-center gap-2 text-base text-gray-800">
-        {categoryIcon && (
-          <span className="inline-block w-5 h-5 align-middle shrink-0">{categoryIcon}</span>
+      {/* Card Header */}
+      <div className="flex flex-col gap-1 text-slate-800">
+        <div className="flex items-center gap-2">
+          {categoryIcon && (
+            <span className="inline-block w-5 h-5 align-middle shrink-0">
+              {categoryIcon}
+            </span>
+          )}
+          <span className="font-medium text-lg truncate" style={{ maxWidth: 'calc(100% - 2rem)' }}>
+            {typeof summary === 'string' ? summary.split(':')[0] : ''}    {/* Title part before ":" */}
+          </span>
+        </div>
+
+        {/* Second line */}
+        {summary.includes(':') && (
+          <span className="text-sm text-slate-600">
+            {summary.split(':').slice(1).join(':').trim()}
+          </span>
         )}
-        <span className="truncate font-medium text-lg" style={{ maxWidth: 'calc(100% - 2rem)' }}>
-          {summary}
-        </span>
       </div>
 
-      <div className="flex flex-wrap gap-2 pt-2">
-        {suggestedActions.map((action, idx) => (
-          <button
-            key={idx}
-            onClick={e => {
-              e.stopPropagation();
-              onAction?.(action);
-            }}
-            className="px-3 py-2 rounded-full bg-muted text-sm text-gray-700 hover:bg-gray-200 min-w-[44px] min-h-[44px] focus:outline-none focus:ring-2 focus:ring-blue-400"
-            style={{ lineHeight: '1.2' }}
-          >
-            {action}
-          </button>
-        ))}
+
+      {/* ACTION BUTTON (Dropdown) */}
+      <div className="pt-2">
+        <DropdownMenu>
+          <DropdownMenuTrigger asChild>
+            <Button variant="outline" size="sm" className="flex items-center gap-1">
+              <ChevronDown className="h-4 w-4" />Actions
+            </Button>
+          </DropdownMenuTrigger>
+          <DropdownMenuContent align="start">
+            {suggestedActions.map((action, idx) => (
+              <DropdownMenuItem
+                key={idx}
+                onClick={() => {
+                  onAction?.(action);
+                }}
+              >
+                {action}
+              </DropdownMenuItem>
+            ))}
+          </DropdownMenuContent>
+        </DropdownMenu>
       </div>
 
+      {/* EXPANDED CONTENT AREA */}
       {expanded && (
         isMobile ? (
           <div className="mt-3 w-full rounded-xl border border-blue-200 bg-blue-50 p-4 space-y-2 text-sm text-blue-900 shadow-inner animate-fade-in">
             {contextCategory && (
               <div className="font-semibold flex items-center gap-1">
                 {categoryIcon && <span>{categoryIcon}</span>}
-                <span>{contextCategory}</span>
+                <span>{contextCategory.charAt(0).toUpperCase() + contextCategory.slice(1)}</span>
               </div>
             )}
             {subject && (
@@ -107,22 +145,22 @@ export function TaskCard({ summary, categoryIcon, contextCategory, suggestedActi
               <div><span className="font-semibold">Sender:</span> {sender}</div>
             )}
             {body && (
-              <div className="whitespace-pre-line"><span className="font-semibold">Body:</span> {body}</div>
+              <div className="whitespace-pre-line"><span className="font-semibold">Summary:</span> {body}</div>
             )}
           </div>
         ) : (
           <div
-            className={`absolute left-1/2 z-30 -translate-x-1/2 min-w-[260px] max-w-xs bg-gray-900 text-white text-xs rounded-lg shadow-xl p-4 border border-gray-700 animate-fade-in
-              ${showBelow ? 'top-full mt-2' : '-top-2 -translate-y-full'}`}
+            className={`absolute left-1/2 z-30 -translate-x-1/2 min-w-[260px] max-w-xs bg-slate-900 text-white text-xs rounded-lg shadow-xl p-4 border border-slate-700 animate-fade-in
+            ${showBelow ? 'top-full mt-2' : '-top-2 -translate-y-full'}`}
           >
             {/* Pointer arrow */}
             <div
-              className={`absolute left-1/2 ${showBelow ? '-top-2 translate-y-0' : 'bottom-0 translate-y-full'} translate-x-[-50%] w-0 h-0 border-x-8 border-x-transparent ${showBelow ? 'border-b-8 border-b-gray-900' : 'border-t-8 border-t-gray-900'}`}
+              className={`absolute left-1/2 ${showBelow ? '-top-2 translate-y-0' : 'bottom-0 translate-y-full'} translate-x-[-50%] w-0 h-0 border-x-8 border-x-transparent ${showBelow ? 'border-b-8 border-b-slate-900' : 'border-t-8 border-t-slate-900'}`}
             />
             {contextCategory && (
               <div className="font-semibold flex items-center gap-1 text-blue-200 mb-1">
                 {categoryIcon && <span>{categoryIcon}</span>}
-                <span>{contextCategory}</span>
+                <span>{contextCategory.charAt(0).toUpperCase() + contextCategory.slice(1)}</span>
               </div>
             )}
             {subject && (
@@ -132,7 +170,7 @@ export function TaskCard({ summary, categoryIcon, contextCategory, suggestedActi
               <div><span className="font-semibold">Sender:</span> {sender}</div>
             )}
             {body && (
-              <div className="whitespace-pre-line"><span className="font-semibold">Body:</span> {body}</div>
+              <div className="whitespace-pre-line"><span className="font-semibold">Summary:</span> {body}</div>
             )}
           </div>
         )
@@ -140,4 +178,3 @@ export function TaskCard({ summary, categoryIcon, contextCategory, suggestedActi
     </div>
   );
 }
-

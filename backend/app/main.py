@@ -79,3 +79,22 @@ app.include_router(tasks.router)  # router already has prefix in its definition
 @app.get("/")
 async def read_root():
     return {"message": "Welcome to Email Assistant API"}
+
+
+def main():
+    import sys
+    import subprocess
+
+    if "--populate_db" in sys.argv:
+        print("Populating database...")
+        subprocess.run(["python", "scripts/populate_test_data.py"], check=True)
+        sys.argv.remove("--populate_db")
+
+    # Start uvicorn programatically
+    import uvicorn
+
+    uvicorn.run("app.main:app", host="0.0.0.0", port=8000, reload=True)
+
+
+if __name__ == "__main__":
+    main()

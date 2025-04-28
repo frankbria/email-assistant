@@ -59,9 +59,10 @@ describe('Email Task Management Page', () => {
     const summaryEl = await screen.findByText(/here is the latest project update\./i)
     expect(summaryEl).toBeInTheDocument()
 
-    // Verify exactly 3 action buttons are rendered
-    const actionButtons = screen.getAllByRole('button')
-    expect(actionButtons).toHaveLength(3)
+    // Verify exactly 1 Actions button is rendered
+    const actionButtons = screen.getAllByRole('button', { name: /actions/i })
+    expect(actionButtons).toHaveLength(1) // because the mock API returned 1 task
+
   })
 
   it('shows empty state when no tasks are available', async () => {
@@ -109,4 +110,40 @@ describe('Email Task Management Page', () => {
     expect(screen.getByLabelText(/loading tasks/i)).toBeInTheDocument()
     expect(screen.getAllByRole('article')).toHaveLength(3) // 3 loading skeletons
   })
+
+  it('opens dropdown and shows suggested actions', async () => {
+  mockFetch.mockResolvedValueOnce({
+    ok: true,
+    json: async () => [
+      {
+        id: '1',
+        email: {
+          id: '1',
+          subject: 'Project Update',
+          sender: 'teammate@company.com',
+          body: 'Here is the latest project update.'
+        },
+        context: 'Project Update',
+        summary: 'Project Update: Here is the latest project update.',
+        actions: ['Reply', 'Forward', 'Archive'],
+        status: 'pending'
+      }
+    ]
+  })
+
+  render(<Page />)
+
+  // Wait for the Actions button to appear
+  const actionsButton = await screen.findByRole('button', { name: /actions/i })
+  expect(actionsButton).toBeInTheDocument()
+
+  // Click the Actions button to open dropdown
+  await userEvent.click(actionsButton)
+
+  // Now check that dropdown items are visible
+  expect(await screen.findByText(/reply/i)).toBeInTheDocument()
+  expect(await screen.findByText(/forward/i)).toBeInTheDocument()
+  expect(await screen.findByText(/archive/i)).toBeInTheDocument()
+})
+
 }) 
