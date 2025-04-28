@@ -7,6 +7,9 @@ from app.models.email_message import EmailMessageBase
 from app.config import get_settings
 from app.services.ai_client import openai_client, OPENAI_MODEL, logger as ai_logger
 import openai
+import logging
+
+logger = logging.getLogger(__name__)
 
 
 def is_generic_subject(subject: str) -> bool:
@@ -70,7 +73,7 @@ async def generate_summary(email: EmailMessageBase) -> str:
                 f"Subject: {email.subject or '(No Subject)'}\n"
                 f"Body: {email.body or '(No Body)'}"
             )
-            print("🔄 Sending summary prompt to OpenAI: ", prompt)
+            logger.debug("🔄 Sending summary prompt to OpenAI: ", prompt)
             response = await openai_client.chat.completions.create(
                 model=OPENAI_MODEL,
                 messages=[
@@ -84,11 +87,11 @@ async def generate_summary(email: EmailMessageBase) -> str:
             )
             summary = response.choices[0].message.content.strip()
             if summary:
-                print("✅ Received AI-generated task summary: ", summary)
+                logger.debug("✅ Received AI-generated task summary: ", summary)
                 return summary
         except Exception as e:
             ai_logger.error(f"AI summarization failed: {e}")
-            print("⚠️ AI summarization failed, falling back: ", e)
+            logger.debug("⚠️ AI summarization failed, falling back: ", e)
 
     # Non-AI fallback path
     if not email.subject and not email.body:

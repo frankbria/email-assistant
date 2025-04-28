@@ -6,6 +6,9 @@ from app.models.assistant_task import AssistantTask
 from beanie import PydanticObjectId
 from pydantic import BaseModel
 import app.services.context_classifier as context_classifier
+import logging
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/api/v1/tasks", tags=["tasks"])
 
@@ -18,7 +21,7 @@ class TaskUpdate(BaseModel):
 async def get_tasks():
     # Fetch all tasks with their associated emails
     # The model will handle default actions automatically
-    print("🔄 Fetching tasks")
+    logger.debug("🔄 Fetching tasks")
     tasks = await AssistantTask.find_all().to_list()
     # Fill missing context via classifier using dynamic patchable module
     for t in tasks:

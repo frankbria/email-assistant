@@ -43,16 +43,16 @@ async def classify_context_ai(subject: str, body: str) -> str:
     scheduling, sales, support, partner, personal, or other.
     Returns the category label in lowercase; defaults to 'other' on error or invalid response.
     """
-    print("🔄 Classifying context in AI client")
+    logger.debug("🔄 Classifying context in AI client")
 
     # ❗ Dynamically check at runtime if AI is disabled
     use_ai_context = os.getenv("USE_AI_CONTEXT", "false").lower() == "true"
     if not use_ai_context:
-        print("🔄 Skipping AI classification: USE_AI_CONTEXT is false")
+        logger.debug("🔄 Skipping AI classification: USE_AI_CONTEXT is false")
         return "other"
 
     if not openai_client:
-        print("🔄 Skipping AI classification: no OpenAI client")
+        logger.debug("🔄 Skipping AI classification: no OpenAI client")
         return "other"
 
     categories_str = ", ".join(sorted(_VALID_CATEGORIES))
@@ -61,7 +61,7 @@ async def classify_context_ai(subject: str, body: str) -> str:
         "Respond with only the category label (one of these) in lowercase."
     )
     user_prompt = f"Subject: {subject}\n\nBody: {body}"
-    print("🔄 User prompt: ", user_prompt)
+    logger.debug("🔄 User prompt: ", user_prompt)
 
     try:
         response = await openai_client.chat.completions.create(
@@ -73,18 +73,18 @@ async def classify_context_ai(subject: str, body: str) -> str:
             temperature=0,
         )
         category = response.choices[0].message.content.strip().lower()
-        print("🔄 AI classification response: ", category)
+        logger.debug("🔄 AI classification response: ", category)
     except Exception as e:
         logger.error(f"AI classification failed: {e}")
-        print("🔄 AI classification failed: ", e)
+        logger.debug("🔄 AI classification failed: ", e)
         return "other"
 
     if category not in _VALID_CATEGORIES:
         logger.warning(
             f"Received unexpected category '{category}', defaulting to 'other'."
         )
-        print("🔄 Received unexpected category: ", category)
+        logger.debug("🔄 Received unexpected category: ", category)
         return "other"
 
-    print("🔄 Returning category: ", category)
+    logger.debug("🔄 Returning category: ", category)
     return category

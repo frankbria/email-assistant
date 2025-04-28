@@ -13,6 +13,21 @@ from motor.motor_asyncio import AsyncIOMotorClient, AsyncIOMotorDatabase
 import uuid
 from beanie.exceptions import CollectionWasNotInitialized
 from typing import Optional
+import logging
+import os
+
+# Configure logging manually
+LOG_LEVEL = os.getenv("LOG_LEVEL", "INFO").upper()
+
+
+logging.basicConfig(
+    level=LOG_LEVEL,
+    format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
+    handlers=[logging.StreamHandler()],
+)
+
+logger = logging.getLogger(__name__)
+logger.info("Logger initialized. Log level is %s", LOG_LEVEL)
 
 
 async def init_db(settings: Settings = None):
@@ -20,7 +35,7 @@ async def init_db(settings: Settings = None):
     if settings is None:
         settings = get_settings()
 
-    print(f"🔑 Using MongoDB URI: {settings.current_mongodb_uri}")
+    logger.debug(f"🔑 Using MongoDB URI: {settings.current_mongodb_uri}")
 
     client = AsyncIOMotorClient(
         settings.current_mongodb_uri,
@@ -35,30 +50,30 @@ async def init_db(settings: Settings = None):
         allow_index_dropping=True,
     )
 
-    print(f"✅ Connecting to DB: {settings.current_mongodb_uri}")
-    print(f"🧠 Using database: {settings.current_mongodb_db}")
-    print(
+    logger.debug(f"✅ Connecting to DB: {settings.current_mongodb_uri}")
+    logger.debug(f"🧠 Using database: {settings.current_mongodb_db}")
+    logger.debug(
         f"Collections: {await client[settings.current_mongodb_db].list_collection_names()}"
     )
 
-    print("✅ Successfully initialized Beanie")
+    logger.debug("✅ Successfully initialized Beanie")
 
     return client
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    print("🔄 Starting lifespan")
+    logger.debug("🔄 Starting lifespan")
     settings = get_settings()
     client = await init_db(settings)
-    print("✅ Successfully initialized DB")
+    logger.debug("✅ Successfully initialized DB")
 
     app.state.motor_client = client
     app.state.settings = settings
-    print("🌟 Lifespan: DB client assigned to app.state")
+    logger.debug("🌟 Lifespan: DB client assigned to app.state")
     yield
 
-    print("🌟 Lifespan: Shutting down DB")
+    logger.debug("🌟 Lifespan: Shutting down DB")
     if client is not None:
         try:
             client.close()
@@ -86,7 +101,7 @@ def main():
     import subprocess
 
     if "--populate_db" in sys.argv:
-        print("Populating database...")
+        logger.debug("Populating database...")
         subprocess.run(["python", "scripts/populate_test_data.py"], check=True)
         sys.argv.remove("--populate_db")
 

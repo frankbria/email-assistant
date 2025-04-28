@@ -2,9 +2,12 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi import FastAPI
 from dotenv import load_dotenv
 import os
+import logging
 
 # Load environment variables
 load_dotenv()
+
+logger = logging.getLogger(__name__)
 
 
 def setup_cors(app: FastAPI) -> None:
@@ -21,7 +24,7 @@ def setup_cors(app: FastAPI) -> None:
             ","
         )
 
-    print(f"🔒 CORS allowed origins: {allowed_origins}")
+    logger.debug(f"🔒 CORS allowed origins: {allowed_origins}")
 
     app.add_middleware(
         CORSMiddleware,

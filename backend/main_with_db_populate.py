@@ -2,15 +2,18 @@
 
 import sys
 import subprocess
+import logging
+
+logger = logging.getLogger(__name__)
 
 
 def populate_db():
-    print("Populating database...")
+    logger.debug("Populating database...")
     subprocess.run(["python", "populate_db_script.py"], check=True)
 
 
 def start_uvicorn():
-    print("Starting Uvicorn...")
+    logger.debug("Starting Uvicorn...")
     subprocess.run(
         ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000", "--reload"],
         check=True,

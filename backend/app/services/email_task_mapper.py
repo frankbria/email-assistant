@@ -19,7 +19,7 @@ async def map_email_to_task(
     Create an AssistantTask from an EmailMessage, centralizing defaults, classification, and summary logic.
     Does not insert the task into the database; caller should insert it.
     """
-    print("🔄 Mapping email to task in service")
+    logger.debug("🔄 Mapping email to task in service")
     # Determine sender and subject defaults, with warnings if missing
     if not email.sender or not email.sender.strip():
         logger.warning("EmailMessage missing sender; defaulting to 'Unknown Sender'")
@@ -35,10 +35,10 @@ async def map_email_to_task(
         if email.subject and email.subject.strip()
         else "(No Subject)"
     )
-    print("🔄 Classifying context")
+    logger.debug("🔄 Classifying context")
     # Classify context using AI or rule-based
     context_label = await context_classifier.classify_context(subject_val, email.body)
-    print("🔄 Generating summary")
+    logger.debug("🔄 Generating summary")
     # Generate summary: handle long bodies and missing subjects before AI/rule-based
     body_text = email.body.strip() if email.body else ""
     if body_text:
@@ -59,7 +59,7 @@ async def map_email_to_task(
     else:
         summary_text = subject_val
 
-    print("🔄 Suggesting actions")
+    logger.debug("🔄 Suggesting actions")
     # Get suggested actions if not provided
     if actions is None:
         try:
@@ -76,7 +76,7 @@ async def map_email_to_task(
             logger.error(f"Error suggesting actions: {e}")
             actions = ["Reply", "Forward", "Archive"]  # fallback or default action
 
-    print("🔄 Building task kwargs")
+    logger.debug("🔄 Building task kwargs")
     # Build task with all collected data
     task_kwargs = {
         "email": email,
