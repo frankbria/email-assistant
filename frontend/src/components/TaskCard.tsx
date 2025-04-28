@@ -7,7 +7,16 @@ import {
   DropdownMenuTrigger,
   DropdownMenuItem,
 } from "@/components/ui/dropdown-menu";
-import { ChevronDown } from "lucide-react";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
+import { ChevronDown, Loader2, Check } from "lucide-react";
+import { showToast } from '@/utils/toast'
 
 function useIsMobile() {
   if (typeof window === 'undefined') return false;
@@ -38,9 +47,13 @@ export function TaskCard({
   const [mobileExpanded, setMobileExpanded] = useState(false);
   const [hovered, setHovered] = useState(false);
   const [showBelow, setShowBelow] = useState(false);
+  const [pendingAction, setPendingAction] = useState<string | null>(null);
+  const [selectedAction, setSelectedAction] = useState<string | null>(null);
+  const [isConfirmOpen, setIsConfirmOpen] = useState(false);
   const cardRef = useRef<HTMLDivElement>(null);
   const isMobile = useIsMobile();
   const hoverTimeout = useRef<NodeJS.Timeout | null>(null);
+  //const { toast } = useToast();
 
   useLayoutEffect(() => {
     if (!(hovered && !isMobile)) return;
@@ -70,6 +83,32 @@ export function TaskCard({
       }
       setHovered(false);
     }
+  };
+
+  const handleActionSelect = (action: string) => {
+    setSelectedAction(action);
+    setIsConfirmOpen(true);
+  };
+
+  const handleActionConfirm = async () => {
+    if (!selectedAction || pendingAction) return;
+    
+    setIsConfirmOpen(false);
+    setPendingAction(selectedAction);
+    try {
+      await onAction?.(selectedAction);
+      showToast.success(`Successfully executed: ${selectedAction}`);
+    } catch {
+      showToast.error(`Failed to execute: ${selectedAction}`);
+    } finally {
+      setPendingAction(null);
+      setSelectedAction(null);
+    }
+  };
+
+  const handleActionCancel = () => {
+    setIsConfirmOpen(false);
+    setSelectedAction(null);
   };
 
   const expanded = isMobile ? mobileExpanded : hovered;
@@ -109,24 +148,66 @@ export function TaskCard({
       <div className="pt-2">
         <DropdownMenu>
           <DropdownMenuTrigger asChild>
-            <Button variant="outline" size="sm" className="flex items-center gap-1">
-              <ChevronDown className="h-4 w-4" />Actions
+            <Button 
+              variant="outline" 
+              size="sm" 
+              className="flex items-center gap-1"
+              disabled={!!pendingAction}
+            >
+              {pendingAction ? (
+                <Loader2 className="h-4 w-4 animate-spin" />
+              ) : (
+                <ChevronDown className="h-4 w-4" />
+              )}
+              {pendingAction ? "Processing..." : "Actions"}
             </Button>
           </DropdownMenuTrigger>
           <DropdownMenuContent align="start">
             {suggestedActions.map((action, idx) => (
               <DropdownMenuItem
                 key={idx}
-                onClick={() => {
-                  onAction?.(action);
-                }}
+                onClick={() => handleActionSelect(action)}
+                disabled={!!pendingAction}
+                className="flex items-center gap-2"
               >
+                {pendingAction === action ? (
+                  <Loader2 className="h-4 w-4 animate-spin" />
+                ) : (
+                  <Check className="h-4 w-4 opacity-0 group-hover:opacity-100" />
+                )}
                 {action}
               </DropdownMenuItem>
             ))}
           </DropdownMenuContent>
         </DropdownMenu>
       </div>
+
+      {/* CONFIRMATION DIALOG */}
+      <Dialog open={isConfirmOpen} onOpenChange={setIsConfirmOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Confirm Action</DialogTitle>
+            <DialogDescription>
+              Are you sure you want to {selectedAction?.toLowerCase()} this task?
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter>
+            <Button variant="outline" onClick={handleActionCancel}>
+              Cancel
+            </Button>
+            <Button onClick={handleActionConfirm} disabled={!!pendingAction}>
+              {pendingAction ? (
+                <>
+                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                  Processing...
+                </>
+              ) : (
+                'Confirm'
+              )}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
       {/* EXPANDED CONTENT AREA */}
       {expanded && (

@@ -14,6 +14,16 @@ class AssistantTask(Document):
     summary: Optional[str] = None
     actions: List[str] = Field(default_factory=lambda: ["Reply", "Forward", "Archive"])
     status: str = Field(default="pending")
+    action_taken: Optional[str] = Field(
+        default=None, description="The action that was taken to complete this task"
+    )
+
+    @model_validator(mode="after")
+    def validate_status(self) -> "AssistantTask":
+        valid_statuses = ["pending", "in_progress", "done", "archived"]
+        if self.status not in valid_statuses:
+            self.status = "pending"
+        return self
 
     @model_validator(mode="after")
     def ensure_default_actions(self) -> "AssistantTask":

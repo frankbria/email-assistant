@@ -10,6 +10,7 @@ import { ErrorBanner } from '@/components/ErrorBanner'
 import { showToast } from '@/utils/toast'
 import { AssistantTask, MongoDocument } from '@/types/api'
 import { getCategoryIcon } from '@/utils/categoryIcon'
+import { updateTaskStatus, getOptimisticUpdate, getRevertUpdate, actionToComplete } from '@/services/taskService'
 
 function TaskList() {
   const [tasks, setTasks] = useState<AssistantTask[]>([])
@@ -20,7 +21,7 @@ function TaskList() {
     try {
       setLoading(true)
       setError(null)
-      const response = await fetch(`${process.env.NEXT_PUBLIC_API_BASE}/api/v1/tasks/`, {
+      const response = await fetch(`${process.env.NEXT_PUBLIC_API_BASE}/api/v1/tasks/?status=active`, {
         method: 'GET',
         headers: {
           'Content-Type': 'application/json',
@@ -64,6 +65,35 @@ function TaskList() {
   const handleRetry = async () => {
     showToast.info('Retrying task fetch...')
     await fetchTasks()
+  }
+
+  const handleTaskAction = async (taskId: string, action: string) => {
+    try {
+      console.log('Starting task action:', { taskId, action }) // Debug log
+      
+      // Optimistically update the task list
+      setTasks(prevTasks => {
+        const updatedTasks = getOptimisticUpdate(prevTasks, taskId, action)
+        console.log('Optimistically updated tasks:', updatedTasks) // Debug log
+        return updatedTasks
+      })
+      
+      // Update the task status in the backend
+      await updateTaskStatus(taskId, action)
+      console.log('Backend update successful') // Debug log
+      
+      // Only refresh the task list if the task wasn't marked as done
+      const status = actionToComplete()
+      if (status !== 'done') {
+        await fetchTasks()
+        console.log('Task list refreshed') // Debug log
+      }
+    } catch (error) {
+      console.error('Error in handleTaskAction:', error) // Debug log
+      // Revert optimistic update on error
+      setTasks(prevTasks => getRevertUpdate(prevTasks, taskId))
+      showToast.error('Failed to update task status')
+    }
   }
 
   if (loading) {
@@ -114,6 +144,7 @@ function TaskList() {
             subject={task.email?.subject}
             sender={task.email?.sender}
             body={task.email?.body}
+            onAction={(action) => handleTaskAction(task.id, action)}
           />
         )
       })}

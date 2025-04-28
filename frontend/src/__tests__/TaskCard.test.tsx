@@ -59,6 +59,10 @@ describe('TaskCard', () => {
     const replyOption = await screen.findByText(/reply/i)
     await userEvent.click(replyOption)
 
+    // Wait for and confirm the action in the dialog
+    const confirmButton = await screen.findByRole('button', { name: /confirm/i })
+    await userEvent.click(confirmButton)
+
     expect(mockHandler).toHaveBeenCalledWith('Reply')
   })
 
