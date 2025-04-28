@@ -32,6 +32,7 @@ interface TaskCardProps {
   subject?: string;
   sender?: string;
   body?: string;
+  readOnly?: boolean;
 }
 
 export function TaskCard({
@@ -43,6 +44,7 @@ export function TaskCard({
   subject,
   sender,
   body,
+  readOnly = false,
 }: TaskCardProps) {
   const [mobileExpanded, setMobileExpanded] = useState(false);
   const [hovered, setHovered] = useState(false);
@@ -153,14 +155,15 @@ export function TaskCard({
               variant="outline" 
               size="sm" 
               className="flex items-center gap-1"
-              disabled={!!pendingAction}
+              disabled={!!pendingAction || readOnly}
+              title={readOnly ? 'Offline: actions disabled in read-only mode' : undefined}
             >
               {pendingAction ? (
                 <Loader2 className="h-4 w-4 animate-spin" />
               ) : (
                 <ChevronDown className="h-4 w-4" />
               )}
-              {pendingAction ? "Processing..." : "Actions"}
+              {pendingAction ? "Processing..." : readOnly ? "Actions (offline)" : "Actions"}
             </Button>
           </DropdownMenuTrigger>
           <DropdownMenuContent align="start">
@@ -168,8 +171,9 @@ export function TaskCard({
               <DropdownMenuItem
                 key={idx}
                 onClick={() => handleActionSelect(action)}
-                disabled={!!pendingAction}
+                disabled={!!pendingAction || readOnly}
                 className="flex items-center gap-2"
+                title={readOnly ? 'Offline: actions disabled in read-only mode' : undefined}
               >
                 {pendingAction === action ? (
                   <Loader2 className="h-4 w-4 animate-spin" />

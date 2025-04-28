@@ -1,7 +1,7 @@
 // frontend/src/app/page.tsx
 'use client'
 
-import { useEffect, useState } from 'react'
+import { useEffect, useState, useCallback } from 'react'
 import { TaskCard } from '@/components/TaskCard'
 import { TaskCardSkeleton } from '@/components/TaskCardSkeleton'
 import { EmptyState } from '@/components/EmptyState'
@@ -12,63 +12,81 @@ import { AssistantTask, MongoDocument } from '@/types/api'
 import { getCategoryIcon } from '@/utils/categoryIcon'
 import { updateTaskStatus, getOptimisticUpdate, getRevertUpdate, actionToComplete } from '@/services/taskService'
 
+const TASKS_CACHE_KEY = 'cached_tasks_v1';
+
 function TaskList() {
   const [tasks, setTasks] = useState<AssistantTask[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
+  const [readOnly, setReadOnly] = useState(false)
 
-  const fetchTasks = async () => {
+  // Helper to check online status
+  const isOnline = typeof navigator !== 'undefined' ? navigator.onLine : true;
+
+  // Fetch tasks from API or cache
+  const fetchTasks = useCallback(async () => {
+    if (!isOnline) {
+      // Offline: load from cache
+      const cached = localStorage.getItem(TASKS_CACHE_KEY)
+      if (cached) {
+        setTasks(JSON.parse(cached))
+        setReadOnly(true)
+        showToast.info('Offline mode: showing cached tasks (read-only)')
+      } else {
+        setTasks([])
+        setReadOnly(true)
+        showToast.warning('Offline mode: no cached tasks available')
+      }
+      setLoading(false)
+      return
+    }
     try {
       setLoading(true)
       setError(null)
-      /*
-      const response = await fetch(`${process.env.NEXT_PUBLIC_API_BASE}/api/v1/tasks/?status=active`, {
-        method: 'GET',
-        headers: {
-          'Content-Type': 'application/json',
-          'Accept': 'application/json',
-        },
-        credentials: 'include',
-      })
-      */
-      
-      // test plain fetch
+      setReadOnly(false)
       const response = await fetch(`${process.env.NEXT_PUBLIC_API_BASE}/api/v1/tasks/?status=active`,
         {cache: 'no-store'}
       )
-      //showToast.info('Response:' + response.status)
-
       if (!response.ok) {
         throw new Error(`Failed to fetch tasks (${response.status})`)
       }
-      
       const data = await response.json()
-      console.log('Raw task data from API:', data) // Debug log
-      
-      const tasksWithIds = data.map((task: AssistantTask & MongoDocument) => {
-        console.log('Processing task:', task) // Debug individual task
-        return {
-          ...task,
-          id: task.id || task._id || `task-${Math.random().toString(36).substring(2, 11)}`
-        }
-      })
-      console.log('Processed tasks:', tasksWithIds) // Debug processed tasks
+      const tasksWithIds = data.map((task: AssistantTask & MongoDocument) => ({
+        ...task,
+        id: task.id || task._id || `task-${Math.random().toString(36).substring(2, 11)}`
+      }))
       setTasks(tasksWithIds)
+      // Cache tasks for offline use
+      localStorage.setItem(TASKS_CACHE_KEY, JSON.stringify(tasksWithIds))
       showToast.success('Tasks loaded successfully')
     } catch (error) {
-        const errorMessage = error instanceof Error ? error.message : 'Failed to load tasks'
-        setError(errorMessage)
-        showToast.error(errorMessage)
-        // Clear tasks on error
-        setTasks([])
+      const errorMessage = error instanceof Error ? error.message : 'Failed to load tasks'
+      setError(errorMessage)
+      showToast.error(errorMessage)
+      setTasks([])
     } finally {
       setLoading(false)
     }
-  }
+  }, [isOnline])
 
   useEffect(() => {
     fetchTasks()
-  }, [])
+    // Listen for online/offline events to update readOnly state
+    function handleOnline() {
+      setReadOnly(false)
+      fetchTasks()
+    }
+    function handleOffline() {
+      setReadOnly(true)
+      fetchTasks()
+    }
+    window.addEventListener('online', handleOnline)
+    window.addEventListener('offline', handleOffline)
+    return () => {
+      window.removeEventListener('online', handleOnline)
+      window.removeEventListener('offline', handleOffline)
+    }
+  }, [fetchTasks])
 
   const handleRetry = async () => {
     showToast.info('Retrying task fetch...')
@@ -76,29 +94,19 @@ function TaskList() {
   }
 
   const handleTaskAction = async (taskId: string, action: string) => {
+    if (readOnly || !isOnline) {
+      showToast.warning('Offline mode: actions are disabled in read-only mode.')
+      return
+    }
     try {
-      console.log('Starting task action:', { taskId, action }) // Debug log
-      
       // Optimistically update the task list
-      setTasks(prevTasks => {
-        const updatedTasks = getOptimisticUpdate(prevTasks, taskId, action)
-        console.log('Optimistically updated tasks:', updatedTasks) // Debug log
-        return updatedTasks
-      })
-      
-      // Update the task status in the backend
+      setTasks(prevTasks => getOptimisticUpdate(prevTasks, taskId, action))
       await updateTaskStatus(taskId, action)
-      console.log('Backend update successful') // Debug log
-      
-      // Only refresh the task list if the task wasn't marked as done
       const status = actionToComplete()
       if (status !== 'done') {
         await fetchTasks()
-        console.log('Task list refreshed') // Debug log
       }
-    } catch (error) {
-      console.error('Error in handleTaskAction:', error) // Debug log
-      // Revert optimistic update on error
+    } catch {
       setTasks(prevTasks => getRevertUpdate(prevTasks, taskId))
       showToast.error('Failed to update task status')
     }
@@ -140,7 +148,6 @@ function TaskList() {
   return (
     <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
       {tasks.map((task) => {
-        console.log('Rendering task:', task) // Debug task being rendered
         const contextCategory = typeof task.context === 'string' ? task.context : undefined;
         return (
           <TaskCard
@@ -153,6 +160,7 @@ function TaskList() {
             sender={task.email?.sender}
             body={task.email?.body}
             onAction={(action) => handleTaskAction(task.id, action)}
+            readOnly={readOnly}
           />
         )
       })}
