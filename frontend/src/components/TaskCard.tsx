@@ -116,7 +116,8 @@ export function TaskCard({
   return (
     <div
       ref={cardRef}
-      className="w-full max-w-md rounded-2xl bg-white shadow-sm hover:shadow-md hover:bg-slate-50 hover:border hover:border-slate-300 p-4 space-y-2 flex flex-col transition-all duration-200 cursor-pointer relative"
+      className="w-full max-w-md rounded-2xl bg-white shadow-sm hover:shadow-md hover:bg-slate-50 hover:border 
+        hover:border-slate-300 p-4 space-y-2 flex flex-col transition-all duration-200 cursor-pointer relative"
       title={isMobile ? contextCategory : undefined}
       onClick={handleClick}
       onMouseEnter={handleMouseEnter}
