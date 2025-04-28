@@ -131,3 +131,99 @@ async def test_custom_actions(monkeypatch):
     task = await map_email_to_task(email, actions=custom_actions)
 
     assert task.actions == custom_actions
+
+
+@pytest.mark.asyncio
+async def test_forwarded_email_parsing(monkeypatch):
+    """
+    When the email body contains forwarded headers, the original sender and subject are extracted.
+    """
+
+    async def fake_classify(subject, body):
+        return "ctx"
+
+    monkeypatch.setattr(
+        "app.services.context_classifier.classify_context",
+        fake_classify,
+    )
+    body = """Some intro text
+From: Jane Doe <jane@example.com>
+Subject: Original Subject Line
+Body: This is the original message body.
+"""
+    email = EmailMessage(
+        subject="Fwd: See below", sender="forwarder@example.com", body=body
+    )
+    task = await map_email_to_task(email)
+    assert task.sender == "Jane Doe <jane@example.com>"
+    assert task.subject == "Original Subject Line"
+
+
+@pytest.mark.asyncio
+async def test_forwarded_email_fallback(monkeypatch):
+    """
+    If no forwarded headers are found, fallback to the forwarding user's metadata.
+    """
+
+    async def fake_classify(subject, body):
+        return "ctx"
+
+    monkeypatch.setattr(
+        "app.services.context_classifier.classify_context",
+        fake_classify,
+    )
+    body = "No forwarded headers here."
+    email = EmailMessage(subject="No Fwd", sender="forwarder@example.com", body=body)
+    task = await map_email_to_task(email)
+    assert task.sender == "forwarder@example.com"
+    assert task.subject == "No Fwd"
+
+
+@pytest.mark.asyncio
+async def test_forwarded_email_multiple_fields(monkeypatch):
+    """
+    If multiple From:/Subject: fields are present, use the first instance.
+    """
+
+    async def fake_classify(subject, body):
+        return "ctx"
+
+    monkeypatch.setattr(
+        "app.services.context_classifier.classify_context",
+        fake_classify,
+    )
+    body = """From: First Sender <first@example.com>
+Subject: First Subject
+From: Second Sender <second@example.com>
+Subject: Second Subject
+"""
+    email = EmailMessage(
+        subject="Fwd: Multi", sender="forwarder@example.com", body=body
+    )
+    task = await map_email_to_task(email)
+    assert task.sender == "First Sender <first@example.com>"
+    assert task.subject == "First Subject"
+
+
+@pytest.mark.asyncio
+async def test_forwarded_email_malformed_fields(monkeypatch):
+    """
+    Malformed or partial forwarded headers should not crash and should fallback gracefully.
+    """
+
+    async def fake_classify(subject, body):
+        return "ctx"
+
+    monkeypatch.setattr(
+        "app.services.context_classifier.classify_context",
+        fake_classify,
+    )
+    body = """From: 
+Subject:  """
+    email = EmailMessage(
+        subject="Fwd: Malformed", sender="forwarder@example.com", body=body
+    )
+    task = await map_email_to_task(email)
+
+    assert task.sender == "forwarder@example.com"
+    assert task.subject == "Fwd: Malformed"

@@ -34,3 +34,36 @@ def extract_first_sentence(text: str) -> str:
         if sentence and len(sentence.split()) >= 3:  # Filter out tiny fragments
             return sentence.strip()
     return text.strip()  # Fall back to whole text if no sentence found
+
+
+def parse_forwarded_metadata(body: str):
+    """
+    Parses forwarded email content to extract the original sender and subject.
+    Returns (original_sender, original_subject) or (None, None) if not found.
+    Handles common 'From:' and 'Subject:' patterns in the body.
+    """
+    if not body:
+        return None, None
+    # Regex for common forwarded email headers (match up to end of line)
+    from_pattern = re.compile(r"^From:\s*(.*)$", re.MULTILINE)
+    subject_pattern = re.compile(r"^Subject:\s*(.*)$", re.MULTILINE)
+    # Find all matches
+    from_matches = from_pattern.findall(body)
+    subject_matches = subject_pattern.findall(body)
+
+    # Use the first non-empty, non-header match if available
+    def valid_value(val):
+        val = val.strip()
+        return val and not val.startswith("Subject:") and not val.startswith("From:")
+
+    original_sender = (
+        from_matches[0].strip()
+        if from_matches and valid_value(from_matches[0])
+        else None
+    )
+    original_subject = (
+        subject_matches[0].strip()
+        if subject_matches and valid_value(subject_matches[0])
+        else None
+    )
+    return original_sender, original_subject

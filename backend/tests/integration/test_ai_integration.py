@@ -13,4 +13,5 @@ async def test_ai_client_live():
 
     # This will actually call OpenAI; make sure rate limits and costs are acceptable
     result = await classify_context_ai("Quick question", "What’s the weather in Paris?")
+    print(result)
     assert isinstance(result, str) and result.strip()

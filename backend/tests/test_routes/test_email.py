@@ -1,13 +1,27 @@
 # backend/tests/test_routes/test_email.py
 import pytest
+from app.strategies.action_registry import ActionRegistry
+from app.strategies.default import DefaultEmailStrategy
 
 
-def test_create_email_task(client):
+def test_create_email_task(client, monkeypatch):
     """Test that POST /api/v1/email creates a new email task"""
+    ActionRegistry._strategies.clear()
+    ActionRegistry.register("default", DefaultEmailStrategy)
+    monkeypatch.setattr(
+        ActionRegistry, "get_default_strategies", lambda: [DefaultEmailStrategy]
+    )
+    monkeypatch.setattr(
+        "os.environ",
+        {
+            "USE_AI_CONTEXT": "false",
+            "USE_AI_SUMMARY": "false",
+        },
+    )
     payload = {
         "sender": "alice@example.com",
-        "subject": "Test Subject",
-        "body": "Test Body",
+        "subject": "Test",
+        "body": "Test Email.",
     }
     response = client.post("/api/v1/email", json=payload)
     assert response.status_code == 200
@@ -35,6 +49,7 @@ def test_create_email_task(client):
     assert 2 <= len(created["actions"]) <= 3, "Should have 2-3 suggested actions"
     # Common actions that should typically be available
     action_labels = set(created["actions"])
+    print(f"🔄 Action labels: {action_labels}")
     assert any(
         label in action_labels for label in ["Reply", "Forward", "Archive"]
     ), "Should include basic email actions"

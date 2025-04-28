@@ -79,6 +79,30 @@ npm run dev
 - Bottom navigation bar with active tab highlighting for main app sections
 - Mobile-first, touch-friendly design and persistent MongoDB storage
 
+## 📨 Forwarded Email Parsing
+
+When a user forwards an email (e.g., from Gmail or Outlook), the original sender and subject are often embedded in the body of the forwarded message, rather than preserved in the email headers. The assistant automatically parses the body of incoming emails to extract this information.
+
+- The backend scans the email body for common patterns like:
+  - `From: Jane Doe <jane@example.com>`
+  - `Subject: Original Subject Line`
+- If these are found, the assistant uses them as the sender and subject for the created task, instead of the forwarding user's info.
+- If multiple `From:` or `Subject:` fields are present, the first instance is used.
+- If no forwarded headers are found, the system falls back to the forwarding user's metadata.
+- Malformed or partial headers are handled gracefully, defaulting to the forwarding user's info if needed.
+
+**Example:**
+
+```
+From: Jane Doe <jane@example.com>
+Subject: Q2 Budget Review
+Body: Please see attached for the Q2 budget review.
+```
+
+This will result in a task with sender `Jane Doe <jane@example.com>` and subject `Q2 Budget Review`, even if the email was forwarded by someone else.
+
+See `backend/app/utils/email_utils.py` and `backend/app/services/email_task_mapper.py` for implementation details.
+
 ## ⚙️ Configuration
 
 Create environment files to configure AI classification and the API base URL:

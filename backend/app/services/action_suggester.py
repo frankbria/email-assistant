@@ -37,11 +37,12 @@ async def suggest_actions_ai(email: EmailMessageBase) -> List[SuggestedAction]:
     try:
         # Construct prompt for action suggestion
         system_prompt = """You are an AI assistant that suggests actions for handling emails.
-For each email, suggest 2-3 relevant actions based on the content and context.
+For each email, suggest 3 relevant actions based on the content and context.
 Each action should have:
 1. A clear label (e.g. "Schedule Meeting", "Forward to Team")
 2. An action_type (e.g. "schedule", "forward")
 3. A handler name (e.g. "handle_schedule", "handle_forward")
+Meetings should include a schedule, forward, and decline option.
 
 Format your response as a JSON array of objects with these exact keys: label, action_type, handler
 Example: [{"label": "Schedule Meeting", "action_type": "schedule", "handler": "handle_schedule"}]"""
@@ -50,7 +51,7 @@ Example: [{"label": "Schedule Meeting", "action_type": "schedule", "handler": "h
 Body: {email.body}
 Context: {email.context if hasattr(email, 'context') else 'unknown'}
 
-Suggest 2-3 relevant actions for handling this email."""
+Suggest 3 relevant actions for handling this email."""
 
         response = await openai_client.chat.completions.create(
             model="gpt-3.5-turbo",
@@ -104,6 +105,7 @@ async def suggest_actions(email: EmailMessageBase) -> List[SuggestedAction]:
 
     # 2. If AI is disabled or fails, use rule-based strategies
     if not actions:
+
         from app.strategies.action_registry import ActionRegistry
 
         # Try context-specific strategies first
