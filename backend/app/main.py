@@ -96,6 +96,7 @@ async def read_root():
     return {"message": "Welcome to Email Assistant API"}
 
 
+"""
 def main():
     import sys
     import subprocess
@@ -113,3 +114,4 @@ def main():
 
 if __name__ == "__main__":
     main()
+"""

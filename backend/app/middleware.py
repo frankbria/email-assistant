@@ -16,20 +16,21 @@ def setup_cors(app: FastAPI) -> None:
 
     # Get allowed origins from environment variable, defaulting to localhost:3000
     if env == "development":
-        # Allow all origins in development
-        allowed_origins = ["*"]
+        # Use explicit frontend origin for development to support credentials
+        allowed_origins = os.getenv("FRONTEND_ORIGIN").split(",")
+        allowed_credentials = True
     else:
         # Allow only the specified origin in production
-        allowed_origins = os.getenv("FRONTEND_ORIGIN", "http://localhost:3000").split(
-            ","
-        )
+        allowed_origins = os.getenv("FRONTEND_ORIGIN").split(",")
+        allowed_credentials = True
 
     logger.debug(f"🔒 CORS allowed origins: {allowed_origins}")
+    print(f"🔒 CORS allowed origins: {allowed_origins}")
 
     app.add_middleware(
         CORSMiddleware,
         allow_origins=allowed_origins,
-        allow_credentials=True,
+        allow_credentials=allowed_credentials,
         allow_methods=["*"],
         allow_headers=["*"],
     )

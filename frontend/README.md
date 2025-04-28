@@ -36,6 +36,21 @@ The bottom navigation bar provides quick access to all major app sections (Inbox
 
 You can find the implementation in `src/components/BottomNav.tsx`.
 
+## Responsive Layout Approach
+
+This application is designed mobile-first and is fully responsive across device sizes:
+
+- **Mobile-first:** All layouts and components use mobile-friendly styles by default, with enhancements for larger screens (see `app/layout.tsx`).
+- **Touch targets:** All interactive elements (buttons, nav items) have a minimum touch target of 44x44px for accessibility and usability.
+- **No horizontal scrolling:** Layouts use flex/grid and max-width constraints to prevent horizontal scrolling on mobile devices.
+- **Typography:** Font sizes are set to remain legible at all standard screen sizes (minimum 16px body text).
+- **Navigation:** The bottom navigation bar is fixed, always visible, and adapts to mobile and desktop widths.
+- **Component responsiveness:** Task cards, skeletons, and empty states are styled to stack and scale appropriately on mobile, tablet, and desktop.
+
+**QA status:**
+- Desktop and mobile layouts have been manually tested and verified.
+- Tablet emulation is still pending and should be completed to ensure full coverage.
+
 ## Learn More
 
 To learn more about Next.js, take a look at the following resources:

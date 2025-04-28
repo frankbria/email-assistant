@@ -21,6 +21,7 @@ function TaskList() {
     try {
       setLoading(true)
       setError(null)
+      /*
       const response = await fetch(`${process.env.NEXT_PUBLIC_API_BASE}/api/v1/tasks/?status=active`, {
         method: 'GET',
         headers: {
@@ -29,7 +30,14 @@ function TaskList() {
         },
         credentials: 'include',
       })
+      */
       
+      // test plain fetch
+      const response = await fetch(`${process.env.NEXT_PUBLIC_API_BASE}/api/v1/tasks/?status=active`,
+        {cache: 'no-store'}
+      )
+      //showToast.info('Response:' + response.status)
+
       if (!response.ok) {
         throw new Error(`Failed to fetch tasks (${response.status})`)
       }
@@ -48,11 +56,11 @@ function TaskList() {
       setTasks(tasksWithIds)
       showToast.success('Tasks loaded successfully')
     } catch (error) {
-      const errorMessage = error instanceof Error ? error.message : 'Failed to load tasks'
-      setError(errorMessage)
-      showToast.error(errorMessage)
-      // Clear tasks on error
-      setTasks([])
+        const errorMessage = error instanceof Error ? error.message : 'Failed to load tasks'
+        setError(errorMessage)
+        showToast.error(errorMessage)
+        // Clear tasks on error
+        setTasks([])
     } finally {
       setLoading(false)
     }
