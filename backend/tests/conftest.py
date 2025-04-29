@@ -19,6 +19,12 @@ from dotenv import load_dotenv
 from unittest.mock import patch
 from app.config import Settings
 from app.strategies.action_registry import ActionRegistry
+import json
+from tests.utils.fakes import mock_openai_response, async_return
+from tests.utils.openai_mocks import (
+    make_mock_openai_response,
+    always_raise_openai_error,
+)
 
 # Load environment variables
 load_dotenv()
@@ -116,6 +122,7 @@ async def async_client():
         yield client
 
 
+# DEPRECATED: superseded by mock_settings_scenario
 @pytest.fixture
 def disable_ai(monkeypatch):
     """Disable AI features for testing"""
@@ -133,10 +140,10 @@ def disable_ai(monkeypatch):
         "app.services.email_summarizer.get_settings", lambda: MockSettings()
     )
     monkeypatch.setattr("app.config.get_settings", lambda: MockSettings())
-
     yield  # Nothing to return; just patches
 
 
+# DEPRECATED: superseded by mock_action_registry_scenario and mock_settings_scenario
 @pytest.fixture(autouse=True, scope="function")
 def reset_registry_and_disable_ai(monkeypatch):
     """
@@ -144,11 +151,8 @@ def reset_registry_and_disable_ai(monkeypatch):
     - Clears ActionRegistry between tests
     - Forces AI settings OFF unless manually overridden
     """
-
     # Clear registered strategies
     ActionRegistry._strategies.clear()
-
-    # Force settings to disable AI
     # Force settings to disable AI
     monkeypatch.setattr(
         "app.config.get_settings",
@@ -156,8 +160,77 @@ def reset_registry_and_disable_ai(monkeypatch):
             use_ai_summary=False, use_ai_context=False, use_ai_actions=False
         ),
     )
-
     yield
-
     # (Optional) re-clear after test (but usually not needed if autouse=True)
     ActionRegistry._strategies.clear()
+
+
+# ---
+# NEW SCENARIO-BASED MOCK FIXTURES FOR CLEANER TESTING (do not conflict with existing fixtures)
+# ---
+
+
+@pytest.fixture
+def mock_openai_success_scenario(monkeypatch):
+    """Mock OpenAI client to always return a successful response."""
+    result = {
+        "actions": [
+            {"label": "Mock Action", "action_type": "mock", "handler": "handle_mock"}
+        ]
+    }
+    monkeypatch.setattr(
+        "app.services.action_suggester.openai_client",
+        mock_openai_response(json.dumps(result)),
+    )
+    yield
+
+
+@pytest.fixture
+def mock_openai_failure_scenario(monkeypatch):
+    """Mock OpenAI client to always raise an exception."""
+    monkeypatch.setattr(
+        "app.services.action_suggester.openai_client",
+        mock_openai_response(exception=Exception("API Error")),
+    )
+    yield
+
+
+@pytest.fixture
+def mock_context_classifier_scenario(monkeypatch):
+    """Mock context classifier to always return a fixed context label."""
+
+    async def fake_classify(subject, body):
+        return "mocked_context"
+
+    monkeypatch.setattr(
+        "app.services.context_classifier.classify_context",
+        fake_classify,
+    )
+    yield
+
+
+@pytest.fixture
+def mock_action_registry_scenario():
+    """Clear and register only a mock default strategy for ActionRegistry."""
+    from app.strategies.action_registry import ActionRegistry
+    from app.strategies.default import DefaultEmailStrategy
+
+    ActionRegistry._strategies.clear()
+    ActionRegistry.register("default", DefaultEmailStrategy)
+    yield
+    ActionRegistry._strategies.clear()
+
+
+@pytest.fixture
+def mock_settings_scenario(monkeypatch):
+    """Mock settings to control AI and feature flags."""
+    from app.config import Settings
+
+    class MockSettings(Settings):
+        use_ai_actions: bool = False
+        use_ai_summary: bool = False
+        use_ai_context: bool = False
+        use_ai_context_classification: bool = False
+
+    monkeypatch.setattr("app.config.get_settings", lambda: MockSettings())
+    yield
