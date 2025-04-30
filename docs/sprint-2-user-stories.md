@@ -410,3 +410,27 @@
 - No possibility exists to accidentally return other users' data
 - System functions correctly with both single and multiple user contexts
 - Security is maintained across all data access points
+
+## 🔹 User Story 15: Provision Unique Mailbox Addresses for Users
+
+> **As a user**, I want to be assigned a unique mailbox address by the assistant,  
+> **so that** I can forward my emails to the assistant and have them processed automatically.
+
+### 🛠️ TASK
+- Generate and assign a unique email address (e.g., `user123@inbox.yourdomain.com`) for each user upon signup or onboarding.
+- Store the mapping between user accounts and their mailbox addresses.
+- Set up email receiving infrastructure (e.g., SMTP server, Mailgun, or similar) to accept emails sent to these addresses.
+- Route incoming emails to the correct user in the backend for processing.
+- Update onboarding documentation and UI to display the user's mailbox address and forwarding instructions.
+- Add tests to ensure correct routing and user association.
+
+### ⚡ EDGE CASES
+- Handle mailbox collisions or re-provisioning.
+- Support mailbox deactivation or rotation.
+- Gracefully handle emails sent to unassigned or deactivated addresses.
+
+### ✅ ACCEPTANCE TESTS
+- Each user can view their unique mailbox address in the UI.
+- Emails sent to the address are processed and associated with the correct user.
+- No cross-user data leakage.
+- Documentation and onboarding flows are updated.
