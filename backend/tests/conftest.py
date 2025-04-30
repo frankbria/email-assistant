@@ -1,4 +1,9 @@
 # backend/tests/conftest.py
+# -------------------------------------------------------------------
+# ✅ Modern mock fixtures for testing (Sprint 2+)
+# ❌ Deprecated mocks below — do not use for new tests
+# -------------------------------------------------------------------
+
 import os
 import sys
 
@@ -38,12 +43,15 @@ os.environ["OPENAI_API_KEY"] = "test_key"
 os.environ["OPENAI_API_MODEL"] = "gpt-3-5-turbo"
 
 
+"""
+# This implementation is deprecated as it's not needed with FastAPI 0.115.0+
 @pytest.fixture(scope="session")
 def event_loop():
-    """Create an instance of the default event loop for each test case."""
+    # Create an instance of the default event loop for each test case.
     loop = asyncio.get_event_loop_policy().new_event_loop()
     yield loop
     loop.close()
+"""
 
 
 @pytest.fixture(scope="session")
@@ -61,6 +69,7 @@ async def test_db():
     db = client[test_db_name]
 
     # Initialize Beanie with test database
+
     await init_beanie(
         database=db,
         document_models=[EmailMessage, AssistantTask],
@@ -106,7 +115,7 @@ async def setup_test_data(test_db):
 # removed so that the real `init_db` executes during tests.
 
 
-@pytest.fixture
+@pytest.fixture(scope="function")
 def client(test_db):
     """Create a test client for route tests."""
     with TestClient(app) as c:

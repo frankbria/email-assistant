@@ -5,7 +5,7 @@ This project is a monorepo called `email-assistant`. It contains:
 - `frontend/`: A Next.js (TypeScript) app used for the UI
 - `backend/`: A FastAPI (Python) app used for API and AI logic
 - MongoDB is the primary database used in the backend
-- No shared libraries exist between frontend and backend (yet)
+- No shared libraries exist between frontend and backend
 - The root of the backend application is `backend`, so no need to append `backend` to imports
 - The root of the frontend application is `frontend`, so no need to append `frontend` to imports
 - Do not hardcode URLs. If they are needed, they should be coming in from an .env or .env.local file.
@@ -63,16 +63,19 @@ const response = await fetch(`${process.env.NEXT_PUBLIC_API_BASE}/api/v1/email`,
   body: JSON.stringify(payload),
 });
 ```
+### 🧑‍🎨 UI Design Guidelines
 
-## Prompt Engineering for Assistants
+- Use **modern, clean, accessible UI components**.
+- Prefer **[shadcn/ui](https://ui.shadcn.com/)** for component design and styling.
+- Use **[sonner](https://sonner.emilkowal.ski/)** for toast messages (shadcn `toast` is deprecated).
+- Avoid legacy or custom-styled UI libraries unless specifically required.
+- Ensure responsive layouts, keyboard accessibility, and semantic HTML.
+- When building forms, modals, or tables, **leverage shadcn primitives** before custom coding.
+- Apply Tailwind CSS for custom styling
+- Aim for consistency between UI components
 
-- Use the term “Hold for Boss” to describe emails that are ambiguous
-- Categorize emails into user-defined groups (sales, partner, personal)
-- Default tone for drafts is professional unless otherwise tagged
-- Use soft/casual tone for messages to Greg (per system prompt)
-- Prefer to generate function stubs before filling in body logic.
 
-## Test Designed Development Notes
+## Test-Driven Development (TDD) Notes
 
 - Write the test as if you're going to refactor the code tomorrow. Minmize brittleness.
 - Write the test around user behavior, not the code. For example:
@@ -82,6 +85,9 @@ const response = await fetch(`${process.env.NEXT_PUBLIC_API_BASE}/api/v1/email`,
         2. A new task is created in the DB,
         3. The task includes the email subject in its summary.
 - Do not hardcode expected values. Assert based on real logic or use flexible matchers. If the value depends on logic, describe that logic first.
+- When using mocks, layer them so the test focuses on just one layer at a time. For example:
+    Bad test: Live API, function logic, and application settings
+    Good test: Mock API and application settings, and only test function logic live.
 
 ## Frontend Testing Strategy
 
@@ -180,9 +186,9 @@ poetry run pytest tests/test_routes/test_email.py
 - Focus on **behavioral testing** — what the app *does*, not how it's implemented
 - Avoid mocking until necessary — test real FastAPI flows first
 
-## AI Instructions for User Story PRD Presentation
+### AI Instructions for Test Writing
 
-### INSTRUCTIONS:
+#### INSTRUCTIONS:
 1. Start by writing a failing test that clearly validates the intended behavior described above.
    - Place it in the appropriate test module (e.g., `test_services/`, `test_routes/`, `test_models/`, etc.)
    - Include a descriptive test name and inline comments explaining what it is validating and why.
@@ -215,3 +221,55 @@ poetry run pytest tests/test_routes/test_email.py
 - DO isolate logic into a proper domain layer (not in route handlers).
 - DO name functions and tests descriptively and behaviorally.
 - DO look for existing code and leverage it first before creating new code.
+
+## To Do List
+### INSTRUCTIONS:
+- A running list of to dos are stored in todo.md
+- To dos will start with a markdown checkbox '[ ]'
+- To dos are created for each user story
+- To dos should include the appropriate models, API routes, frontend interaction, and unit testing
+- When executing a to do, mark them done when finished.
+- If there are a lot of to dos, break them into categories
+
+### EXAMPLE:
+```md
+## User Story 7
+
+### 🛠 Direct Action on Task Cards
+- [X] Add `onAction` prop to `TaskCard` (frontend/src/components/TaskCard.tsx)
+  - Accepts a callback for when an action is triggered
+  - Pass action name/type to callback
+- [X] Implement action selection click handling in `TaskCard`
+  - On click, call `onAction` with the action string
+  - Display confirmation dialogue
+  - Show a visual feedback (e.g., loading spinner, checkmark, or toast)
+  - Disable the action dropdown while the action is pending to prevent double clicks
+- [ ] Wire up `onAction` in `TaskList` (frontend/src/app/page.tsx)
+  - Pass a handler that calls the backend API to update the task (e.g., mark as done, archive, etc.)
+  - Optimistically update UI on success
+  - Catch and handle backend errors gracefully (show error toast or retry option)
+- [ ] Add backend PATCH endpoint for task actions (if not already present)
+  - Route: `PATCH /api/v1/tasks/{id}`
+  - Accepts action/status update payload (e.g., { status: "done" })
+  - Updates the task in the database
+  - Tasks marked done do not appear on the screen anymore but are available for the History page (Sprint 2)
+  - Return proper error responses (400/404/500) with clear error messages
+  - Updates the action_taken field in the database with the action chosen from the TaskCard
+- [ ] Add unit tests for action handling in TaskCard (frontend/src/__tests__/TaskCard.test.tsx)
+  - Simulate clicking each action
+  - Assert the callback is called with the correct action
+  - Assert UI feedback (spinner, checkmark) is triggered
+  - Assert action disables during pending state
+- [ ] Add integration test for action flow (frontend/src/__tests__/page.test.tsx)
+  - Simulate user selecting action from the dropdown list
+  - Simulate user confirming on the confirmation dialog
+  - Assert the backend PATCH is called
+  - Assert optomistic UI update occurs
+  - Simulate backend failure and assert error feedback is shown
+- [ ] Manual QA: Verify direct action works on both desktop and mobile
+  - Verify clicking an action button updates the UI without page reload
+  - Verify buttons are responsive to *keyboard navigation* (tab to button + enter/space triggers action)
+  - Verify visual feedback is immediate and clear (loading spinner, success confifmation, or error)
+  - Verify buttons are disabled after click until action is complete
+  - Verify responsive behavior and functionality on both desktop and mobile
+```

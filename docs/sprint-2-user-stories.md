@@ -39,6 +39,13 @@
 - Settings persist per user (or use default settings in single-user mode)
 - Changes to settings are immediately reflected in the UI
 
+#### Comments on settings in scope:
+| Setting | Why it's in scope |
+|:---|:---|
+| ✅ Enable/Disable Spam Filtering | Can simply be a flag. Spam filtering can later map to rule-based filters or AI settings we already plan. |
+| ✅ Enable/Disable Auto-categorization | Ties directly to Sprint 2 action generation from emails. Simple boolean to toggle. All tasks will be assigned the default 3 actions (reply, forward, archive) |
+| ✅ Skip Low-Priority Emails | We already have the concept of priority or 'needs boss attention'. This can be a toggle to suppress low-priority tasks in the UI. |
+
 ---
 
 ## 🔹 User Story 2: Secure Email Reception

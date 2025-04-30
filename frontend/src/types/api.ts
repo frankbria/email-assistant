@@ -28,4 +28,11 @@ export type TasksResponse = APIResponse<AssistantTask[]>
 export interface MongoDocument {
   _id?: string
   id?: string
+}
+
+export interface UserSettings {
+  user_id: string;
+  enable_spam_filtering: boolean;
+  enable_auto_categorization: boolean;
+  skip_low_priority_emails: boolean;
 } 
