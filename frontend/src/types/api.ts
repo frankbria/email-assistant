@@ -35,4 +35,10 @@ export interface UserSettings {
   enable_spam_filtering: boolean;
   enable_auto_categorization: boolean;
   skip_low_priority_emails: boolean;
+}
+
+export interface WebhookSecurity {
+  api_key: string;
+  allowed_ips: string[];
+  active: boolean;
 } 

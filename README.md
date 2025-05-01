@@ -158,3 +158,56 @@ poetry run pytest
 cd frontend
 npm run test
 ```
+
+## 🔒 Security & Webhook Configuration
+
+### Webhook Security Implementation
+- Incoming email webhooks are protected by an API key and IP whitelist.
+- The `WebhookSecurity` model (Beanie) stores the current API key, allowed IPs, and activation status.
+- All webhook access attempts are logged with timestamp, IP, and status (success/failure) for auditability.
+- Security validation is enforced on the `/api/v1/email/incoming` endpoint:
+  - Requests must include a valid `x-api-key` header.
+  - Requests must originate from an allowed IP address.
+  - Invalid or missing credentials result in 400/403 errors.
+
+### Configuration Options
+- **Environment variables:**
+  - `WEBHOOK_SECURITY_ENABLED` (default: true) — Toggle webhook security (for development/testing).
+  - `WEBHOOK_DEFAULT_ALLOWED_IPS` — Comma-separated list of IPs allowed by default (set in `.env.example`).
+- **Admin Panel:**
+  - Admins can view and update the API key and allowed IPs via the `/admin/webhook` UI.
+  - API key can be rotated and copied securely from the admin panel.
+
+### Example: Secure Webhook Usage
+
+**Request Example:**
+```http
+POST /api/v1/email/incoming HTTP/1.1
+Host: yourdomain.com
+x-api-key: <your_api_key>
+Content-Type: application/json
+
+{
+  "sender": "forwarder@provider.com",
+  "subject": "Fwd: Important client request",
+  "body": "..."
+}
+```
+- Only requests with a valid API key and from an allowed IP will be processed.
+- Invalid requests receive clear error messages and are logged for review.
+
+### Logging & Monitoring
+- All webhook access attempts (success and failure) are logged in `backend/app/utils/logging.py`.
+- Log entries include:
+  - Timestamp
+  - Event type (e.g., `webhook_access`, `api_key_validation`)
+  - IP address
+  - Status (success/failure)
+  - Optional details (never includes sensitive data)
+- Logs are suitable for security audits and can be integrated with external monitoring tools.
+- Example log entry:
+  ```
+  2024-05-01 12:34:56,789 - INFO - event=webhook_access status=failure ip=8.8.8.8 details=Invalid API key
+  ```
+
+---
