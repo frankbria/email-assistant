@@ -11,7 +11,7 @@ from app.models.assistant_task import AssistantTask
 # from app.services.context_classifier import classify_context
 from beanie import PydanticObjectId
 from app.services.webhook_security import validate_api_key, is_ip_allowed
-from app.utils.logging import log_security_event
+from app.utils.logging import log_security_event, track_and_alert_failed_attempt
 from app.middleware import limiter, RATE_LIMIT
 from app.config import get_settings
 
@@ -68,6 +68,8 @@ async def incoming_email_webhook(
             status="failure",
             details="Missing API key or client IP",
         )
+        if client_ip:
+            track_and_alert_failed_attempt(client_ip, "missing_api_key_or_ip")
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="Missing API key or client IP.",
@@ -80,6 +82,8 @@ async def incoming_email_webhook(
             status="failure",
             details="Invalid API key",
         )
+        if client_ip:
+            track_and_alert_failed_attempt(client_ip, "invalid_api_key")
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN, detail="Invalid API key."
         )
@@ -97,6 +101,8 @@ async def incoming_email_webhook(
             status="failure",
             details="IP address not allowed",
         )
+        if client_ip:
+            track_and_alert_failed_attempt(client_ip, "ip_not_allowed")
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN, detail="IP address not allowed."
         )

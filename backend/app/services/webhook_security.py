@@ -1,10 +1,14 @@
 import secrets
+import os
 from typing import List, Optional
 from app.models.webhook_security import WebhookSecurity
 
 
 async def validate_api_key(provided_key: str) -> bool:
-    """Check if the provided API key matches an active stored key."""
+    """Check if the provided API key matches an active stored key or emergency override."""
+    emergency_key = os.getenv("EMERGENCY_WEBHOOK_API_KEY")
+    if emergency_key and provided_key == emergency_key:
+        return True
     # Find an active config matching the provided API key
     config = await WebhookSecurity.find_one(
         {
