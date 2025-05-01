@@ -9,7 +9,7 @@ from app.models.webhook_security import WebhookSecurity
 from beanie import init_beanie
 import motor.motor_asyncio
 from app.api.routers import email, tasks, settings, admin
-from app.middleware import setup_cors
+from app.middleware import setup_cors, limiter, RATE_LIMIT
 from app.config import get_settings, Settings
 from motor.motor_asyncio import AsyncIOMotorClient, AsyncIOMotorDatabase
 import uuid
@@ -17,6 +17,9 @@ from beanie.exceptions import CollectionWasNotInitialized
 from typing import Optional
 import logging
 import os
+from slowapi.middleware import SlowAPIMiddleware
+from slowapi.errors import RateLimitExceeded
+from slowapi import _rate_limit_exceeded_handler
 
 # Configure logging manually
 LOG_LEVEL = os.getenv("LOG_LEVEL", "INFO").upper()
@@ -73,6 +76,8 @@ async def lifespan(app: FastAPI):
     app.state.motor_client = client
     app.state.settings = settings
     logger.debug("🌟 Lifespan: DB client assigned to app.state")
+
+    # Database setup only in lifespan
     yield
 
     logger.debug("🌟 Lifespan: Shutting down DB")
@@ -84,6 +89,11 @@ async def lifespan(app: FastAPI):
 
 
 app = FastAPI(title="Email Assistant API", lifespan=lifespan)
+
+# Configure rate limiting middleware
+app.state.limiter = limiter
+app.add_middleware(SlowAPIMiddleware)
+app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
 
 # Setup CORS middleware
 setup_cors(app)
