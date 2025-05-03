@@ -14,6 +14,7 @@ import httpx
 from dotenv import load_dotenv
 from unittest.mock import patch
 from beanie import init_beanie
+from motor import motor_asyncio
 from motor.motor_asyncio import AsyncIOMotorClient
 from fastapi.testclient import TestClient
 
@@ -49,17 +50,36 @@ os.environ["OPENAI_API_MODEL"] = "gpt-3-5-turbo"
 # ---------------------
 
 
-@pytest.fixture(scope="session")
+@pytest.fixture(scope="function")
 def event_loop():
     """Create a session-scoped event loop for async tests."""
     policy = asyncio.get_event_loop_policy()
     loop = policy.new_event_loop()
+
+    # add debugging capabilities to the loop
+    loop.set_debug(True)
+
     asyncio.set_event_loop(loop)
+    print(f"Created event loop with id: {id(loop)}")
+
     yield loop
+
+    print(f"Checking loop status with id: {id(loop)}")
+    # Close the loop after all tests complete
+    if not loop.is_closed():
+        pending = asyncio.all_tasks(loop=loop)
+        if pending:
+            print(f"Canceling {len(pending)} pending tasks before closing the loop")
+            for task in pending:
+                task.cancel()
+            loop.run_until_complete(asyncio.gather(*pending, return_exceptions=True))
+
+    print(f"Closing event loop with id: {id(loop)}")
+    loop.run_until_complete(loop.shutdown_asyncgens())
     loop.close()
 
 
-@pytest.fixture(scope="session")
+@pytest.fixture(scope="function")
 async def test_db(event_loop):
     """Initialize test database connection and Beanie."""
     mongo_uri = os.environ["MONGODB_URI"]
@@ -70,7 +90,8 @@ async def test_db(event_loop):
     if "_test" not in test_db_name.lower():
         raise ValueError("Test is attempting to use production database! Aborting.")
 
-    client = AsyncIOMotorClient(mongo_uri)
+    client = AsyncIOMotorClient(mongo_uri, io_loop=event_loop)
+
     db = client[test_db_name]
 
     await init_beanie(
@@ -87,7 +108,7 @@ async def test_db(event_loop):
 
 @pytest.fixture(scope="function")
 async def db_transaction(test_db):
-    """Create a transaction for test isolation"""
+    """Create a transaction for test isolation that's connected to the main event loop."""
 
     # Start transaction
     session = await test_db.client.start_session()
@@ -120,6 +141,26 @@ async def async_client():
 # ---------------------
 # Auto-loaded test data
 # ---------------------
+
+
+@pytest.fixture
+async def set_webhook_security(test_db, db_transaction):
+    """Set up a valid webhook security configuration."""
+    print("Setting up webhook security configuration")
+    # Create a valid WebhookSecurity object
+    config = WebhookSecurity(api_key="validkey", allowed_ips=["127.0.0.1"], active=True)
+
+    try:
+        # Insert the configuration into the database
+        await config.insert(session=db_transaction)
+        print("Webhook security configuration inserted successfully")
+    except Exception as e:
+        print(f"Error inserting webhook security configuration: {e}")
+        raise e
+
+    yield config
+
+    print("Cleaning up webhook security configuration")
 
 
 @pytest.fixture

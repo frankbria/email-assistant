@@ -52,6 +52,7 @@ async def test_webhook_incoming_rejects_blocked_ip(
     assert "IP address not allowed" in response.text
 
 
+@pytest.mark.dependency(depends=["set_webhook_security"])
 @pytest.mark.asyncio
 async def test_webhook_incoming_accepts_valid(
     async_client, set_webhook_security, monkeypatch
