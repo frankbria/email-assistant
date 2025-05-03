@@ -10,9 +10,9 @@ from app.services.webhook_security import (
 
 
 @pytest.mark.asyncio
-async def test_validate_api_key_valid_and_invalid(test_db):
+async def test_validate_api_key_valid_and_invalid(db_transaction):
     # Insert a test config
-    config = WebhookSecurity(api_key="testkey123", allowed_ips=["1.2.3.4"], active=True)
+    config = WebhookSecurity(api_key="testkey123", active=True)
     await config.insert()
 
     # Valid key
@@ -22,7 +22,7 @@ async def test_validate_api_key_valid_and_invalid(test_db):
 
 
 @pytest.mark.asyncio
-async def test_is_ip_allowed_allowed_and_blocked(test_db):
+async def test_is_ip_allowed_allowed_and_blocked(db_transaction):
     config = WebhookSecurity(
         api_key="irrelevant", allowed_ips=["10.0.0.1", "127.0.0.1"], active=True
     )
@@ -35,19 +35,19 @@ async def test_is_ip_allowed_allowed_and_blocked(test_db):
 
 
 @pytest.mark.asyncio
-async def test_validate_api_key_no_active_config():
+async def test_validate_api_key_no_active_config(db_transaction):
     # No config in DB
     assert await validate_api_key("anykey") is False
 
 
 @pytest.mark.asyncio
-async def test_is_ip_allowed_no_active_config():
+async def test_is_ip_allowed_no_active_config(db_transaction):
     # No config in DB
     assert await is_ip_allowed("1.2.3.4") is False
 
 
 @pytest.mark.asyncio
-async def test_generate_secure_api_key_length():
+async def test_generate_secure_api_key_length(db_transaction):
     key = generate_secure_api_key(32)
     assert isinstance(key, str)
     assert len(key) >= 32  # token_urlsafe may be longer than requested

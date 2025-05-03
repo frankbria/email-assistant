@@ -11,6 +11,7 @@ from app.models.assistant_task import AssistantTask
 # from app.services.context_classifier import classify_context
 from beanie import PydanticObjectId
 from app.services.webhook_security import validate_api_key, is_ip_allowed
+from app.services.duplicate_detection import is_duplicate_email
 from app.utils.logging import log_security_event, track_and_alert_failed_attempt
 from app.middleware import limiter, RATE_LIMIT
 from app.config import get_settings
@@ -114,8 +115,15 @@ async def incoming_email_webhook(
         details="Webhook access granted",
     )
 
-    # Create and save the email, then map to a task
+    # Create the email object and check for duplicates
     email = EmailMessage(subject=subject, sender=sender, body=body)
+    # Skip or flag duplicates
+    if await is_duplicate_email(email):
+        logger.info(f"Duplicate email detected: message_id={email.message_id}")
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT, detail="Duplicate email."
+        )
+    # Save unique email
     await email.insert()
     logger.debug("✅ Webhook email created and saved")
 

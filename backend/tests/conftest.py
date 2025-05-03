@@ -23,7 +23,8 @@ from app.main import app
 from app.models.email_message import EmailMessage
 from app.models.assistant_task import AssistantTask
 from app.models.webhook_security import WebhookSecurity
-from app.config import Settings
+from app.models.user_settings import UserSettings
+from app.config import get_settings, Settings
 from app.strategies.action_registry import ActionRegistry
 import json
 from tests.utils.fakes import mock_openai_response, async_return
@@ -48,7 +49,7 @@ os.environ["OPENAI_API_MODEL"] = "gpt-3-5-turbo"
 # ---------------------
 
 
-@pytest.fixture(scope="function")
+@pytest.fixture(scope="session")
 def event_loop():
     """Create a session-scoped event loop for async tests."""
     policy = asyncio.get_event_loop_policy()
@@ -58,8 +59,8 @@ def event_loop():
     loop.close()
 
 
-@pytest.fixture
-async def test_db():
+@pytest.fixture(scope="session")
+async def test_db(event_loop):
     """Initialize test database connection and Beanie."""
     mongo_uri = os.environ["MONGODB_URI"]
     test_db_name = os.environ["MONGODB_DB"]
@@ -74,7 +75,7 @@ async def test_db():
 
     await init_beanie(
         database=db,
-        document_models=[EmailMessage, AssistantTask, WebhookSecurity],
+        document_models=[EmailMessage, AssistantTask, WebhookSecurity, UserSettings],
         allow_index_dropping=True,
     )
 
@@ -84,8 +85,23 @@ async def test_db():
     client.close()
 
 
+@pytest.fixture(scope="function")
+async def db_transaction(test_db):
+    """Create a transaction for test isolation"""
+
+    # Start transaction
+    session = await test_db.client.start_session()
+    session.start_transaction()
+
+    yield session
+
+    # Rollback transaction to reset database state
+    await session.abort_transaction()
+    await session.end_session()
+
+
 @pytest.fixture
-def client(test_db):
+def client():
     """Create a test client for route tests."""
     with TestClient(app) as c:
         yield c
@@ -97,6 +113,7 @@ async def async_client():
     async with httpx.AsyncClient(
         transport=httpx.ASGITransport(app=app), base_url="http://test"
     ) as client:
+
         yield client
 
 
@@ -105,8 +122,8 @@ async def async_client():
 # ---------------------
 
 
-@pytest.fixture(autouse=True)
-async def setup_test_data(test_db):
+@pytest.fixture
+async def setup_test_data(db_transaction):
     """Populate test DB with basic records for each test."""
     email = EmailMessage(
         subject="Test Email", sender="test@example.com", body="This is a test email"
@@ -131,9 +148,10 @@ async def setup_test_data(test_db):
 
     yield
 
-    await EmailMessage.find_all().delete()
-    await AssistantTask.find_all().delete()
-    await WebhookSecurity.find_all().delete()
+    # No need to clean up test data; each test runs in its own transaction
+    # await EmailMessage.find_all().delete()
+    # await AssistantTask.find_all().delete()
+    # await WebhookSecurity.find_all().delete()
 
 
 # ---------------------

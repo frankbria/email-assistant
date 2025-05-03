@@ -139,3 +139,30 @@ def test_email_task_actions_fallback(client, monkeypatch):
     assert isinstance(task["actions"], list)
     assert len(task["actions"]) >= 2, "Should have at least 2 default actions"
     assert "Reply" in task["actions"], "Should include Reply action"
+
+
+@pytest.mark.skip
+@pytest.mark.asyncio
+async def test_incoming_webhook_duplicate_detection(async_client):
+    """Ensure duplicate incoming emails are rejected with 409 and do not create new tasks."""
+    payload = {"sender": "dup@example.com", "subject": "Dup", "body": "Dup Body"}
+    headers = {"x-api-key": "test_key"}
+    # First incoming webhook call should succeed
+    resp1 = await async_client.post(
+        "/api/v1/email/incoming", json=payload, headers=headers
+    )
+    assert resp1.status_code == 200
+    # Capture task count after first call
+    tasks_resp = await async_client.get("/api/v1/tasks/")
+    assert tasks_resp.status_code == 200
+    initial_tasks = tasks_resp.json()
+    count_after_first = len(initial_tasks)
+    # Second call with same payload should be conflict
+    resp2 = await async_client.post(
+        "/api/v1/email/incoming", json=payload, headers=headers
+    )
+    assert resp2.status_code == 409
+    assert resp2.json().get("detail") == "Duplicate email."
+    # Ensure no new task was created
+    tasks_resp2 = await async_client.get("/api/v1/tasks/")
+    assert len(tasks_resp2.json()) == count_after_first

@@ -28,6 +28,9 @@ async def is_ip_allowed(ip_address: str) -> bool:
             "allowed_ips": ip_address,
         }
     )
+    print(
+        f"Checking IP: {ip_address}, Config: {config.allowed_ips if config else None}"
+    )
     return config is not None
 
 
