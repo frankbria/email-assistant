@@ -61,6 +61,7 @@ async def incoming_email_webhook(
         status="attempt",
         details="Incoming webhook access attempt",
     )
+    print(f"API Key: {api_key}, Client IP: {client_ip}")
 
     if not api_key or not client_ip:
         log_security_event(

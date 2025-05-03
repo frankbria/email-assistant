@@ -4,7 +4,7 @@ from app.models.email_message import EmailMessage
 
 
 @pytest.mark.asyncio
-async def test_duplicate_by_message_id(test_db):
+async def test_duplicate_by_message_id(db_transaction):
     """Emails with the same message_id should be flagged as duplicates."""
     # Insert an email with a specific message_id
     email1 = EmailMessage(
@@ -19,7 +19,7 @@ async def test_duplicate_by_message_id(test_db):
 
 
 @pytest.mark.asyncio
-async def test_duplicate_by_signature(test_db):
+async def test_duplicate_by_signature(db_transaction):
     """Emails with identical sender, subject, and body should be flagged as duplicates by signature."""
     payload = {
         "subject": "Repeat",
@@ -37,7 +37,7 @@ async def test_duplicate_by_signature(test_db):
 
 
 @pytest.mark.asyncio
-async def test_unique_emails_not_flagged(test_db):
+async def test_unique_emails_not_flagged(db_transaction):
     """Different emails should not be flagged as duplicates."""
     # Insert one email
     email1 = EmailMessage(subject="Unique1", sender="eve@example.com", body="Content A")

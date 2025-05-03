@@ -141,12 +141,12 @@ def test_email_task_actions_fallback(client, monkeypatch):
     assert "Reply" in task["actions"], "Should include Reply action"
 
 
-@pytest.mark.skip
+# @pytest.mark.skip
 @pytest.mark.asyncio
-async def test_incoming_webhook_duplicate_detection(async_client):
+async def test_incoming_webhook_duplicate_detection(async_client, set_webhook_security):
     """Ensure duplicate incoming emails are rejected with 409 and do not create new tasks."""
     payload = {"sender": "dup@example.com", "subject": "Dup", "body": "Dup Body"}
-    headers = {"x-api-key": "test_key"}
+    headers = {"x-api-key": "validkey"}
     # First incoming webhook call should succeed
     resp1 = await async_client.post(
         "/api/v1/email/incoming", json=payload, headers=headers
