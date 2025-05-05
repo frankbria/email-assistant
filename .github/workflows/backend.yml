@@ -58,5 +58,17 @@ jobs:
           key: ${{ secrets.AWS_SSH_KEY }}
           script: |
             cd /home/ubuntu/apps/python/email-assistant-backend-dev
+      
+            # Set up and activate virtual environment
+            if [ ! -d ".venv" ]; then
+              python3 -m venv .venv
+            fi
+            source .venv/bin/activate
+      
+            # Install requirements inside virtualenv
+            pip install --upgrade pip
             pip install -r requirements.txt
-            pm2 restart email-assistant-backend-dev || pm2 start uvicorn --name email-assistant-backend-dev -- app.main:app --host 0.0.0.0 --port 8000
+      
+            # Run uvicorn from inside the venv
+            pm2 restart email-assistant-backend-dev || \
+            pm2 start .venv/bin/uvicorn --name email-assistant-backend-dev -- app.main:app --host 0.0.0.0 --port 8000
