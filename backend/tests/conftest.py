@@ -152,7 +152,7 @@ async def set_webhook_security(test_db, db_transaction):
 
     try:
         # Insert the configuration into the database
-        await config.insert(session=db_transaction)
+        await config.insert()
         print("Webhook security configuration inserted successfully")
     except Exception as e:
         print(f"Error inserting webhook security configuration: {e}")

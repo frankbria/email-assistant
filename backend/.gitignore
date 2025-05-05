@@ -9,7 +9,6 @@ poetry.lock
 
 # Virtual environment
 .venv/
-requirements.txt
 requirements.in
 
 # Test coverage reports

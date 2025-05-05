@@ -147,6 +147,7 @@ async def test_incoming_webhook_duplicate_detection(async_client, set_webhook_se
     """Ensure duplicate incoming emails are rejected with 409 and do not create new tasks."""
     payload = {"sender": "dup@example.com", "subject": "Dup", "body": "Dup Body"}
     headers = {"x-api-key": "validkey"}
+
     # First incoming webhook call should succeed
     resp1 = await async_client.post(
         "/api/v1/email/incoming", json=payload, headers=headers
