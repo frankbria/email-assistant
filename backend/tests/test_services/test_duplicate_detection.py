@@ -1,4 +1,5 @@
 import pytest
+import asyncio
 from app.services.duplicate_detection import is_duplicate_email
 from app.models.email_message import EmailMessage
 
@@ -49,3 +50,45 @@ async def test_unique_emails_not_flagged(db_transaction):
     assert await is_duplicate_email(email2) is False
     # signature should be set for unique email
     assert email2.signature is not None
+
+
+@pytest.mark.asyncio
+async def test_similar_content_flagged(db_transaction):
+    """Similar but non-identical emails should be flagged based on threshold."""
+    # first email (unique)
+    e1 = EmailMessage(
+        subject="Meeting tomorrow at 10",
+        sender="foo@example.com",
+        body="Please confirm attendance.",
+    )
+    assert await is_duplicate_email(e1) is False
+    await e1.insert()
+
+    # second email with minor variations
+    e2 = EmailMessage(
+        subject="Meeting tomorrow at 10am",
+        sender="foo@example.com",
+        body="Pls confirm attend.",
+    )
+    assert await is_duplicate_email(e2) is True
+
+
+def test_performance_under_load(benchmark, db_transaction):
+    """Ensure duplicate check stays fast with 1000 similar emails."""
+    # prepare 1000 pairs
+    pairs = []
+    for i in range(1000):
+        subj = f"Test {i}"
+        body = "Data " * i
+        e1 = EmailMessage(subject=subj, sender="u@example.com", body=body)
+        e2 = EmailMessage(subject=subj, sender="u@example.com", body=body)
+        pairs.append((e1, e2))
+
+    async def run_all():
+        for a, b in pairs:
+            # we don’t insert, just compare in‐memory
+            await is_duplicate_email(a)
+            await is_duplicate_email(b)
+
+    # benchmark the async runner
+    benchmark(lambda: asyncio.get_event_loop().run_until_complete(run_all()))

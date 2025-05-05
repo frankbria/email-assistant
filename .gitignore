@@ -3,3 +3,5 @@
 .cursorrules
 .cursorignore
 *todo.md
+
+.vscode/

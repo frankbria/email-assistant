@@ -211,3 +211,43 @@ Content-Type: application/json
   ```
 
 ---
+
+## 📋 Duplicate Detection
+
+The duplicate detection system ensures that emails with similar or identical content are not processed multiple times. This is achieved through a combination of exact matching and fuzzy matching techniques.
+
+### Implementation Details
+
+1. **Exact Matching**:
+   - Emails are first checked for exact matches using their `message_id` or a hash of their sender, subject, and body.
+   - If an exact match is found, the email is flagged as a duplicate.
+
+2. **Fuzzy Matching**:
+   - If no exact match is found, the system uses a similarity algorithm to compare the subject and body of the email with recent emails.
+   - The similarity is calculated using the `SequenceMatcher` from Python's `difflib` module.
+   - A configurable threshold (default: 0.9) determines whether two emails are considered duplicates based on their similarity score.
+
+3. **Performance Optimization**:
+   - Recent emails are limited to a manageable number (e.g., 100) to ensure performance remains acceptable even with large email volumes.
+   - Database indexes are used to optimize exact match lookups.
+
+### Configuration Options
+
+- **Threshold**:
+  - The similarity threshold can be configured via the `DUPLICATE_THRESHOLD` environment variable.
+  - Example: `DUPLICATE_THRESHOLD=0.85` in the `.env` file.
+
+- **Environment Variable**:
+  ```dotenv
+  DUPLICATE_THRESHOLD=0.9
+  ```
+
+### Edge Cases
+
+- **Similar but Non-Identical Emails**:
+  - The system ensures that emails with minor variations (e.g., typos or slight rephrasing) are flagged as duplicates if they exceed the similarity threshold.
+
+- **Large Email Volumes**:
+  - The system is designed to handle large volumes of emails efficiently by limiting the scope of fuzzy matching and leveraging database optimizations.
+
+For more details, see the implementation in `backend/app/services/duplicate_detection.py`.
