@@ -37,10 +37,10 @@ jobs:
       - name: Restart app with PM2
         uses: appleboy/ssh-action@v1.0.0
         with:
-          host: ${{ secrets.AWS_HOST }}
-          username: ${{ secrets.AWS_USER }}
+          host: ${{ secrets.AWS_DEV_HOST }}
+          username: ${{ secrets.AWS_DEV_USER }}
           key: ${{ secrets.AWS_SSH_KEY }}
           script: |
             cd /home/ubuntu/apps/nodejs/email-assistant-frontend-dev
             npm install --omit=dev
-            pm2 restart email-assistant-frontend-dev || pm2 start "node_modules/next/dist/bin/next" --name email-assistant-front -- start -p 3010
+            pm2 restart email-assistant-frontend-dev || pm2 start "node_modules/next/dist/bin/next" --name email-assistant-frontend-dev -- start -p 3010
