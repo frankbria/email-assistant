@@ -32,8 +32,9 @@ jobs:
           host: ${{ secrets.AWS_DEV_HOST }}
           username: ${{ secrets.AWS_DEV_USER }}
           key: ${{ secrets.AWS_SSH_KEY }}
-          source: "frontend/*"
+          source: "frontend"
           target: "/home/ubuntu/apps/nodejs/email-assistant-frontend-dev"
+          strip_components: 1
 
       - name: Restart app with PM2
         uses: appleboy/ssh-action@v1.0.0
