@@ -227,3 +227,27 @@ Subject:  """
 
     assert task.sender == "forwarder@example.com"
     assert task.subject == "Fwd: Malformed"
+
+
+@pytest.mark.asyncio
+async def test_map_email_to_task_skips_spam():
+    email = EmailMessage(
+        subject="Win a prize",
+        body="Click here to claim your free money",
+        sender="test@example.com",
+    )
+    task = await map_email_to_task(email)
+    assert task is None
+    assert email.is_spam is True
+
+
+@pytest.mark.asyncio
+async def test_map_email_to_task_creates_task_for_non_spam():
+    email = EmailMessage(
+        subject="Meeting tomorrow",
+        body="Let's discuss the project updates",
+        sender="test@example.com",
+    )
+    task = await map_email_to_task(email)
+    assert task is not None
+    assert email.is_spam is False

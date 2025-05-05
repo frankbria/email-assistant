@@ -3,6 +3,9 @@ import pytest
 from fastapi.testclient import TestClient
 from app.models.user_settings import UserSettings
 from app.api.routers.settings import DEFAULT_USER_ID
+from app.main import app
+
+client = TestClient(app)
 
 
 def test_get_settings_for_new_user(client):
@@ -168,3 +171,19 @@ def test_invalid_update_payload(client):
             break
 
     assert error_found, "Expected to find a type/validation error about boolean values"
+
+
+@pytest.mark.parametrize(
+    "enable_spam_filtering, expected_status",
+    [
+        (True, 200),
+        (False, 200),
+    ],
+)
+def test_spam_filtering_toggle_behavior(enable_spam_filtering, expected_status, client):
+    response = client.patch(
+        "/api/v1/settings/email",
+        json={"enable_spam_filtering": enable_spam_filtering},
+    )
+    assert response.status_code == expected_status
+    assert response.json()["enable_spam_filtering"] == enable_spam_filtering

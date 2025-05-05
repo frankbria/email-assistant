@@ -10,16 +10,22 @@ import app.services.context_classifier as context_classifier
 from app.services.email_summarizer import generate_summary
 from app.services.action_suggester import suggest_actions
 from app.utils.email_utils import parse_forwarded_metadata
+from .duplicate_detection import is_spam_email
 
 
 async def map_email_to_task(
     email: EmailMessage,
     actions: Optional[List[str]] = None,
-) -> AssistantTask:
+) -> Optional[AssistantTask]:
     """
     Create an AssistantTask from an EmailMessage, centralizing defaults, classification, and summary logic.
     Does not insert the task into the database; caller should insert it.
     """
+    if is_spam_email(email):
+        email.is_spam = True  # Mark email as spam
+        email.save()  # Save the spam status in the database
+        return None  # Skip task creation for spam emails
+
     logger.debug("🔄 Mapping email to task in service")
     # Try to extract original sender/subject from forwarded content
     forwarded_sender, forwarded_subject = parse_forwarded_metadata(email.body)

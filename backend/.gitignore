@@ -9,7 +9,6 @@ poetry.lock
 
 # Virtual environment
 .venv/
-requirements.in
 
 # Test coverage reports
 htmlcov/

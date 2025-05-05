@@ -21,6 +21,9 @@ class EmailMessage(Document):
     context: Optional[str] = None
     message_id: Optional[str] = Field(None)
     signature: Optional[str] = Field(None)
+    is_spam: bool = Field(
+        default=False, description="Indicates if the email is flagged as spam."
+    )
 
     class Settings:
         name = "email_messages"

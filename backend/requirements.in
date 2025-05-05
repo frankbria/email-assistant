@@ -1,0 +1,14 @@
+fastapi
+slowapi
+beanie
+motor
+pydantic
+pydantic-settings
+python-dotenv
+httpx
+pytest
+uvicorn
+pytest-asyncio
+pytest-cov
+pytest-benchmark
+openai
