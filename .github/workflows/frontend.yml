@@ -1,0 +1,46 @@
+name: Deploy email-assistant-frontend-dev
+
+on:
+  push:
+    branches: [master]
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v3
+
+      - name: Install Node.js
+        uses: actions/setup-node@v3
+        with:
+          node-version: '18'
+
+      - name: Install frontend dependencies
+        working-directory: frontend
+        run: npm install
+
+      - name: Build Next.js frontend app
+        working-directory: frontend
+        run: npm run build
+
+      - name: Copy files to AWS server
+        uses: appleboy/scp-action@v0.1.4
+        with:
+          host: ${{ secrets.AWS_DEV_HOST }}
+          username: ${{ secrets.AWS_DEV_USER }}
+          key: ${{ secrets.AWS_SSH_KEY }}
+          source: "frontend/.next,frontend/public,frontend/package.json,frontend/package-lock.json"
+          target: "/home/ubuntu/apps/nodejs/email-assistant-frontend-dev"
+
+      - name: Restart app with PM2
+        uses: appleboy/ssh-action@v1.0.0
+        with:
+          host: ${{ secrets.AWS_HOST }}
+          username: ${{ secrets.AWS_USER }}
+          key: ${{ secrets.AWS_SSH_KEY }}
+          script: |
+            cd /home/ubuntu/apps/nodejs/email-assistant-frontend-dev
+            npm install --omit=dev
+            pm2 restart email-assistant-frontend-dev || pm2 start "node_modules/next/dist/bin/next" --name email-assistant-front -- start -p 3010
