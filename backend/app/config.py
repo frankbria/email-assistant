@@ -1,4 +1,5 @@
 # backend/app/config.py
+
 from pydantic_settings import BaseSettings
 from functools import lru_cache
 from typing import Optional, List
@@ -25,6 +26,9 @@ class Settings(BaseSettings):
     api_environment: str = os.getenv(
         "API_ENVIRONMENT", "test" if "pytest" in sys.modules else "development"
     )
+
+    # email settings
+    duplicate_threshold: float = os.getenv("DUPLICATE_THRESHOLD", 0.9)
 
     # new flag for AI summarization
     use_ai_summary: bool = False

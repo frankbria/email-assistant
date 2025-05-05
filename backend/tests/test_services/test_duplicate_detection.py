@@ -1,5 +1,8 @@
+# backend/tests/test_services/test_duplicate_detection.py
+
 import pytest
 import asyncio
+import time
 from app.services.duplicate_detection import is_duplicate_email
 from app.models.email_message import EmailMessage
 
@@ -73,7 +76,8 @@ async def test_similar_content_flagged(db_transaction):
     assert await is_duplicate_email(e2) is True
 
 
-def test_performance_under_load(benchmark, db_transaction):
+@pytest.mark.asyncio
+async def test_performance_under_load(db_transaction):
     """Ensure duplicate check stays fast with 1000 similar emails."""
     # prepare 1000 pairs
     pairs = []
@@ -90,5 +94,9 @@ def test_performance_under_load(benchmark, db_transaction):
             await is_duplicate_email(a)
             await is_duplicate_email(b)
 
-    # benchmark the async runner
-    benchmark(lambda: asyncio.get_event_loop().run_until_complete(run_all()))
+    start = time.perf_counter()
+    await run_all()
+    end = time.perf_counter()
+    elapsed_ms = (end - start) * 1000
+    print(f"Duplicate check for 2000 emails. Performance test took {elapsed_ms:.2f} ms")
+    assert elapsed_ms < 1000, f"Performance test took too long: {elapsed_ms} ms"

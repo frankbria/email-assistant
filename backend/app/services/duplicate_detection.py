@@ -5,7 +5,7 @@ from difflib import SequenceMatcher
 from typing import Optional
 
 from app.models.email_message import EmailMessage
-from backend.app.config import DUPLICATE_THRESHOLD
+from app.config import get_settings
 
 
 async def is_duplicate_email(email: EmailMessage) -> bool:
@@ -36,7 +36,7 @@ async def is_duplicate_email(email: EmailMessage) -> bool:
             None, email.subject or "", other.subject or ""
         ).ratio()
         body_sim = SequenceMatcher(None, email.body or "", other.body or "").ratio()
-        if ((subj_sim + body_sim) / 2) >= DUPLICATE_THRESHOLD:
+        if ((subj_sim + body_sim) / 2) >= get_settings().duplicate_threshold:
             return True
 
     # unique — attach exact signature and proceed
