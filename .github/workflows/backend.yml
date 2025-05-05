@@ -1,0 +1,74 @@
+name: Deploy email-assistant-backend-dev
+
+on:
+  push:
+    branches: [master]
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    environment: development
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v3
+
+      - name: Create .env file for backend
+        working-directory: backend
+        run: |
+          echo "OPENAI_API_KEY=${{ secrets.OPENAI_API_KEY }}" >> .env
+          echo "OPENAI_API_MODEL=gpt-4o-mini" >> .env
+          echo "USE_AI_CONTEXT=true" >> .env
+          echo "USE_AI_SUMMARY=true" >> .env
+          echo "USE_AI_ACTIONS=true" >> .env
+      
+          echo "EMAIL_FROM=ai-assistant@example.com" >> .env
+          echo "SMTP_SERVER=${{ secrets.SMTP_SERVER }}" >> .env
+          echo "SMTP_PORT=587" >> .env
+          echo "SMTP_USERNAME=${{ secrets.SMTP_USERNAME }}" >> .env
+          echo "SMTP_PASSWORD=${{ secrets.SMTP_PASSWORD }}" >> .env
+      
+          echo "WEBHOOK_RATE_LIMIT=500/minute" >> .env
+          echo "DEFAULT_DUPLICATE_THRESHOLD=0.9" >> .env
+      
+          echo "EMERGENCY_WEBHOOK_API_KEY=${{ secrets.EMERGENCY_WEBHOOK_API_KEY }}" >> .env
+      
+          echo "LOG_LEVEL=info" >> .env
+          echo "SENDGRID_API_KEY=${{ secrets.SENDGRID_API_KEY }}" >> .env
+          echo "CLERK_SECRET_KEY=${{ secrets.CLERK_SECRET_KEY }}" >> .env
+      
+          echo "BASE_URL=${{ secrets.BASE_URL }}" >> .env
+
+
+      - name: Copy backend files to server
+        uses: appleboy/scp-action@v0.1.4
+        with:
+          host: ${{ secrets.AWS_DEV_HOST }}
+          username: ${{ secrets.AWS_DEV_USER }}
+          key: ${{ secrets.AWS_SSH_KEY }}
+          source: "backend"
+          target: "/home/ubuntu/apps/python/email-assistant-backend-dev"
+          strip_components: 1
+
+      - name: Restart backend with PM2
+        uses: appleboy/ssh-action@v1.0.0
+        with:
+          host: ${{ secrets.AWS_DEV_HOST }}
+          username: ${{ secrets.AWS_DEV_USER }}
+          key: ${{ secrets.AWS_SSH_KEY }}
+          script: |
+            cd /home/ubuntu/apps/python/email-assistant-backend-dev
+      
+            # Set up and activate virtual environment
+            if [ ! -d ".venv" ]; then
+              python3 -m venv .venv
+            fi
+            source .venv/bin/activate
+      
+            # Install requirements inside virtualenv
+            pip install --upgrade pip
+            pip install -r requirements.txt
+      
+            # Run uvicorn from inside the venv
+            pm2 restart email-assistant-backend-dev || \
+            pm2 start .venv/bin/uvicorn --name email-assistant-backend-dev -- app.main:app --host 0.0.0.0 --port 8000
