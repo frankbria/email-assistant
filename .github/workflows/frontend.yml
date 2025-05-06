@@ -18,6 +18,15 @@ jobs:
         with:
           node-version: '18'
 
+      - name: Create .env file
+        working-directory: frontend
+        run: |
+          echo "NEXT_PUBLIC_API_URL=${{ secrets.NEXT_PUBLIC_API_URL }}" >> .env
+          echo "NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY=${{ secrets.NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY }}" >> .env
+          echo "CLERK_SECRET_KEY=${{ secrets.CLERK_SECRET_KEY }}" >> .env
+          echo "NEXT_PUBLIC_DEBUG=true" >> .env
+
+
       - name: Install frontend dependencies
         working-directory: frontend
         run: npm install --legacy-peer-deps
