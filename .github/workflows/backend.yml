@@ -21,6 +21,10 @@ jobs:
           echo "USE_AI_CONTEXT=true" >> .env
           echo "USE_AI_SUMMARY=true" >> .env
           echo "USE_AI_ACTIONS=true" >> .env
+
+          echo "MONGODB_URI=${{ secrets.MONGODB_URI }}" >> .env
+          echo "MONGODB_DB=${{ secrets.MONGODB_DB }}" >> .env
+          echo "API_ENVIRONMENT=production" >> .env
       
           echo "EMAIL_FROM=ai-assistant@example.com" >> .env
           echo "SMTP_SERVER=${{ secrets.SMTP_SERVER }}" >> .env
@@ -38,6 +42,8 @@ jobs:
           echo "CLERK_SECRET_KEY=${{ secrets.CLERK_SECRET_KEY }}" >> .env
       
           echo "BASE_URL=${{ secrets.BASE_URL }}" >> .env
+
+          echo "FRONTEND_ORIGIN=${{ secrets.FRONTEND_ORIGIN }}" >> .env
 
 
       - name: Copy backend files to server
