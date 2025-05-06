@@ -128,7 +128,7 @@ function TaskList() {
       <div 
         className="space-y-4 flex flex-col items-center"
         role="region"
-        aria-label="Loading tasks"
+        aria-label="loading tasks"
       >
         <TaskCardSkeleton />
         <TaskCardSkeleton />
