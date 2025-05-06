@@ -13,6 +13,13 @@ from app.utils.email_utils import parse_forwarded_metadata
 from .duplicate_detection import is_spam_email
 
 
+def handle_spam_email(email: EmailMessage):
+    """Handles spam emails by marking them as spam and skipping task creation."""
+    email.is_spam = True
+    email.save()  # Persist the spam status in the database
+    return None  # Skip task creation
+
+
 async def map_email_to_task(
     email: EmailMessage,
     actions: Optional[List[str]] = None,
@@ -22,9 +29,7 @@ async def map_email_to_task(
     Does not insert the task into the database; caller should insert it.
     """
     if is_spam_email(email):
-        email.is_spam = True  # Mark email as spam
-        email.save()  # Save the spam status in the database
-        return None  # Skip task creation for spam emails
+        return handle_spam_email(email)
 
     logger.debug("🔄 Mapping email to task in service")
     # Try to extract original sender/subject from forwarded content

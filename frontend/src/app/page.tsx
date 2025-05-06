@@ -10,9 +10,20 @@ import { ErrorBanner } from '@/components/ErrorBanner'
 import { showToast } from '@/utils/toast'
 import { AssistantTask, MongoDocument } from '@/types/api'
 import { getCategoryIcon } from '@/utils/categoryIcon'
+import SpamAlertCard from '@/components/SpamAlertCard'
+import { fetchSpamEmails, markNotSpam, archiveSpam } from '@/services/emailService'
 import { updateTaskStatus, getOptimisticUpdate, getRevertUpdate, actionToComplete } from '@/services/taskService'
+import { SpamEmail } from '@/types/email'
 
 const TASKS_CACHE_KEY = 'cached_tasks_v1';
+
+// Mock spam data for now
+/*
+const spamEmailsOld = [
+  { id: '1', sender: "nonreply@spamco.com", subject: "Important: Update Your Info"},
+  { id: '2', sender: "winnder@lotto.biz", subject: "Congratulations! You've won a prize!" },
+]
+  */
 
 function TaskList() {
   const [tasks, setTasks] = useState<AssistantTask[]>([])
@@ -44,7 +55,7 @@ function TaskList() {
       setLoading(true)
       setError(null)
       setReadOnly(false)
-      const response = await fetch(`${process.env.NEXT_PUBLIC_API_BASE}/api/v1/tasks/?status=active`,
+      const response = await fetch(`${process.env.NEXT_PUBLIC_API_BASE}/api/v1/tasks/?status=active&spam=false`,
         {cache: 'no-store'}
       )
       if (!response.ok) {
@@ -169,9 +180,51 @@ function TaskList() {
 }
 
 export default function Page() {
+
+  const [spamEmails, setSpamEmails] = useState<SpamEmail[]>([])
+
+  useEffect(() => {
+    async function loadSpam() {
+      const emails = await fetchSpamEmails()
+      setSpamEmails(emails)
+    }
+    loadSpam()
+  }, [])
+
+  const handleMarkNotSpam = async (id: string) => {
+    try {
+      await markNotSpam(id)
+      setSpamEmails(prev => prev.filter(email => email.id !== id))
+      showToast.success("Marked as not spam")
+    } catch {
+      showToast.error("Failed to mark as not spam")
+    }
+  }
+
+  const handleArchiveSpam = async (id: string) => {
+    try {
+      await archiveSpam(id)
+      setSpamEmails(prev => prev.filter(email => email.id !== id))
+      showToast.success("Archived spam email")
+    } catch {
+      showToast.error("Failed to archive spam email")
+    }
+  }
   return (
     <ErrorBoundary>
-      <TaskList />
+      <div className="flex flex-col h-screen">
+        <div className="overflow-auto flex-1">
+          <TaskList />
+        </div>
+
+        <div className="fixed bottom-0 left-0 right-0 bg-yellow-100 text-yellow-800 p-4 shadow-md z-50">
+          <SpamAlertCard
+            flaggedEmails={spamEmails}
+            onMarkNotSpam={handleMarkNotSpam}
+            onArchiveSpam={handleArchiveSpam}
+          />
+        </div>
+      </div>
     </ErrorBoundary>
   )
 } 

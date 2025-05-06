@@ -17,76 +17,93 @@ import random
 load_dotenv(dotenv_path=os.path.join(os.path.dirname(__file__), "..", ".env"))
 
 
-async def populate_default(num_emails):
+async def populate_default(num_emails: int = 10):
+    # Define base emails as dictionaries
     base_emails = [
-        EmailMessage(
-            sender="bob@example.com",
-            subject="Quarterly report due",
-            body="Please submit by Friday.",
-        ),
-        EmailMessage(
-            sender="carol@example.com",
-            subject="Travel booking needed",
-            body="Can you book my flight to NYC?",
-        ),
-        EmailMessage(
-            sender="dave@example.com",
-            subject="Lunch meeting follow-up",
-            body="About our lunch...",
-        ),
-        EmailMessage(
-            sender="finance@example.com",
-            subject="Expense reimbursement",
-            body="Please send receipts.",
-        ),
-        EmailMessage(
-            sender="it-support@example.com",
-            subject="Laptop won't turn on",
-            body="Need help ASAP.",
-        ),
-        EmailMessage(
-            sender="spouse@example.com",
-            subject="Birthday gift ideas",
-            body="Any suggestions?",
-        ),
-        EmailMessage(
-            sender="ops@example.com",
-            subject="Urgent: server down",
-            body="Production server offline.",
-        ),
-        EmailMessage(
-            sender="sales@example.com",
-            subject="Client renewal forms",
-            body="Need signed forms.",
-        ),
-        EmailMessage(
-            sender="healthcare@example.com",
-            subject="Reminder: dentist appt",
-            body="3pm tomorrow.",
-        ),
-        EmailMessage(
-            sender="weirdguy@example.com",
-            subject="FWD: RE: URGENT",
-            body="Forwarded forwarded email.",
-        ),
+        {
+            "sender": "bob@example.com",
+            "subject": "Quarterly report due",
+            "body": "Please submit by Friday.",
+        },
+        {
+            "sender": "carol@example.com",
+            "subject": "Travel booking needed",
+            "body": "Can you book my flight to NYC?",
+        },
+        {
+            "sender": "dave@example.com",
+            "subject": "Lunch meeting follow-up",
+            "body": "About our lunch...",
+        },
+        {
+            "sender": "finance@example.com",
+            "subject": "Expense reimbursement",
+            "body": "Please send receipts.",
+        },
+        {
+            "sender": "it-support@example.com",
+            "subject": "Laptop won't turn on",
+            "body": "Need help ASAP.",
+        },
+        {
+            "sender": "spouse@example.com",
+            "subject": "Birthday gift ideas",
+            "body": "Any suggestions?",
+        },
+        {
+            "sender": "ops@example.com",
+            "subject": "Urgent: server down",
+            "body": "Production server offline.",
+        },
+        {
+            "sender": "sales@example.com",
+            "subject": "Client renewal forms",
+            "body": "Need signed forms.",
+        },
+        {
+            "sender": "healthcare@example.com",
+            "subject": "Reminder: dentist appt",
+            "body": "3pm tomorrow.",
+        },
+        {
+            "sender": "weirdguy@example.com",
+            "subject": "FWD: RE: URGENT",
+            "body": "Forwarded forwarded email.",
+        },
     ]
 
-    # Pad if needed
-    if num_emails > len(base_emails):
-        for i in range(len(base_emails), num_emails):
-            base_emails.append(
-                EmailMessage(
-                    sender=f"extra{i}@example.com",
-                    subject=f"Generated Email {i}",
-                    body=f"This is a generated email body {i}.",
-                )
-            )
-    await EmailMessage.insert_many(base_emails)
+    # Pad if more emails are needed
+    while len(base_emails) < num_emails:
+        i = len(base_emails)
+        base_emails.append(
+            {
+                "sender": f"extra{i}@example.com",
+                "subject": f"Generated Email {i}",
+                "body": f"This is a generated email body {i}.",
+            }
+        )
 
-    # Create tasks realistically
-    for email in base_emails:
-        task = await map_email_to_task(email)  # ← use your real production logic
-        await task.insert()  # ← manually insert into database (because map_email_to_task doesn't insert)
+    # Convert to EmailMessage documents
+    email_objects = [
+        EmailMessage(
+            sender=email["sender"],
+            subject=email["subject"],
+            body=email["body"],
+            recipient="you@example.com",
+            message_id=f"<msg-{i}@example.com>",
+            is_spam=random.choice([False, False, True]),
+            is_archived=False,
+        )
+        for i, email in enumerate(base_emails)
+    ]
+
+    # Insert into DB
+    await EmailMessage.insert_many(email_objects)
+
+    # Map each to a task and insert
+    for email in email_objects:
+        task = await map_email_to_task(email)
+        await task.insert()
 
 
 async def main():

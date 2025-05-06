@@ -3,7 +3,7 @@ import app.services.context_classifier as context_classifier
 from app.services.email_task_mapper import map_email_to_task
 import logging
 
-from fastapi import APIRouter, Body, Request, HTTPException, status, Depends
+from fastapi import APIRouter, Body, Request, HTTPException, status, Depends, Query
 from typing import List, Optional
 from app.models.email_message import EmailMessage
 from app.models.assistant_task import AssistantTask
@@ -134,3 +134,35 @@ async def incoming_email_webhook(
     await task.insert()
     logger.debug("✅ Webhook task created and saved")
     return {"email_id": str(email.id), "task_id": str(task.id)}
+
+
+@router.get("/spam")
+async def get_spam_emails():
+    """Fetch all emails flagged as spam."""
+    spam_emails = await EmailMessage.find(
+        {"$and": [{"is_spam": True}, {"is_archived": False}]}
+    ).to_list()
+
+    return spam_emails
+
+
+@router.patch("/{email_id}/not-spam")
+async def mark_email_as_not_spam(email_id: str):
+    """Mark a specific email as not spam."""
+    email = await EmailMessage.get(email_id)
+    if not email:
+        raise HTTPException(status_code=404, detail="Email not found")
+    email.is_spam = False
+    await email.save()
+    return {"message": "Email marked as not spam", "email_id": email_id}
+
+
+@router.patch("/{email_id}/archive")
+async def archive_email(email_id: str):
+    """Mark an email as archived (dismissed from spam view)."""
+    email = await EmailMessage.get(email_id)
+    if not email:
+        raise HTTPException(status_code=404, detail="Email not found")
+    email.is_archived = True
+    await email.save()
+    return {"message": "Email archived", "email_id": email_id}

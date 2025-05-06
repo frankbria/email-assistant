@@ -24,6 +24,9 @@ class EmailMessage(Document):
     is_spam: bool = Field(
         default=False, description="Indicates if the email is flagged as spam."
     )
+    is_archived: bool = Field(
+        default=False, description="Indicates if the email is archived."
+    )
 
     class Settings:
         name = "email_messages"

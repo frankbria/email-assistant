@@ -251,3 +251,40 @@ The duplicate detection system ensures that emails with similar or identical con
   - The system is designed to handle large volumes of emails efficiently by limiting the scope of fuzzy matching and leveraging database optimizations.
 
 For more details, see the implementation in `backend/app/services/duplicate_detection.py`.
+
+## 🛡️ Spam Filtering
+
+The AI Email Assistant includes a spam filtering system to ensure that irrelevant or spammy emails do not clutter your task list. Here's how it works:
+
+### How Spam Filtering Works
+1. **Keyword-Based Detection**:
+   - The system uses a predefined list of spam keywords (e.g., "free money," "urgent offer") to identify spam emails.
+   - Emails containing these keywords in their subject or body are flagged as spam.
+
+2. **Task Skipping**:
+   - Emails flagged as spam are not converted into tasks. Instead, they are stored in the database with a `is_spam` flag set to `true`.
+
+3. **User Preferences**:
+   - Spam filtering can be toggled on or off via the Email Settings page in the UI.
+
+### How to Mark Emails as Not Spam
+1. Navigate to the **Spam Alert Card** in the UI.
+2. Review the list of emails flagged as spam.
+3. Click the **Not Spam** button next to an email to mark it as not spam.
+4. The email will be removed from the spam list and will be eligible for task creation.
+
+### API Endpoints for Spam Management
+- **Fetch Spam Emails**:
+  - `GET /api/v1/emails/spam`
+  - Returns a list of all emails flagged as spam.
+
+- **Mark Email as Not Spam**:
+  - `PATCH /api/v1/emails/{email_id}/not-spam`
+  - Marks a specific email as not spam and removes the spam flag.
+
+### Example Workflow
+1. An email with the subject "Win a prize" is received.
+2. The system detects spam keywords and flags the email as spam.
+3. The email appears in the Spam Alert Card in the UI.
+4. The user reviews the email and clicks "Not Spam."
+5. The email is unflagged and processed for task creation.

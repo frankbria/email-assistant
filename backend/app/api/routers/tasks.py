@@ -1,9 +1,10 @@
 # backend/app/api/routers/tasks.py
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Query
 from typing import List, Optional
 from app.models.assistant_task import AssistantTask
 from beanie import PydanticObjectId
+from beanie.operators import Eq
 from pydantic import BaseModel, Field
 import app.services.context_classifier as context_classifier
 import logging
@@ -25,17 +26,29 @@ class TaskUpdate(BaseModel):
 
 
 @router.get("/")
-async def get_tasks():
-    # Fetch all non-done tasks with their associated emails
+async def get_tasks(status: str = "active", spam: Optional[bool] = Query(None)):
     logger.debug("🔄 Fetching active tasks")
-    tasks = await AssistantTask.find(AssistantTask.status != "done").to_list()
 
-    # Fill missing context via classifier using dynamic patchable module
+    filters = []
+
+    if status == "active":
+        filters.append(AssistantTask.status != "done")
+    else:
+        filters.append(AssistantTask.status == status)
+
+    if spam is not None:
+        filters.append(Eq("email.is_spam", spam))
+
+    query = AssistantTask.find(*filters)
+
+    tasks = await query.to_list()
+
     for t in tasks:
         if not t.context:
             t.context = await context_classifier.classify_context(
                 t.subject or t.email.subject, t.email.body
             )
+
     return tasks
 
 
