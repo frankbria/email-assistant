@@ -132,7 +132,9 @@ def client():
 async def async_client():
     """Create an async test client for route tests."""
     async with httpx.AsyncClient(
-        transport=httpx.ASGITransport(app=app), base_url="http://test"
+        transport=httpx.ASGITransport(app=app),
+        base_url="http://test",
+        follow_redirects=True,
     ) as client:
 
         yield client
@@ -263,4 +265,23 @@ def mock_settings_scenario(monkeypatch):
         use_ai_context_classification: bool = False
 
     monkeypatch.setattr("app.config.get_settings", lambda: MockSettings())
+    yield
+
+
+@pytest.fixture(autouse=True)
+def auto_inject_user_id(monkeypatch):
+    def wrap_init(orig_init):
+        def _init(self, *args, **kwargs):
+            # Inject user_id into the constructor
+            if "user_id" not in kwargs or kwargs["user_id"] is None:
+                kwargs["user_id"] = get_settings().DEFAULT_USER_ID
+            return orig_init(self, *args, **kwargs)
+
+        return _init
+
+    monkeypatch.setattr(EmailMessage, "__init__", wrap_init(EmailMessage.__init__))
+    monkeypatch.setattr(AssistantTask, "__init__", wrap_init(AssistantTask.__init__))
+    monkeypatch.setattr(
+        WebhookSecurity, "__init__", wrap_init(WebhookSecurity.__init__)
+    )
     yield

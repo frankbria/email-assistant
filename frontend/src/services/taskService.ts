@@ -2,6 +2,30 @@
 import { AssistantTask } from '@/types/api'
 import { showToast } from '@/utils/toast'
 
+// Helper to get current user_id from localStorage or default
+function getCurrentUserId(): string {
+  if (typeof window === 'undefined') return 'default';
+  return localStorage.getItem('current_user_id') || 'default';
+}
+
+// Helper to normalize MongoDB document ID
+interface MongoDocument {
+  _id?: string;
+  id?: string;
+}
+
+function normalizeMongoId(doc: MongoDocument): string {
+  // MongoDB returns _id which we need to map to id for frontend consistency
+  if (doc._id) {
+    return doc._id;
+  } else if (doc.id) {
+    return doc.id;
+  }
+  // This should never happen with proper server responses
+  console.error('Document missing both _id and id:', doc);
+  return `generated-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`;
+}
+
 // Map actions to valid status values
 export function actionToComplete(): string {
   // For now, all actions mark the task as done
@@ -45,10 +69,46 @@ export function getActionType(action: string): string {
   return 'pending'
 }
 
+export async function fetchTasks(status: string = 'active', spamFilter: boolean = false): Promise<AssistantTask[]> {
+  const userId = getCurrentUserId();
+  try {
+    const response = await fetch(
+      `${process.env.NEXT_PUBLIC_API_BASE}/api/v1/tasks/?status=${status}&spam=${spamFilter}&user_id=${userId}`,
+      {cache: 'no-store'}
+    );
+
+    if (!response.ok) {
+      throw new Error(`Failed to fetch tasks (${response.status})`);
+    }
+    
+    const data = await response.json();
+    return data.map((task: AssistantTask) => {
+      // Normalize the MongoDB ID
+      const normalizedId = normalizeMongoId(task);
+      
+      return {
+        ...task,
+        id: normalizedId,
+        user_id: task.user_id || userId,
+        // Ensure the email also has a normalized ID
+        email: task.email ? {
+          ...task.email,
+          id: normalizeMongoId(task.email)
+        } : task.email
+      };
+    });
+  } catch (error) {
+    const errorMessage = error instanceof Error ? error.message : 'Failed to fetch tasks';
+    showToast.error(errorMessage);
+    throw error;
+  }
+}
+
 export async function updateTaskStatus(taskId: string, action: string): Promise<void> {
   try {
-    const status = actionToComplete()
-    const response = await fetch(`${process.env.NEXT_PUBLIC_API_BASE}/api/v1/tasks/${taskId}`, {
+    const status = actionToComplete();
+    const userId = getCurrentUserId();
+    const response = await fetch(`${process.env.NEXT_PUBLIC_API_BASE}/api/v1/tasks/${taskId}?user_id=${userId}`, {
       method: 'PATCH',
       headers: {
         'Content-Type': 'application/json',
@@ -96,4 +156,4 @@ export function getRevertUpdate(tasks: AssistantTask[], taskId: string): Assista
       ? { ...task, status: 'pending' }
       : task
   )
-} 
+}

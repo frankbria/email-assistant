@@ -31,11 +31,20 @@ async def is_duplicate_email(email: EmailMessage) -> bool:
     """
     Returns True if duplicate, False otherwise.
     Attaches signature to email if unique.
+    Only checks for duplicates within the same user's emails.
     """
+    # Ensure we have a user_id to filter by
+    if not hasattr(email, "user_id") or not email.user_id:
+        # Default to a safe behavior - don't mark as duplicate if no user_id
+        return False
+
     # 1) message_id exact match
     if email.message_id:
         existing = await EmailMessage.find_one(
-            EmailMessage.message_id == email.message_id
+            {
+                "message_id": email.message_id,
+                "user_id": email.user_id,  # Filter by user_id
+            }
         )
         if existing:
             return True
@@ -43,13 +52,14 @@ async def is_duplicate_email(email: EmailMessage) -> bool:
     # 2) compute exact content signature
     hash_input = (email.sender + email.subject + email.body).encode("utf-8")
     exact_sig = hashlib.sha256(hash_input).hexdigest()
-    existing = await EmailMessage.find_one(EmailMessage.signature == exact_sig)
+    existing = await EmailMessage.find_one(
+        {"signature": exact_sig, "user_id": email.user_id}  # Filter by user_id
+    )
     if existing:
         return True
 
-    # 3) fuzzy match subject+body against recent emails
-    #    (you may want to limit the query scope by time or user)
-    recent = await EmailMessage.find().limit(100).to_list()
+    # 3) fuzzy match subject+body against recent emails from the same user
+    recent = await EmailMessage.find({"user_id": email.user_id}).limit(100).to_list()
     for other in recent:
         subj_sim = SequenceMatcher(
             None, email.subject or "", other.subject or ""

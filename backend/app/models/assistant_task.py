@@ -4,6 +4,7 @@ from beanie import Document
 from pydantic import Field, model_validator
 from typing import Optional, List
 from app.models.email_message import EmailMessage
+from pymongo import IndexModel, ASCENDING
 
 
 class AssistantTask(Document):
@@ -14,6 +15,7 @@ class AssistantTask(Document):
     summary: Optional[str] = None
     actions: List[str] = Field(default_factory=lambda: ["Reply", "Forward", "Archive"])
     status: str = Field(default="pending")
+    user_id: str = Field(description="ID of the user who owns this task")
     action_taken: Optional[str] = Field(
         default=None, description="The action that was taken to complete this task"
     )
@@ -44,5 +46,15 @@ class AssistantTask(Document):
             self.subject = self.email.subject
         return self
 
+    @model_validator(mode="after")
+    def ensure_consistent_user_id(self) -> "AssistantTask":
+        """
+        After validation, ensure user_id matches the linked email's user_id
+        """
+        if hasattr(self, "email") and hasattr(self.email, "user_id"):
+            self.user_id = self.email.user_id
+        return self
+
     class Settings:
         name = "assistant_tasks"
+        indexes = [IndexModel([("user_id", ASCENDING)])]  # Corrected index format

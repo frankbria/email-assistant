@@ -1,6 +1,6 @@
 # backend/app/api/routers/tasks.py
 
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from typing import List, Optional
 from app.models.assistant_task import AssistantTask
 from beanie import PydanticObjectId
@@ -8,6 +8,7 @@ from beanie.operators import Eq
 from pydantic import BaseModel, Field
 import app.services.context_classifier as context_classifier
 import logging
+from app.utils.user_utils import get_current_user_id
 
 logger = logging.getLogger(__name__)
 
@@ -26,10 +27,19 @@ class TaskUpdate(BaseModel):
 
 
 @router.get("/")
-async def get_tasks(status: str = "active", spam: Optional[bool] = Query(None)):
+async def get_tasks(
+    request: Request, status: str = "active", spam: Optional[bool] = Query(None)
+):
     logger.debug("🔄 Fetching active tasks")
 
-    filters = []
+    # Get the current user ID
+    user_id = await get_current_user_id(request)
+
+    filters = [
+        # Filter tasks by the current user_id
+        AssistantTask.user_id
+        == user_id
+    ]
 
     if status == "active":
         filters.append(AssistantTask.status != "done")
@@ -53,14 +63,20 @@ async def get_tasks(status: str = "active", spam: Optional[bool] = Query(None)):
 
 
 @router.patch("/{task_id}", response_model=AssistantTask)
-async def update_task(task_id: str, update: TaskUpdate):
+async def update_task(task_id: str, update: TaskUpdate, request: Request):
     try:
         logger.debug(f"🔄 Updating task {task_id} to status: {update.status}")
 
-        # Convert string ID to ObjectId and find task
-        task = await AssistantTask.get(PydanticObjectId(task_id))
+        # Get the current user ID
+        user_id = await get_current_user_id(request)
+
+        # Convert string ID to ObjectId and find task, filtering by user_id
+        task = await AssistantTask.find_one(
+            {"_id": PydanticObjectId(task_id), "user_id": user_id}
+        )
+
         if not task:
-            logger.error(f"❌ Task {task_id} not found")
+            logger.error(f"❌ Task {task_id} not found for user {user_id}")
             raise HTTPException(status_code=404, detail="Task not found")
 
         # Validate status

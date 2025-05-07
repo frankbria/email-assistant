@@ -18,6 +18,9 @@ load_dotenv(dotenv_path=os.path.join(os.path.dirname(__file__), "..", ".env"))
 
 
 async def populate_default(num_emails: int = 10):
+    # Define test users - will create emails for each test user
+    test_users = ["default", "demo1", "demo2"]
+
     # Define base emails as dictionaries
     base_emails = [
         {
@@ -83,27 +86,33 @@ async def populate_default(num_emails: int = 10):
             }
         )
 
-    # Convert to EmailMessage documents
-    email_objects = [
-        EmailMessage(
-            sender=email["sender"],
-            subject=email["subject"],
-            body=email["body"],
-            recipient="you@example.com",
-            message_id=f"<msg-{i}@example.com>",
-            is_spam=random.choice([False, False, True]),
-            is_archived=False,
-        )
-        for i, email in enumerate(base_emails)
-    ]
+    # Now create emails for each test user
+    for user_id in test_users:
+        # Convert to EmailMessage documents for this user
+        email_objects = [
+            EmailMessage(
+                sender=email["sender"],
+                subject=email["subject"],
+                body=email["body"],
+                recipient="you@example.com",
+                message_id=f"<msg-{user_id}-{i}@example.com>",
+                is_spam=random.choice([False, False, True]),
+                is_archived=False,
+                user_id=user_id,  # Assign user_id to each email
+            )
+            for i, email in enumerate(base_emails)
+        ]
 
-    # Insert into DB
-    await EmailMessage.insert_many(email_objects)
+        # Insert into DB
+        await EmailMessage.insert_many(email_objects)
 
-    # Map each to a task and insert
-    for email in email_objects:
-        task = await map_email_to_task(email)
-        await task.insert()
+        # Map each to a task and insert
+        for email in email_objects:
+            task = await map_email_to_task(email)
+            if task:  # Some emails might be marked as spam and return None
+                await task.insert()
+
+        print(f"Created {len(email_objects)} emails for user: {user_id}")
 
 
 async def main():
@@ -127,8 +136,11 @@ async def main():
     else:
         raise ValueError(f"Unknown TEST_DATA_SCENARIO '{scenario}'")
 
+    total_emails = await EmailMessage.find_all().count()
+    total_tasks = await AssistantTask.find_all().count()
+
     print(
-        f"Database populated with {num_emails} emails/tasks for scenario '{scenario}'."
+        f"Database populated with {total_emails} total emails and {total_tasks} total tasks for scenario '{scenario}'."
     )
 
 

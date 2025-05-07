@@ -5,6 +5,7 @@ export interface EmailMessage {
   sender: string
   recipient?: string
   context?: string
+  user_id: string
 }
 
 export interface AssistantTask {
@@ -15,6 +16,7 @@ export interface AssistantTask {
   actions: string[]
   status: string
   suggested_actions?: string[]
+  user_id: string
 }
 
 export type APIResponse<T> = {
@@ -41,4 +43,4 @@ export interface WebhookSecurity {
   api_key: string;
   allowed_ips: string[];
   active: boolean;
-} 
+}

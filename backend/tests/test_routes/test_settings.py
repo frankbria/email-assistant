@@ -2,7 +2,7 @@
 import pytest
 from fastapi.testclient import TestClient
 from app.models.user_settings import UserSettings
-from app.api.routers.settings import DEFAULT_USER_ID
+from app.utils.user_utils import DEFAULT_USER_ID
 from app.main import app
 
 client = TestClient(app)

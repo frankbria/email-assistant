@@ -15,6 +15,7 @@ from app.services.duplicate_detection import is_duplicate_email
 from app.utils.logging import log_security_event, track_and_alert_failed_attempt
 from app.middleware import limiter, RATE_LIMIT
 from app.config import get_settings
+from app.utils.user_utils import get_current_user_id
 
 router = APIRouter(prefix="/api/v1/email", tags=["email"])
 
@@ -23,14 +24,18 @@ logger = logging.getLogger(__name__)
 
 @router.post("/")
 async def create_email_task(
+    request: Request,
     sender: str = Body(..., embed=True),
     subject: str = Body(..., embed=True),
     body: str = Body(..., embed=True),
     actions: Optional[List[str]] = Body(None, embed=True),
 ):
     logger.debug("🔄 Creating email task in API")
+    # Get the current user ID
+    user_id = await get_current_user_id(request)
+
     # Create and save the email, then map to a task
-    email = EmailMessage(subject=subject, sender=sender, body=body)
+    email = EmailMessage(subject=subject, sender=sender, body=body, user_id=user_id)
     await email.insert()
     logger.debug("✅ Email created and saved")
 
@@ -116,8 +121,11 @@ async def incoming_email_webhook(
         details="Webhook access granted",
     )
 
+    # Get the current user ID - for webhooks, can be passed as a query param
+    user_id = await get_current_user_id(request)
+
     # Create the email object and check for duplicates
-    email = EmailMessage(subject=subject, sender=sender, body=body)
+    email = EmailMessage(subject=subject, sender=sender, body=body, user_id=user_id)
     # Skip or flag duplicates
     if await is_duplicate_email(email):
         logger.info(f"Duplicate email detected: message_id={email.message_id}")
@@ -137,19 +145,25 @@ async def incoming_email_webhook(
 
 
 @router.get("/spam")
-async def get_spam_emails():
+async def get_spam_emails(request: Request):
     """Fetch all emails flagged as spam."""
+    user_id = await get_current_user_id(request)
+
     spam_emails = await EmailMessage.find(
-        {"$and": [{"is_spam": True}, {"is_archived": False}]}
+        {"$and": [{"is_spam": True}, {"is_archived": False}, {"user_id": user_id}]}
     ).to_list()
 
     return spam_emails
 
 
 @router.patch("/{email_id}/not-spam")
-async def mark_email_as_not_spam(email_id: str):
+async def mark_email_as_not_spam(email_id: str, request: Request):
     """Mark a specific email as not spam."""
-    email = await EmailMessage.get(email_id)
+    user_id = await get_current_user_id(request)
+
+    email = await EmailMessage.find_one(
+        {"_id": PydanticObjectId(email_id), "user_id": user_id}
+    )
     if not email:
         raise HTTPException(status_code=404, detail="Email not found")
     email.is_spam = False
@@ -158,9 +172,13 @@ async def mark_email_as_not_spam(email_id: str):
 
 
 @router.patch("/{email_id}/archive")
-async def archive_email(email_id: str):
+async def archive_email(email_id: str, request: Request):
     """Mark an email as archived (dismissed from spam view)."""
-    email = await EmailMessage.get(email_id)
+    user_id = await get_current_user_id(request)
+
+    email = await EmailMessage.find_one(
+        {"_id": PydanticObjectId(email_id), "user_id": user_id}
+    )
     if not email:
         raise HTTPException(status_code=404, detail="Email not found")
     email.is_archived = True

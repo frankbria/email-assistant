@@ -21,6 +21,7 @@ class EmailMessage(Document):
     context: Optional[str] = None
     message_id: Optional[str] = Field(None)
     signature: Optional[str] = Field(None)
+    user_id: str = Field(description="ID of the user who owns this email")
     is_spam: bool = Field(
         default=False, description="Indicates if the email is flagged as spam."
     )
@@ -33,4 +34,5 @@ class EmailMessage(Document):
         indexes = [
             IndexModel([("subject", ASCENDING), ("sender", ASCENDING)]),
             IndexModel([("signature", ASCENDING)]),
+            IndexModel([("user_id", ASCENDING)]),
         ]

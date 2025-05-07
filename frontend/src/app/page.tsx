@@ -8,22 +8,20 @@ import { EmptyState } from '@/components/EmptyState'
 import { ErrorBoundary } from '@/components/ErrorBoundary'
 import { ErrorBanner } from '@/components/ErrorBanner'
 import { showToast } from '@/utils/toast'
-import { AssistantTask, MongoDocument } from '@/types/api'
+import { AssistantTask } from '@/types/api'
 import { getCategoryIcon } from '@/utils/categoryIcon'
 import SpamAlertCard from '@/components/SpamAlertCard'
 import { fetchSpamEmails, markNotSpam, archiveSpam } from '@/services/emailService'
-import { updateTaskStatus, getOptimisticUpdate, getRevertUpdate, actionToComplete } from '@/services/taskService'
+import { 
+  updateTaskStatus, 
+  getOptimisticUpdate, 
+  getRevertUpdate, 
+  actionToComplete,
+  fetchTasks
+} from '@/services/taskService'
 import { SpamEmail } from '@/types/email'
 
 const TASKS_CACHE_KEY = 'cached_tasks_v1';
-
-// Mock spam data for now
-/*
-const spamEmailsOld = [
-  { id: '1', sender: "nonreply@spamco.com", subject: "Important: Update Your Info"},
-  { id: '2', sender: "winnder@lotto.biz", subject: "Congratulations! You've won a prize!" },
-]
-  */
 
 function TaskList() {
   const [tasks, setTasks] = useState<AssistantTask[]>([])
@@ -35,7 +33,7 @@ function TaskList() {
   const isOnline = typeof navigator !== 'undefined' ? navigator.onLine : true;
 
   // Fetch tasks from API or cache
-  const fetchTasks = useCallback(async () => {
+  const loadTasks = useCallback(async () => {
     if (!isOnline) {
       // Offline: load from cache
       const cached = localStorage.getItem(TASKS_CACHE_KEY)
@@ -55,17 +53,10 @@ function TaskList() {
       setLoading(true)
       setError(null)
       setReadOnly(false)
-      const response = await fetch(`${process.env.NEXT_PUBLIC_API_BASE}/api/v1/tasks/?status=active&spam=false`,
-        {cache: 'no-store'}
-      )
-      if (!response.ok) {
-        throw new Error(`Failed to fetch tasks (${response.status})`)
-      }
-      const data = await response.json()
-      const tasksWithIds = data.map((task: AssistantTask & MongoDocument) => ({
-        ...task,
-        id: task.id || task._id || `task-${Math.random().toString(36).substring(2, 11)}`
-      }))
+      
+      // Use the fetchTasks service function that includes user_id
+      const tasksWithIds = await fetchTasks('active', false)
+      
       setTasks(tasksWithIds)
       // Cache tasks for offline use
       localStorage.setItem(TASKS_CACHE_KEY, JSON.stringify(tasksWithIds))
@@ -81,15 +72,15 @@ function TaskList() {
   }, [isOnline])
 
   useEffect(() => {
-    fetchTasks()
+    loadTasks()
     // Listen for online/offline events to update readOnly state
     function handleOnline() {
       setReadOnly(false)
-      fetchTasks()
+      loadTasks()
     }
     function handleOffline() {
       setReadOnly(true)
-      fetchTasks()
+      loadTasks()
     }
     window.addEventListener('online', handleOnline)
     window.addEventListener('offline', handleOffline)
@@ -97,11 +88,11 @@ function TaskList() {
       window.removeEventListener('online', handleOnline)
       window.removeEventListener('offline', handleOffline)
     }
-  }, [fetchTasks])
+  }, [loadTasks])
 
   const handleRetry = async () => {
     showToast.info('Retrying task fetch...')
-    await fetchTasks()
+    await loadTasks()
   }
 
   const handleTaskAction = async (taskId: string, action: string) => {
@@ -115,7 +106,7 @@ function TaskList() {
       await updateTaskStatus(taskId, action)
       const status = actionToComplete()
       if (status !== 'done') {
-        await fetchTasks()
+        await loadTasks()
       }
     } catch {
       setTasks(prevTasks => getRevertUpdate(prevTasks, taskId))
@@ -149,7 +140,7 @@ function TaskList() {
           actionLabel="Refresh tasks"
           onAction={() => {
             showToast.info('Refreshing tasks...')
-            fetchTasks()
+            loadTasks()
           }}
         />
       </div>
@@ -227,4 +218,4 @@ export default function Page() {
       </div>
     </ErrorBoundary>
   )
-} 
+}

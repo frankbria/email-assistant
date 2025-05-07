@@ -27,6 +27,9 @@ class Settings(BaseSettings):
         "API_ENVIRONMENT", "test" if "pytest" in sys.modules else "development"
     )
 
+    # User settings
+    DEFAULT_USER_ID: str = os.getenv("DEFAULT_USER_ID", "default")
+
     # email settings
     duplicate_threshold: float = os.getenv("DUPLICATE_THRESHOLD", 0.9)
 

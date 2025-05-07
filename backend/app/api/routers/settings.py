@@ -1,11 +1,12 @@
 # backend/app/api/routers/settings.py
 
-from fastapi import APIRouter, HTTPException, Depends, Body
+from fastapi import APIRouter, HTTPException, Depends, Body, Request
 from typing import Optional
 from app.models.user_settings import UserSettings
 from pydantic import BaseModel, Field, ValidationError
 from beanie import PydanticObjectId
 from beanie.operators import Eq
+from app.utils.user_utils import get_current_user_id
 
 router = APIRouter(prefix="/api/v1/settings", tags=["settings"])
 
@@ -17,12 +18,9 @@ class UpdateEmailSettings(BaseModel):
     skip_low_priority_emails: Optional[bool] = Field(None)
 
 
-# For now, use a default user_id (single-user mode)
-DEFAULT_USER_ID = "default_user"
-
-
 @router.get("/email", response_model=UserSettings)
-async def get_email_settings(user_id: str = DEFAULT_USER_ID):
+async def get_email_settings(request: Request):
+    user_id = await get_current_user_id(request)
     settings = await UserSettings.find_one(UserSettings.user_id == user_id)
     if not settings:
         # Sensible defaults for first-time users
@@ -32,9 +30,11 @@ async def get_email_settings(user_id: str = DEFAULT_USER_ID):
 
 
 @router.patch("/email", response_model=UserSettings)
-async def update_email_settings(payload: UpdateEmailSettings = Body(...)):
+async def update_email_settings(
+    request: Request, payload: UpdateEmailSettings = Body(...)
+):
     try:
-        user_id = DEFAULT_USER_ID
+        user_id = await get_current_user_id(request)
         update_data = payload.model_dump(exclude_unset=True)
         if not update_data:
             raise HTTPException(
