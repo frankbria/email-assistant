@@ -21,12 +21,16 @@ jobs:
           echo "USE_AI_CONTEXT=true" >> .env
           echo "USE_AI_SUMMARY=true" >> .env
           echo "USE_AI_ACTIONS=true" >> .env
+
+          echo "MONGODB_URI=${{ secrets.MONGODB_URI }}" >> .env
+          echo "MONGODB_DB=${{ env.MONGODB_DB }}" >> .env
+          echo "API_ENVIRONMENT=production" >> .env
       
           echo "EMAIL_FROM=ai-assistant@example.com" >> .env
-          echo "SMTP_SERVER=${{ secrets.SMTP_SERVER }}" >> .env
+          echo "SMTP_SERVER=${{ env.SMTP_SERVER }}" >> .env
           echo "SMTP_PORT=587" >> .env
-          echo "SMTP_USERNAME=${{ secrets.SMTP_USERNAME }}" >> .env
-          echo "SMTP_PASSWORD=${{ secrets.SMTP_PASSWORD }}" >> .env
+          echo "SMTP_USERNAME=${{ env.SMTP_USERNAME }}" >> .env
+          echo "SMTP_PASSWORD=${{ env.SMTP_PASSWORD }}" >> .env
       
           echo "WEBHOOK_RATE_LIMIT=500/minute" >> .env
           echo "DEFAULT_DUPLICATE_THRESHOLD=0.9" >> .env
@@ -37,7 +41,9 @@ jobs:
           echo "SENDGRID_API_KEY=${{ secrets.SENDGRID_API_KEY }}" >> .env
           echo "CLERK_SECRET_KEY=${{ secrets.CLERK_SECRET_KEY }}" >> .env
       
-          echo "BASE_URL=${{ secrets.BASE_URL }}" >> .env
+          echo "BASE_URL=${{ env.BASE_URL }}" >> .env
+
+          echo "FRONTEND_ORIGIN=${{ env.FRONTEND_ORIGIN }}" >> .env
 
 
       - name: Copy backend files to server

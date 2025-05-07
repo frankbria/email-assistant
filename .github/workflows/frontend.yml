@@ -18,6 +18,15 @@ jobs:
         with:
           node-version: '18'
 
+      - name: Create .env file
+        working-directory: frontend
+        run: |
+          echo "NEXT_PUBLIC_API_BASE=${{ env.NEXT_PUBLIC_API_BASE }}" >> .env
+          echo "NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY=${{ env.NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY }}" >> .env
+          echo "CLERK_SECRET_KEY=${{ secrets.CLERK_SECRET_KEY }}" >> .env
+          echo "NEXT_PUBLIC_DEBUG=true" >> .env
+
+
       - name: Install frontend dependencies
         working-directory: frontend
         run: npm install --legacy-peer-deps
@@ -32,7 +41,7 @@ jobs:
           host: ${{ secrets.AWS_DEV_HOST }}
           username: ${{ secrets.AWS_DEV_USER }}
           key: ${{ secrets.AWS_SSH_KEY }}
-          source: "frontend"
+          source: "frontend/**"
           target: "/home/ubuntu/apps/nodejs/email-assistant-frontend-dev"
           strip_components: 1
 
