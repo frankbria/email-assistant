@@ -1,4 +1,3 @@
-/* eslint-disable @typescript-eslint/no-explicit-any */
 // frontend/src/services/taskService.ts
 import { AssistantTask, RawMongoTask } from '@/types/api'
 import { ObjectId } from 'mongodb'
