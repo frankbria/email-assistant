@@ -26,8 +26,8 @@ logger = logging.getLogger(__name__)
 async def create_email_task(
     request: Request,
     sender: str = Body(..., embed=True),
-    subject: str = Body(..., embed=True),
-    body: str = Body(..., embed=True),
+    subject: str = Body("", embed=True),  # Default to empty string instead of required
+    body: str = Body("", embed=True),  # Default to empty string instead of required
     actions: Optional[List[str]] = Body(None, embed=True),
 ):
     logger.debug("🔄 Creating email task in API")
@@ -52,8 +52,8 @@ async def create_email_task(
 async def incoming_email_webhook(
     request: Request,
     sender: str = Body(..., embed=True),
-    subject: str = Body(..., embed=True),
-    body: str = Body(..., embed=True),
+    subject: str = Body("", embed=True),  # Default to empty string instead of required
+    body: str = Body("", embed=True),  # Default to empty string instead of required
     actions: Optional[List[str]] = Body(None, embed=True),
 ):
     api_key = request.headers.get("x-api-key")

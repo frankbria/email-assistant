@@ -8,6 +8,7 @@ import { render, screen, act } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { ToastContainer } from 'react-toastify'
 import Page from '@/app/page'
+import { createEmail } from 'services/emailService'
 
 // Mock fetch globally
 const mockFetch = vi.fn()
@@ -28,7 +29,7 @@ beforeAll(() => {
       dispatchEvent: () => false,
     }),
   });
-})
+});
 
 const renderPage = () => {
   return render(
@@ -104,18 +105,16 @@ describe('Email Task Management Page', () => {
     expect(errorMsg).toBeInTheDocument()
   })
 
-  it("shows loading state while fetching tasks", async () => {
-  vi.mock('services/emailService', () => ({
-    fetchSpamEmails: vi.fn(() => new Promise(() => {})),
-  }));
+  it("shows loading state while fetching tasks", () => {
+    // Simulate fetch never resolving to trigger loading state
+    mockFetch.mockImplementation(() => new Promise(() => {}));
 
-  render(<Page />);
+    renderPage();
 
-  expect(
-    screen.getByRole("region", { name: /loading tasks/i })
-  ).toBeInTheDocument();
-});
-
+    expect(
+      screen.getByRole("region", { name: /loading tasks/i })
+    ).toBeInTheDocument();
+  });
 
   it('opens dropdown and shows suggested actions', async () => {
     mockFetch.mockResolvedValueOnce({
@@ -147,5 +146,79 @@ describe('Email Task Management Page', () => {
     })
 
     expect(await screen.findByText(/reply/i)).toBeInTheDocument()
+  })
+  
+  it('shows new task in the UI after email submission', async () => {
+    // Mock initial empty task list
+    mockFetch.mockResolvedValueOnce({
+      ok: true,
+      json: async () => []
+    })
+    
+    // Render the page
+    await act(async () => {
+      renderPage()
+    })
+    
+    // Verify empty state is shown
+    const emptyMsg = await screen.findByText(/no tasks are currently available\./i)
+    expect(emptyMsg).toBeInTheDocument()
+    
+    // Mock email creation response
+    const newEmail = {
+      id: 'email-123',
+      subject: 'New Meeting Request',
+      sender: 'client@example.com',
+      body: 'Can we schedule a meeting next week?'
+    }
+    
+    const newTask = {
+      id: 'task-123',
+      email: newEmail,
+      context: 'Scheduling',
+      summary: 'Client requests meeting next week',
+      actions: ['Schedule', 'Reply', 'Decline'],
+      status: 'pending'
+    }
+    
+    // Mock the email creation API call
+    mockFetch.mockResolvedValueOnce({
+      ok: true,
+      json: async () => newEmail
+    })
+    
+    // Mock the subsequent task fetch that includes our new task
+    mockFetch.mockResolvedValueOnce({
+      ok: true,
+      json: async () => [newTask]
+    })
+    
+    // Simulate creating an email (normally triggered by a form submission)
+    await act(async () => {
+      await createEmail({
+        subject: 'New Meeting Request',
+        sender: 'client@example.com',
+        body: 'Can we schedule a meeting next week?'
+      })
+    })
+    
+    // We need to trigger a refetch of tasks
+    // In a real app, this might happen automatically via a hook or event
+    // For testing, we'll simulate component refresh
+    await act(async () => {
+      renderPage()
+    })
+    
+    // Verify the new task appears in the UI
+    const taskSummary = await screen.findByText(/client requests meeting next week/i)
+    expect(taskSummary).toBeInTheDocument()
+    
+    // Verify the suggested actions are available
+    const actionButton = await screen.findByRole('button', { name: /actions/i })
+    await act(async () => {
+      await userEvent.click(actionButton)
+    })
+    
+    expect(await screen.findByText(/schedule/i)).toBeInTheDocument()
   })
 })
