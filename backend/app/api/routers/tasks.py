@@ -26,7 +26,7 @@ class TaskUpdate(BaseModel):
     )
 
 
-@router.get("/")
+@router.get("/", response_model=List[AssistantTask])
 async def get_tasks(
     request: Request, status: str = "active", spam: Optional[bool] = Query(None)
 ):
@@ -49,11 +49,16 @@ async def get_tasks(
     if spam is not None:
         filters.append(Eq("email.is_spam", spam))
 
-    query = AssistantTask.find(*filters)
+    # filters.append(AssistantTask.user_id == user_id)
+
+    query = AssistantTask.find(*filters, fetch_links=["email"])
 
     tasks = await query.to_list()
 
     for t in tasks:
+        await t.fetch_all_links()
+        await t.fetch_link(AssistantTask.email)
+
         if not t.context:
             t.context = await context_classifier.classify_context(
                 t.subject or t.email.subject, t.email.body

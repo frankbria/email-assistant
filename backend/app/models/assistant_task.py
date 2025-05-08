@@ -1,6 +1,6 @@
 # backend/app/models/assistant_task.py
 
-from beanie import Document
+from beanie import Document, WriteRules, Link
 from pydantic import Field, model_validator
 from typing import Optional, List
 from app.models.email_message import EmailMessage
@@ -8,7 +8,7 @@ from pymongo import IndexModel, ASCENDING
 
 
 class AssistantTask(Document):
-    email: EmailMessage = Field(...)
+    email: Link[EmailMessage]
     sender: Optional[str] = None
     subject: Optional[str] = None
     context: Optional[str] = None
@@ -57,4 +57,5 @@ class AssistantTask(Document):
 
     class Settings:
         name = "assistant_tasks"
+        link_rule = WriteRules.WRITE
         indexes = [IndexModel([("user_id", ASCENDING)])]  # Corrected index format

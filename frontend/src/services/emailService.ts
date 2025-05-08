@@ -1,12 +1,8 @@
 // src/services/emailService.ts
 
-const API_BASE_URL = process.env.NEXT_PUBLIC_API_BASE;
+import { getCurrentUserId } from './userService';
 
-// Helper to get current user_id from localStorage or default
-function getCurrentUserId(): string {
-  if (typeof window === 'undefined') return 'default';
-  return localStorage.getItem('current_user_id') || 'default';
-}
+const API_BASE_URL = process.env.NEXT_PUBLIC_API_BASE;
 
 export async function fetchSpamEmails() {
   try {

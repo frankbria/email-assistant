@@ -1,30 +1,24 @@
+/* eslint-disable @typescript-eslint/no-explicit-any */
 // frontend/src/services/taskService.ts
-import { AssistantTask } from '@/types/api'
+import { AssistantTask, RawMongoTask } from '@/types/api'
+import { ObjectId } from 'mongodb'
 import { showToast } from '@/utils/toast'
-
-// Helper to get current user_id from localStorage or default
-function getCurrentUserId(): string {
-  if (typeof window === 'undefined') return 'default';
-  return localStorage.getItem('current_user_id') || 'default';
-}
+import { getCurrentUserId } from './userService'
 
 // Helper to normalize MongoDB document ID
-interface MongoDocument {
-  _id?: string;
-  id?: string;
-}
-
-function normalizeMongoId(doc: MongoDocument): string {
-  // MongoDB returns _id which we need to map to id for frontend consistency
+function normalizeMongoId(doc: { _id?: string | ObjectId; id?: string }): string {
   if (doc._id) {
-    return doc._id;
-  } else if (doc.id) {
+    // make sure it's a plain string
+    return typeof doc._id === "string" ? doc._id : doc._id.toString();
+  }
+  if (doc.id) {
     return doc.id;
   }
-  // This should never happen with proper server responses
-  console.error('Document missing both _id and id:', doc);
+  console.error("Document missing both _id and id:", doc);
+  // fallback synthetic ID
   return `generated-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`;
 }
+
 
 // Map actions to valid status values
 export function actionToComplete(): string {
@@ -82,19 +76,37 @@ export async function fetchTasks(status: string = 'active', spamFilter: boolean 
     }
     
     const data = await response.json();
-    return data.map((task: AssistantTask) => {
-      // Normalize the MongoDB ID
-      const normalizedId = normalizeMongoId(task);
+    // console.log('Raw JSON:', data); // Debug log
+    
+    return data.map((task: RawMongoTask) => {
+      // Get the MongoDB ID directly
+      const taskId = task._id || task.id || normalizeMongoId(task);
+      
+      // Handle email separately - it needs special treatment
+      let emailWithId = task.email;
+      if (emailWithId) {
+        // If email exists, ensure it has an ID
+        // First check if it already has an _id or id
+        if (emailWithId._id || emailWithId.id) {
+          emailWithId = {
+            ...emailWithId,
+            id: normalizeMongoId(emailWithId)
+          };
+        } else {
+          // If the email doesn't have its own ID, generate one
+          emailWithId = {
+            ...emailWithId,
+            id: `email-${taskId}`
+          };
+        }
+      }
       
       return {
         ...task,
-        id: normalizedId,
+        id: taskId,
+        _id: undefined, // Remove the MongoDB _id to avoid duplication
         user_id: task.user_id || userId,
-        // Ensure the email also has a normalized ID
-        email: task.email ? {
-          ...task.email,
-          id: normalizeMongoId(task.email)
-        } : task.email
+        email: emailWithId
       };
     });
   } catch (error) {

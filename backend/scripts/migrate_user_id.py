@@ -116,7 +116,16 @@ async def migrate_assistant_tasks_direct(
 
         # Update documents with user_id without triggering validation
         result = await collection.update_many(
-            {"_id": {"$in": batch_ids}}, {"$set": {"user_id": default_user_id}}
+            {
+                "_id": {"$in": batch_ids},
+                "email.user_id": {"$exists": False},
+            },
+            {
+                "$set": {
+                    "user_id": default_user_id,
+                    "email.user_id": default_user_id,
+                }
+            },
         )
 
         updated_count += result.modified_count

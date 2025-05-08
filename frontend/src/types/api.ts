@@ -1,22 +1,59 @@
+// Client-side representation of an email
 export interface EmailMessage {
-  id: string
-  subject: string
-  body: string
-  sender: string
-  recipient?: string
-  context?: string
-  user_id: string
+  id: string;
+  subject?: string;
+  sender?: string;
+  body?: string;
+  recipient?: string;
+  context?: string | null;
+  message_id?: string;
+  signature?: string | null;
+  user_id: string;
+  is_spam?: boolean;
 }
 
 export interface AssistantTask {
-  id: string
-  email: EmailMessage
-  context: string | null
-  summary: string | null
-  actions: string[]
-  status: string
-  suggested_actions?: string[]
-  user_id: string
+  id: string;
+  user_id: string;
+  sender?: string;
+  subject?: string;
+  summary?: string;
+  context?: string | null;
+  actions: string[];
+  status: string;
+  action_taken: string | null;
+  email?: EmailMessage;
+}
+
+
+// Server-side MongoDB representation of a task
+export interface RawMongoTask {
+  _id?: string;
+  id?: string;
+  user_id?: string;
+  sender?: string;
+  subject?: string;
+  summary?: string;
+  context?: string | null;
+  actions?: string[];
+  status?: string;
+  action_taken?: string | null;
+  email?: RawMongoEmail;
+}
+
+// Server-side MongoDB representation of an email
+export interface RawMongoEmail {
+  _id?: string;
+  id?: string;
+  subject?: string;
+  sender?: string;
+  body?: string;
+  recipient?: string;
+  context?: string | null;
+  message_id?: string;
+  signature?: string | null;
+  user_id?: string;
+  is_spam?: boolean;
 }
 
 export type APIResponse<T> = {

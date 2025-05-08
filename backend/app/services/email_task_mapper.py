@@ -113,6 +113,7 @@ async def map_email_to_task(
         "subject": subject_val,
         "context": context_label,
         "summary": summary_text,
+        "user_id": email.user_id,
         "actions": actions,
     }
     task = AssistantTask(**task_kwargs)

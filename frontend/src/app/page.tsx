@@ -1,7 +1,7 @@
 // frontend/src/app/page.tsx
 'use client'
 
-import { useEffect, useState, useCallback } from 'react'
+import { useEffect, useState, useCallback, useRef } from 'react'
 import { TaskCard } from '@/components/TaskCard'
 import { TaskCardSkeleton } from '@/components/TaskCardSkeleton'
 import { EmptyState } from '@/components/EmptyState'
@@ -23,7 +23,7 @@ import { SpamEmail } from '@/types/email'
 
 const TASKS_CACHE_KEY = 'cached_tasks_v1';
 
-function TaskList() {
+function TaskList({ onLoadTasks }: { onLoadTasks: (loadTasksFn: () => Promise<void>) => void }) {
   const [tasks, setTasks] = useState<AssistantTask[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
@@ -73,6 +73,7 @@ function TaskList() {
 
   useEffect(() => {
     loadTasks()
+    onLoadTasks(loadTasks)
     // Listen for online/offline events to update readOnly state
     function handleOnline() {
       setReadOnly(false)
@@ -88,7 +89,7 @@ function TaskList() {
       window.removeEventListener('online', handleOnline)
       window.removeEventListener('offline', handleOffline)
     }
-  }, [loadTasks])
+  }, [loadTasks, onLoadTasks])
 
   const handleRetry = async () => {
     showToast.info('Retrying task fetch...')
@@ -157,7 +158,7 @@ function TaskList() {
             summary={task.summary || 'Task from incoming email'}
             contextCategory={contextCategory}
             categoryIcon={getCategoryIcon(contextCategory)}
-            suggestedActions={task.suggested_actions || task.actions || []}
+            suggestedActions={ task.actions || []}
             subject={task.email?.subject}
             sender={task.email?.sender}
             body={task.email?.body}
@@ -171,8 +172,9 @@ function TaskList() {
 }
 
 export default function Page() {
-
   const [spamEmails, setSpamEmails] = useState<SpamEmail[]>([])
+  // Create a ref to the loadTasks function that can be accessed from the spam handlers
+  const loadTasksRef = useRef<() => Promise<void>>(null)
 
   useEffect(() => {
     async function loadSpam() {
@@ -187,6 +189,16 @@ export default function Page() {
       await markNotSpam(id)
       setSpamEmails(prev => prev.filter(email => email.id !== id))
       showToast.success("Marked as not spam")
+      
+      // Refresh the task list to display the newly unmarked email as a task
+      if (loadTasksRef.current) {
+        // Brief delay to allow backend processing
+        setTimeout(() => {
+          if (loadTasksRef.current) {
+            loadTasksRef.current()
+          }
+        }, 500)
+      }
     } catch {
       showToast.error("Failed to mark as not spam")
     }
@@ -201,11 +213,17 @@ export default function Page() {
       showToast.error("Failed to archive spam email")
     }
   }
+  
+  // Create a function that gets the loadTasks function from the TaskList component
+  const setLoadTasksFunction = useCallback((loadTasksFn: () => Promise<void>) => {
+    loadTasksRef.current = loadTasksFn
+  }, [])
+
   return (
     <ErrorBoundary>
       <div className="flex flex-col h-screen">
         <div className="overflow-auto flex-1">
-          <TaskList />
+          <TaskList onLoadTasks={setLoadTasksFunction} />
         </div>
 
         <div className="fixed bottom-0 left-0 right-0 bg-yellow-100 text-yellow-800 p-4 shadow-md z-50">

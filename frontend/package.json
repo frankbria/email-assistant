@@ -11,6 +11,7 @@
     "test:watch": "vitest watch"
   },
   "dependencies": {
+    "@radix-ui/react-avatar": "^1.1.9",
     "@radix-ui/react-dialog": "^1.1.11",
     "@radix-ui/react-dropdown-menu": "^2.1.12",
     "@radix-ui/react-slot": "^1.2.0",
@@ -19,6 +20,7 @@
     "clsx": "^2.1.1",
     "input": "^1.0.1",
     "lucide-react": "^0.503.0",
+    "mongodb": "^6.16.0",
     "next": "15.3.1",
     "next-themes": "^0.4.6",
     "postcss": "^8.5.3",
