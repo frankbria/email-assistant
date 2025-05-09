@@ -139,7 +139,7 @@ async def incoming_email_webhook(
 
     # Check to see if the email was forwarded
     # if so, then parse the email with the appropriate utilities
-    if "Fwd:" in subject or "Fwd:" in subject:
+    if "Fwd:" in subject or "Fw:" in subject:
         logger.debug("Email is a forwarded email")
         # Check if the email is a forwarded email
         # Parse the forwarded metadata and body content
