@@ -231,7 +231,9 @@ export function TaskCard({
               <div><span className="font-semibold">Sender:</span> {sender}</div>
             )}
             {body && (
-              <div className="whitespace-pre-line"><span className="font-semibold">Summary:</span> {body}</div>
+              <div className="whitespace-pre-line">
+                <span className="font-semibold">Summary:</span> {body.length > 100 ? `${body.substring(0, 100)}...` : body}
+              </div>
             )}
           </div>
         ) : (
@@ -251,12 +253,13 @@ export function TaskCard({
             )}
             {subject && (
               <div><span className="font-semibold">Subject:</span> {subject}</div>
-            )}
-            {sender && (
+            )}            {sender && (
               <div><span className="font-semibold">Sender:</span> {sender}</div>
             )}
             {body && (
-              <div className="whitespace-pre-line"><span className="font-semibold">Summary:</span> {body}</div>
+              <div className="whitespace-pre-line">
+                <span className="font-semibold">Summary:</span> {body.length > 100 ? `${body.substring(0, 100)}...` : body}
+              </div>
             )}
           </div>
         )

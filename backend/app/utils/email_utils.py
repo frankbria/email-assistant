@@ -67,3 +67,27 @@ def parse_forwarded_metadata(body: str):
         else None
     )
     return original_sender, original_subject
+
+
+def parse_forwarded_email_body(body: str):
+    """
+    Parses the body of a forwarded email to extract the original content.
+    This function is a placeholder and should be implemented based on specific needs.
+    """
+    if not body:
+        return ""
+    # Example: Remove common forward indicators
+    body = re.sub(r"^-----Original Message-----.*", "", body, flags=re.DOTALL)
+    body = re.sub(r"^From:.*", "", body, flags=re.DOTALL)
+    body = re.sub(r"^Sent:.*", "", body, flags=re.DOTALL)
+    body = re.sub(r"^To:.*", "", body, flags=re.DOTALL)
+    body = re.sub(r"^Subject:.*", "", body, flags=re.DOTALL)
+    body = re.sub(r"^---.*", "", body, flags=re.DOTALL)
+    body = re.sub(r"^On.*wrote:", "", body, flags=re.DOTALL)
+    body = re.sub(r"^-----.*", "", body, flags=re.DOTALL)
+    body = re.sub(r"^>.*", "", body, flags=re.DOTALL)
+    body = re.sub(r"\n{2,}", "\n", body)  # Remove excessive newlines
+    body = body.strip()  # Clean up leading/trailing whitespace
+    # Return the cleaned body
+
+    return body

@@ -16,6 +16,7 @@ from app.utils.logging import log_security_event, track_and_alert_failed_attempt
 from app.middleware import limiter, RATE_LIMIT
 from app.config import get_settings
 from app.utils.user_utils import get_current_user_id
+from app.utils.email_utils import parse_forwarded_metadata, parse_forwarded_email_body
 from httpx import AsyncClient
 
 
@@ -135,6 +136,25 @@ async def incoming_email_webhook(
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT, detail="Duplicate email."
         )
+
+    # Check to see if the email was forwarded
+    # if so, then parse the email with the appropriate utilities
+    if "Fwd:" in subject or "Fwd:" in subject:
+        logger.debug("Email is a forwarded email")
+        # Check if the email is a forwarded email
+        # Parse the forwarded metadata and body content
+        # to save the original email and not the forwarded one
+        # Parse forwarded metadata and email body content so we save the original email and not the forwarded one
+
+        # Parse forwarded metadata and email body content so we save the original email and not the forwarded one
+        forwarded_sender, forwarded_subject = parse_forwarded_metadata(email.body)
+        email.sender = forwarded_sender
+        email.subject = forwarded_subject
+
+        # Parse forwarded email body to remove unwanted content
+        forwarded_body = parse_forwarded_email_body(email.body)
+        email.body = forwarded_body
+
     # Save unique email
     await email.insert()
     logger.debug("✅ Webhook email created and saved")
@@ -157,6 +177,74 @@ async def get_spam_emails(request: Request):
     ).to_list()
 
     return spam_emails
+
+
+@router.patch("/{email_id}/not-spam")
+async def mark_email_as_not_spam(email_id: str, request: Request):
+    """Mark a specific email as not spam and ensure it gets full AI processing."""
+    user_id = await get_current_user_id(request)
+
+    email = await EmailMessage.find_one(
+        {"_id": PydanticObjectId(email_id), "user_id": user_id}
+    )
+    if not email:
+        raise HTTPException(status_code=404, detail="Email not found")
+
+    # Update email status
+    email.is_spam = False
+    await email.save()
+
+    # Check for existing task
+    existing_task = await AssistantTask.find_one({"email_id": str(email.id)})
+
+    # Process the email with AI, ensuring full processing
+    new_task = await map_email_to_task(
+        email, skipSpamCheck=True, forceFullProcessing=True
+    )
+
+    if not new_task:
+        return {
+            "message": "Email marked as not spam, but task creation failed",
+            "email_id": email_id,
+        }
+
+    if existing_task:
+        # Update existing task with new AI-processed data
+        existing_task.subject = new_task.subject  # Use new AI-summarized subject
+        existing_task.context = new_task.context  # Update context classification
+        existing_task.description = new_task.description  # Update with AI summary
+        existing_task.priority = new_task.priority  # Recalculate priority
+        existing_task.actions = new_task.actions  # Update suggested actions
+
+        await existing_task.save()
+        return {
+            "message": "Email marked as not spam and task updated with AI processing",
+            "email_id": email_id,
+            "task_id": str(existing_task.id),
+        }
+    else:
+        # No existing task, just insert the new one
+        await new_task.insert()
+        return {
+            "message": "Email marked as not spam and task created",
+            "email_id": email_id,
+            "task_id": str(new_task.id),
+        }
+
+
+@router.patch("/{email_id}/archive")
+async def archive_email(email_id: str, request: Request):
+    """Mark an email as archived (dismissed from spam view)."""
+    user_id = await get_current_user_id(request)
+
+    email = await EmailMessage.find_one(
+        {"_id": PydanticObjectId(email_id), "user_id": user_id}
+    )
+    if not email:
+        raise HTTPException(status_code=404, detail="Email not found")
+    email.is_archived = True
+    await email.save()
+    return {"message": "Email archived", "email_id": email_id}
 
 
 # ===================TEMPORARY IMAP FUNCTIONALITY====================
@@ -263,45 +351,3 @@ async def get_email_by_address(address: str, request: Request):
 
 
 # ===================END TEMPORARY IMAP FUNCTIONALITY====================
-
-
-@router.patch("/{email_id}/not-spam")
-async def mark_email_as_not_spam(email_id: str, request: Request):
-    """Mark a specific email as not spam."""
-    user_id = await get_current_user_id(request)
-
-    email = await EmailMessage.find_one(
-        {"_id": PydanticObjectId(email_id), "user_id": user_id}
-    )
-    if not email:
-        raise HTTPException(status_code=404, detail="Email not found")
-    email.is_spam = False
-    await email.save()
-
-    # Create task for the email now that it's no longer marked as spam
-    task = await map_email_to_task(email, skipSpamCheck=True)
-    if task:
-        await task.insert()
-        return {
-            "message": "Email marked as not spam and task created",
-            "email_id": email_id,
-            "task_id": str(task.id),
-        }
-
-    # Return default message if no task was created
-    return {"message": "Email marked as not spam", "email_id": email_id}
-
-
-@router.patch("/{email_id}/archive")
-async def archive_email(email_id: str, request: Request):
-    """Mark an email as archived (dismissed from spam view)."""
-    user_id = await get_current_user_id(request)
-
-    email = await EmailMessage.find_one(
-        {"_id": PydanticObjectId(email_id), "user_id": user_id}
-    )
-    if not email:
-        raise HTTPException(status_code=404, detail="Email not found")
-    email.is_archived = True
-    await email.save()
-    return {"message": "Email archived", "email_id": email_id}
