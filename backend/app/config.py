@@ -47,6 +47,23 @@ class Settings(BaseSettings):
         "http://localhost:8000",
     ]
 
+    # === Email box provider information ===
+    mailbox_domain: str = os.getenv("MAILBOX_DOMAIN", "mailslurp.biz")
+    mailbox_api_key: str = os.getenv(
+        "MAILBOX_API_KEY",
+        "s84794f37f7397a0f949013cf16d2c215cad5ef7921137fc704fe1f03fd72f3e8",
+    )
+
+    # === Temporary IMAP for mailslurp (before webhook is implemented) ===
+    imap_host: str = os.getenv("IMAP_HOST", "mailslurpimap.click")
+    imap_port: int = os.getenv("IMAP_PORT", 8993)
+    imap_username: str = os.getenv(
+        "IMAP_USERNAME", "34191648-da63-4666-b0aa-e66014f93069@mailslurp.biz"
+    )
+    imap_password: str = os.getenv("IMAP_PASSWORD", "ZGtKVswk55EIUVmV1UVQ4umFDum8wmNq")
+
+    emergency_webhook_api_key: str = os.getenv("EMERGENCY_WEBHOOK_API_KEY")
+
     @property
     def is_test(self) -> bool:
         """Check if running in test environment"""

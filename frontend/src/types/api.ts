@@ -74,6 +74,7 @@ export interface UserSettings {
   enable_spam_filtering: boolean;
   enable_auto_categorization: boolean;
   skip_low_priority_emails: boolean;
+  incoming_email_address?: string;
 }
 
 export interface WebhookSecurity {

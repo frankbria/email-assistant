@@ -4,13 +4,44 @@ import React, { useEffect, useState, useRef } from "react";
 import { UserSettings } from "../types/api";
 import { fetchUserSettings, updateUserSettings } from "../services/settingsService";
 import { Card } from "./ui/card";
-import { Settings2, CircleAlert } from "lucide-react";
+import { Settings2, CircleAlert, Copy, Check, HelpCircle } from "lucide-react";
 import { showToast } from "../utils/toast";
+import ForwardingInstructionsModal from "./ForwardingInstructionsModal";
+
+// Copy button component for copying text to clipboard
+function CopyButton({ text }: { text: string }) {
+  const [copied, setCopied] = useState(false);
+
+  const handleCopy = async () => {
+    try {      await navigator.clipboard.writeText(text);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2000);
+      showToast.success("Copied to clipboard!");
+    } catch {
+      showToast.error("Failed to copy text");
+    }
+  };
+
+  return (
+    <button
+      onClick={handleCopy}
+      className="ml-2 p-1 rounded-md hover:bg-gray-100 focus:outline-none focus:ring-2 focus:ring-primary transition-colors"
+      title="Copy to clipboard"
+    >
+      {copied ? (
+        <Check className="h-4 w-4 text-green-600" />
+      ) : (
+        <Copy className="h-4 w-4 text-gray-500" />
+      )}
+    </button>
+  );
+}
 
 export default function SettingsForm() {
   const [settings, setSettings] = useState<UserSettings | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [isInstructionsOpen, setIsInstructionsOpen] = useState(false);
   const lastUpdate = useRef<{ key: keyof Omit<UserSettings, "user_id"> } | null>(null);
 
   useEffect(() => {
@@ -96,6 +127,45 @@ export default function SettingsForm() {
         </div>
         <div className="border-b mb-6" />
         <div className="space-y-6">
+          {/* Mailbox Address */}
+          <div>
+            <div className="flex items-center justify-between mb-2">
+              <div className="space-y-0.5">
+                <label className="block font-medium">
+                  Your Mailbox Address
+                </label>
+                <span className="text-sm text-muted-foreground">
+                  Set up forwarding in your email client to automatically send emails to this address for processing
+                </span>
+              </div>              <button 
+                onClick={() => setIsInstructionsOpen(true)}
+                className="px-3 py-1.5 text-xs bg-blue-50 text-blue-600 rounded-lg hover:bg-blue-100 flex items-center gap-1.5 border border-blue-200 shadow-sm transition"
+                title="How to set up email forwarding"
+              >
+                <HelpCircle className="h-3.5 w-5.5" /> How to setup
+              </button>
+            </div>
+            {settings.incoming_email_address ? (
+              <div className="flex items-center">
+                <div className="flex-1 px-3 py-2 bg-gray-50 border rounded-md text-sm font-mono break-all">
+                  {settings.incoming_email_address}
+                </div>
+                <CopyButton text={settings.incoming_email_address} />
+              </div>
+            ) : (
+              <div className="px-3 py-2 bg-yellow-50 border border-yellow-200 rounded-md text-sm text-yellow-700">
+                Your personal mailbox address is being provisioned. Please check back later.
+              </div>
+            )}
+            
+            {/* Forwarding Instructions Modal */}
+            <ForwardingInstructionsModal 
+              isOpen={isInstructionsOpen} 
+              onClose={() => setIsInstructionsOpen(false)} 
+            />
+          </div>
+          <div className="border-b" />
+
           {/* Spam Filtering */}
           <div className="flex items-center justify-between">
             <div className="space-y-0.5">

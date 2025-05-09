@@ -7,6 +7,9 @@ from typing import Optional
 
 class UserSettings(Document):
     user_id: str = Field(..., description="Unique identifier for the user")
+    incoming_email_address: Optional[str] = Field(
+        None, description="Email address for incoming emails"
+    )
     enable_spam_filtering: bool = Field(
         default=True, description="Enable or disable spam filtering"
     )

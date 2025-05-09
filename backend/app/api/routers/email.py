@@ -16,6 +16,8 @@ from app.utils.logging import log_security_event, track_and_alert_failed_attempt
 from app.middleware import limiter, RATE_LIMIT
 from app.config import get_settings
 from app.utils.user_utils import get_current_user_id
+from httpx import AsyncClient
+
 
 router = APIRouter(prefix="/api/v1/email", tags=["email"])
 
@@ -47,6 +49,7 @@ async def create_email_task(
     return {"email_id": str(email.id), "task_id": str(task.id)}
 
 
+## connect MailSlurp webhook (NEW_MAIL) to this endpoint
 @router.post("/incoming")
 @limiter.limit(RATE_LIMIT)
 async def incoming_email_webhook(
@@ -156,6 +159,112 @@ async def get_spam_emails(request: Request):
     return spam_emails
 
 
+# ===================TEMPORARY IMAP FUNCTIONALITY====================
+
+
+@router.get("/get/{address}")
+async def get_email_by_address(address: str, request: Request):
+    """Fetch an email by its address."""
+    # Build an IMAP request to fetch the email
+    # This is a placeholder for the actual implementation
+    # temp IMAP functionality
+    from imapclient import IMAPClient
+    from email import message_from_bytes
+
+    IMAP_HOST = get_settings().imap_host
+    IMAP_PORT = get_settings().imap_port
+    IMAP_USERNAME = address
+    IMAP_PASSWORD = get_settings().imap_password
+
+    # Login to the IMAP server
+    # shut off the rate limiter for each of these emails
+
+    api_key = get_settings().emergency_webhook_api_key
+
+    #   request.app.state.limited.enabled = False
+    print("Checking emails... with api_key: " + api_key)
+
+    try:
+        with IMAPClient(host=IMAP_HOST, ssl=True) as client:
+            client.login(IMAP_USERNAME, IMAP_PASSWORD)
+            client.select_folder("INBOX", readonly=False)
+            # Search for the email by address
+            uids = client.search(["UNSEEN"])
+            for uid in uids:
+                raw = client.fetch(uid, ["RFC822"])[uid][b"RFC822"]
+                msg = message_from_bytes(raw)
+                print("Subject: " + msg.get("Subject"))
+                print("From: " + msg.get("From"))
+                print("To: " + msg.get("To"))
+                # call the /incoming API endpoint to process the email
+                # override the rate limit for this endpoint
+
+                # 1. Pick out the plain‑text part:
+                body = None
+                if msg.is_multipart():
+                    for part in msg.walk():
+                        # skip attachments
+                        content_dispo = part.get("Content-Disposition", "")
+                        if (
+                            part.get_content_type() == "text/plain"
+                            and "attachment" not in content_dispo
+                        ):
+                            payload = part.get_payload(decode=True)  # bytes
+                            charset = part.get_content_charset() or "utf-8"
+                            body = payload.decode(charset, errors="replace")
+                            break
+                else:
+                    # not multipart — the payload *is* the body
+                    payload = msg.get_payload(decode=True)
+                    charset = msg.get_content_charset() or "utf-8"
+                    body = payload.decode(charset, errors="replace")
+
+                if body is None:
+                    # fallback if you really need something
+                    body = msg.get_payload()  # might be a str or list
+
+                print("Body: " + body)
+
+                # Now pass `body` safely to your webhook:
+                async with AsyncClient() as api_client:
+                    response = await api_client.post(
+                        "http://localhost:8000/api/v1/email/incoming",
+                        json={
+                            "sender": msg.get("From"),
+                            "subject": msg.get("Subject"),
+                            "body": body,
+                        },
+                        headers={
+                            "x-api-key": api_key,
+                            "X-Forwarded-For": "192.168.0.1",
+                        },
+                    )
+                    if response.status_code != 200:
+                        logger.error(f"Error sending email to webhook: {response.text}")
+                """
+                await incoming_email_webhook(
+                    request=request,
+                    sender=msg.get("From"),
+                    subject=msg.get("Subject"),
+                    body=body,
+                )
+                """
+                # Mark the email as seen
+                # TODO: delete the email after processing
+                client.add_flags(uid, ["\\Seen"])
+
+        return {"message": "Success"}
+    except Exception as e:
+        logger.error(f"Error fetching email: {e}")
+        raise HTTPException(status_code=500, detail="Error fetching email")
+    finally:
+        #        request.app.state.limited.enabled = True
+        print("Done")
+
+
+# ===================END TEMPORARY IMAP FUNCTIONALITY====================
+
+
 @router.patch("/{email_id}/not-spam")
 async def mark_email_as_not_spam(email_id: str, request: Request):
     """Mark a specific email as not spam."""
@@ -168,6 +277,14 @@ async def mark_email_as_not_spam(email_id: str, request: Request):
         raise HTTPException(status_code=404, detail="Email not found")
     email.is_spam = False
     await email.save()
+
+    # Create task for the email now that it's no longer marked as spam
+    task = await map_email_to_task(email)
+    if task:
+        await task.insert()
+        return {"message": "Email marked as not spam and task created", "email_id": email_id, "task_id": str(task.id)}
+
+    # Return default message if no task was created
     return {"message": "Email marked as not spam", "email_id": email_id}
 
 
