@@ -2,6 +2,7 @@
 import app.services.context_classifier as context_classifier
 from app.services.email_task_mapper import map_email_to_task
 import logging
+from mailslurp_client import Configuration, InboxControllerApi
 
 from fastapi import APIRouter, Body, Request, HTTPException, status, Depends, Query
 from typing import List, Optional
@@ -16,7 +17,14 @@ from app.utils.logging import log_security_event, track_and_alert_failed_attempt
 from app.middleware import limiter, RATE_LIMIT
 from app.config import get_settings
 from app.utils.user_utils import get_current_user_id
-from app.utils.email_utils import parse_forwarded_metadata, parse_forwarded_email_body
+from app.utils.email_utils import (
+    parse_forwarded_metadata,
+    parse_forwarded_body,
+)
+from app.utils.email_retrieval_utils import (
+    get_emails_from_inbox,
+    get_emails_from_email_address,
+)
 from httpx import AsyncClient
 
 
@@ -152,7 +160,7 @@ async def incoming_email_webhook(
         email.subject = forwarded_subject
 
         # Parse forwarded email body to remove unwanted content
-        forwarded_body = parse_forwarded_email_body(email.body)
+        forwarded_body = parse_forwarded_body(email.body)
         email.body = forwarded_body
 
     # Save unique email
@@ -247,6 +255,24 @@ async def archive_email(email_id: str, request: Request):
     return {"message": "Email archived", "email_id": email_id}
 
 
+@router.get("/new-email")
+async def get_new_email(request: Request):
+    """MailSlurp webhook notification that a new email has arrived."""
+    emailId = request.query_params.get("emailId")
+    if not emailId:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST, detail="Missing emailId"
+        )
+
+    try:
+        emails = await get_emails_from_inbox(emailId)
+    except Exception as e:
+        logger.error(f"Error fetching emails: {e}")
+        raise HTTPException(status_code=500, detail="Error fetching emails")
+
+    return emails
+
+
 # ===================TEMPORARY IMAP FUNCTIONALITY====================
 
 
@@ -254,6 +280,7 @@ async def archive_email(email_id: str, request: Request):
 async def get_email_by_address(address: str, request: Request):
     """Fetch an email by its address."""
     # Build an IMAP request to fetch the email
+
     # This is a placeholder for the actual implementation
     # temp IMAP functionality
     from imapclient import IMAPClient
@@ -273,6 +300,9 @@ async def get_email_by_address(address: str, request: Request):
     print("Checking emails... with api_key: " + api_key)
 
     try:
+        # TO DO: Use native MailSlurp API to get emails
+        # emails = await get_emails_from_email_address(address)
+
         with IMAPClient(host=IMAP_HOST, ssl=True) as client:
             client.login(IMAP_USERNAME, IMAP_PASSWORD)
             client.select_folder("INBOX", readonly=False)
@@ -329,17 +359,17 @@ async def get_email_by_address(address: str, request: Request):
                     )
                     if response.status_code != 200:
                         logger.error(f"Error sending email to webhook: {response.text}")
-                """
+
                 await incoming_email_webhook(
                     request=request,
                     sender=msg.get("From"),
                     subject=msg.get("Subject"),
                     body=body,
                 )
-                """
                 # Mark the email as seen
                 # TODO: delete the email after processing
                 client.add_flags(uid, ["\\Seen"])
+                # client.delete_messages([uid])
 
         return {"message": "Success"}
     except Exception as e:

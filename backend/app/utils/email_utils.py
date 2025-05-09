@@ -1,4 +1,6 @@
 import re
+from mailslurp_client import Configuration, InboxControllerApi, EmailControllerApi
+from app.config import get_settings
 
 
 def is_generic_subject(subject: str) -> bool:
@@ -69,7 +71,7 @@ def parse_forwarded_metadata(body: str):
     return original_sender, original_subject
 
 
-def parse_forwarded_email_body(body: str):
+def parse_forwarded_body(body: str):
     """
     Parses the body of a forwarded email to extract the original content.
     This function is a placeholder and should be implemented based on specific needs.
@@ -91,3 +93,4 @@ def parse_forwarded_email_body(body: str):
     # Return the cleaned body
 
     return body
+

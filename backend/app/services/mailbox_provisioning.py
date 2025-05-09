@@ -5,7 +5,7 @@ from app.config import get_settings
 from app.models.user_settings import UserSettings
 
 
-mailbox_api = get_settings().MAILBOX_API_KEY
+mailbox_api = get_settings().mailbox_api_key
 
 
 def provision_mailbox(user_id: str) -> dict:
