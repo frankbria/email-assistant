@@ -300,6 +300,13 @@ IMAP_PASSWORD=your_imap_password
 
 For more implementation details, see `backend/app/services/mailbox_provisioning.py`.
 
+### Email Receipt Triggers
+
+The configured inbox has a webhook event NEW_MAIL which will send all new email over to the ```/email/incoming``` webhook. (TODO)
+In the meantime, in order to manually poll from the inbox via IMAP, manually call the API endpoint
+```/api/v1/email/get/{email-address}```
+This API will automatically poll the inbox of the given email address with IMAP to pull emails. This functionality will remain after the webhook is implemented, but will be deprecated in favor of the webhook approach. 
+
 ## 🛡️ Spam Filtering
 
 The AI Email Assistant includes a spam filtering system to ensure that irrelevant or spammy emails do not clutter your task list. Here's how it works:
