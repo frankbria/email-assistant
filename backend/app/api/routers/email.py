@@ -279,10 +279,14 @@ async def mark_email_as_not_spam(email_id: str, request: Request):
     await email.save()
 
     # Create task for the email now that it's no longer marked as spam
-    task = await map_email_to_task(email)
+    task = await map_email_to_task(email, skipSpamCheck=True)
     if task:
         await task.insert()
-        return {"message": "Email marked as not spam and task created", "email_id": email_id, "task_id": str(task.id)}
+        return {
+            "message": "Email marked as not spam and task created",
+            "email_id": email_id,
+            "task_id": str(task.id),
+        }
 
     # Return default message if no task was created
     return {"message": "Email marked as not spam", "email_id": email_id}

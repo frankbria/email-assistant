@@ -23,15 +23,17 @@ async def handle_spam_email(email: EmailMessage):
 async def map_email_to_task(
     email: EmailMessage,
     actions: Optional[List[str]] = None,
+    skipSpamCheck: bool = False,
 ) -> Optional[AssistantTask]:
     """
     Create an AssistantTask from an EmailMessage, centralizing defaults, classification, and summary logic.
     Does not insert the task into the database; caller should insert it.
     """
-    if is_spam_email(email):
+    if not skipSpamCheck and is_spam_email(email):
         return await handle_spam_email(email)
 
     logger.debug("🔄 Mapping email to task in service")
+    print("Mapping email to task in service")
     # Try to extract original sender/subject from forwarded content
     forwarded_sender, forwarded_subject = parse_forwarded_metadata(email.body)
     # Treat empty strings as None for fallback logic

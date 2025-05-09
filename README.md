@@ -117,19 +117,29 @@ USE_AI_SUMMARY=true
 USE_AI_ACTIONS=true
 MONGODB_URI=<your_mongodb_uri>
 MONGODB_DB=<your_database_name>
+
+# Mailbox configuration
+MAILBOX_DOMAIN=mailslurp.biz
+MAILBOX_API_KEY=your_mailslurp_api_key
+
+# IMAP configuration (for temporary email fetching)
+IMAP_HOST=mailslurpimap.click
+IMAP_PORT=8993
+IMAP_USERNAME=your_imap_username
+IMAP_PASSWORD=your_imap_password
 ```
 
 **Frontend** (in `frontend/.env.local`):
 ```dotenv
 NEXT_PUBLIC_API_BASE=http://localhost:8000
-```
 
-- `OPENAI_API_KEY`: your OpenAI API key for context classification  
-- `OPENAI_API_MODEL`: OpenAI model to use (e.g., `gpt-3.5-turbo`)  
-- `USE_AI_CONTEXT`: set to `true` to enable AI-based classification; set to `false` (or omit) to use rule-based
-- `USE_AI_SUMMARY`: set to `true` to enable AI-based summary generation; set to `false` (or omit) to use rule-based  
-- `USE_AI_ACTIONS`: set to `true` to enable AI-powered action suggestions; set to `false` (or omit) to use rule-based strategies
-- `NEXT_PUBLIC_API_BASE`: base URL of the FastAPI backend  
+# (Optional) Clerk or Auth key if using identity
+NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY=your-publishable-key
+CLERK_SECRET_KEY=your-secret-key
+
+# Flags or feature toggles
+NEXT_PUBLIC_DEBUG=true
+```
 
 ## 🎯 Action Suggestions
 
@@ -251,6 +261,44 @@ The duplicate detection system ensures that emails with similar or identical con
   - The system is designed to handle large volumes of emails efficiently by limiting the scope of fuzzy matching and leveraging database optimizations.
 
 For more details, see the implementation in `backend/app/services/duplicate_detection.py`.
+
+## 📧 Mailbox Provisioning
+
+The AI Email Assistant provides each user with a unique mailbox address that can be used to forward emails for processing. This feature simplifies email processing by eliminating the need to manually forward emails to a generic address.
+
+### How Mailbox Provisioning Works
+
+1. **Unique Address Generation**:
+   - Each user is automatically assigned a unique mailbox address (e.g., `user123@mailslurp.biz`).
+   - The address is generated based on a combination of user ID and a random component to ensure uniqueness.
+   - The address is stored in the `UserSettings` model in the database.
+
+2. **Email Forwarding**:
+   - Users can set up automatic forwarding from their primary email accounts to their unique mailbox address.
+   - Instructions for setting up forwarding in Gmail, Outlook, and Apple Mail are provided in the Settings page.
+
+3. **Email Processing**:
+   - Emails sent to the unique mailbox address are automatically associated with the correct user.
+   - The system processes these emails and creates tasks based on their content.
+   - This ensures that emails are correctly attributed to the user who owns the mailbox.
+
+### Configuration
+
+The mailbox provisioning system requires the following environment variables:
+
+```dotenv
+# Mailbox configuration
+MAILBOX_DOMAIN=mailslurp.biz
+MAILBOX_API_KEY=your_mailslurp_api_key
+
+# IMAP configuration (for temporary email fetching)
+IMAP_HOST=mailslurpimap.click
+IMAP_PORT=8993
+IMAP_USERNAME=your_imap_username
+IMAP_PASSWORD=your_imap_password
+```
+
+For more implementation details, see `backend/app/services/mailbox_provisioning.py`.
 
 ## 🛡️ Spam Filtering
 
