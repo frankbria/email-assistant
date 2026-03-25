@@ -1,7 +1,20 @@
-# PRDs
+# PRDs and task files
 *prd.md
-.cursorrules
-.cursorignore
 *todo.md
 
+# Cursor
+.cursorrules
+.cursorignore
+
+# Editor
 .vscode/
+.idea/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Environment variables
+.env
+.env.local
+.env.*

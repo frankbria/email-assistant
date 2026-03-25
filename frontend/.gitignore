@@ -32,6 +32,7 @@ playwright-report/
 
 # misc
 .DS_Store
+Thumbs.db
 *.pem
 
 # debug
@@ -57,14 +58,11 @@ next-env.d.ts
 *.log
 
 # Editor and system files
-.DS_Store
 .idea/
 .vscode/
-Thumbs.db
 
 # Local build tools or IDE caches
-.next/
 .cache/
 
 # PRDs
-*.prd.md
+*prd.md

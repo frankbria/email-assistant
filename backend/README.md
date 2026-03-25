@@ -7,16 +7,16 @@ The backend API for an executive-style AI assistant that processes emails, class
 - **FastAPI**: Modern, high-performance web framework
 - **Beanie**: MongoDB ODM for Python 3.7+ based on Motor and Pydantic
 - **Motor**: Asynchronous MongoDB driver
-- **Poetry**: Python dependency management
+- **uv**: Fast Python package and project manager
 - **OpenAI**: AI-powered classification and summary generation (optional)
 
 ## 🧪 Setup & Installation
 
 ### Prerequisites
 
-- Python 3.8+
+- Python 3.13+
 - MongoDB instance (local or Atlas)
-- Poetry installed (for dependency management)
+- [uv](https://docs.astral.sh/uv/) installed (for dependency management)
 
 ### Installation
 
@@ -26,9 +26,9 @@ The backend API for an executive-style AI assistant that processes emails, class
    cd email-assistant/backend
    ```
 
-2. Install dependencies with Poetry:
+2. Install dependencies with uv:
    ```bash
-   poetry install
+   uv sync
    ```
 
 3. Create a `.env` file based on `.env.example`:
@@ -55,7 +55,7 @@ The backend API for an executive-style AI assistant that processes emails, class
 Start the development server with hot reloading:
 
 ```bash
-poetry run uvicorn app.main:app --reload
+uv run uvicorn app.main:app --reload
 ```
 
 The API will be available at http://localhost:8000
@@ -89,7 +89,7 @@ backend/
 │   ├── conftest.py          # Test configuration
 │   ├── test_routes/         # API endpoint tests
 │   ├── test_services/       # Service unit tests
-├── pyproject.toml           # Poetry configuration
+├── pyproject.toml           # Project configuration (uv)
 ├── .env.example             # Example environment variables
 ├── README.md                # This file
 ```
@@ -116,13 +116,13 @@ backend/
 ## 🧪 Running Tests
 
 ```bash
-poetry run pytest
+uv run pytest
 ```
 
 Run with coverage report:
 
 ```bash
-poetry run pytest --cov=app
+uv run pytest --cov=app
 ```
 
 ## 🔒 Security Notes

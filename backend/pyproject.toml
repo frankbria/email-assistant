@@ -1,0 +1,38 @@
+[project]
+name = "email-assistant-backend"
+version = "0.1.0"
+description = "Backend API for an AI email assistant that processes emails, classifies them, and generates actionable task cards."
+readme = "README.md"
+requires-python = ">=3.13"
+dependencies = [
+    "beanie",
+    "fastapi",
+    "httpx",
+    "motor",
+    "openai",
+    "pydantic",
+    "pydantic-settings",
+    "python-dotenv",
+    "slowapi",
+    "uvicorn",
+]
+
+[dependency-groups]
+dev = [
+    "pytest",
+    "pytest-asyncio",
+    "pytest-benchmark",
+    "pytest-cov",
+]
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
+asyncio_default_fixture_loop_scope = "function"
+testpaths = ["tests"]
+markers = [
+    "integration: marks tests as integration (deselect with '-m \"not integration\"')",
+    "dependency: mark tests with dependencies",
+    "per: mark tests for performance testing (deselect with '-m \"not per\"')",
+    "e2e: marks tests as end-to-end tests (deselect with '-m \"not e2e\"')",
+]
+pythonpath = ["."]

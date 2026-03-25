@@ -21,11 +21,12 @@ Think: 1950s secretary triaging your morning mail.
 
 | Layer     | Tech           |
 |-----------|----------------|
-| Frontend  | Next.js + Tailwind CSS |
-| Backend   | FastAPI + Beanie (MongoDB ODM) |
+| Frontend  | Next.js 16 + Tailwind CSS (Node.js v24) |
+| Backend   | FastAPI + Beanie (MongoDB ODM) (Python 3.13+) |
 | Database  | MongoDB Atlas |
 | Auth      | (TBD — Clerk or custom) |
 | AI        | OpenAI or mock assistant logic |
+| Package Mgmt | uv (backend), npm (frontend) |
 
 ---
 
@@ -49,16 +50,21 @@ email-assistant/
 
 ## 🧪 Running Locally
 
+### Prerequisites
+- [uv](https://docs.astral.sh/uv/) (Python package manager)
+- Node.js v24.12.0+ (use `.nvmrc` via `nvm use` in the `frontend/` directory)
+
 ### Backend:
 ```bash
 cd backend
-poetry install
-poetry run uvicorn app.main:app --reload
+uv sync
+uv run uvicorn app.main:app --reload
 ```
 
 ### Frontend:
 ```bash
 cd frontend
+nvm use
 npm install
 npm run dev
 ```
@@ -162,7 +168,7 @@ Each task will always have 2-3 suggested actions, regardless of the suggestion m
 ```bash
 # Backend tests
 cd backend
-poetry run pytest
+uv run pytest
 
 # Frontend tests
 cd frontend

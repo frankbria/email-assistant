@@ -3,10 +3,6 @@ __pycache__/
 *.py[cod]
 *.so
 
-# Poetry
-.poetry/
-poetry.lock
-
 # Virtual environment
 .venv/
 
@@ -20,6 +16,15 @@ coverage.xml
 
 # Pytest
 .pytest_cache/
+
+# Type checking and linting caches
+.mypy_cache/
+.ruff_cache/
+
+# Build artifacts
+dist/
+build/
+*.egg-info/
 
 # Environment variables
 .env
