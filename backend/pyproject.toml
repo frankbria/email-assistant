@@ -8,6 +8,7 @@ dependencies = [
     "beanie",
     "fastapi",
     "httpx",
+    "mailslurp-client>=17.5.0",
     "motor",
     "openai",
     "pydantic",

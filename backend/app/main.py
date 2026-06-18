@@ -42,12 +42,14 @@ async def init_db(settings: Settings = None):
 
     logger.debug(f"🔑 Using MongoDB URI: {settings.current_mongodb_uri}")
 
+    # ponytail: TLS for Atlas (mongodb+srv) only; plain mongodb:// (local/test)
+    # connects without it. Self-hosted TLS can opt in via ?tls=true in the URI.
     client = AsyncIOMotorClient(
         settings.current_mongodb_uri,
         serverSelectionTimeoutMS=5000,
         socketTimeoutMS=5000,
         connectTimeoutMS=5000,
-        tls=True,
+        tls=settings.current_mongodb_uri.startswith("mongodb+srv://"),
     )
     await init_beanie(
         database=client[settings.current_mongodb_db],
