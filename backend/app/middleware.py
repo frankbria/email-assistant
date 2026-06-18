@@ -22,17 +22,9 @@ limiter = Limiter(key_func=get_remote_address, default_limits=[RATE_LIMIT])
 
 def setup_cors(app: FastAPI) -> None:
     """Configure CORS middleware for the FastAPI application"""
-    env = os.getenv("API_ENVIRONMENT", "production")
-
     # Get allowed origins from environment variable, defaulting to localhost:3000
-    if env == "development":
-        # Use explicit frontend origin for development to support credentials
-        allowed_origins = os.getenv("FRONTEND_ORIGIN").split(",")
-        allowed_credentials = True
-    else:
-        # Allow only the specified origin in production
-        allowed_origins = os.getenv("FRONTEND_ORIGIN").split(",")
-        allowed_credentials = True
+    allowed_origins = os.getenv("FRONTEND_ORIGIN", "http://localhost:3000").split(",")
+    allowed_credentials = True
 
     logger.debug(f"🔒 CORS allowed origins: {allowed_origins}")
     print(f"🔒 CORS allowed origins: {allowed_origins}")

@@ -51,36 +51,7 @@ os.environ["OPENAI_API_MODEL"] = "gpt-3-5-turbo"
 
 
 @pytest.fixture(scope="function")
-def event_loop():
-    """Create a session-scoped event loop for async tests."""
-    policy = asyncio.get_event_loop_policy()
-    loop = policy.new_event_loop()
-
-    # add debugging capabilities to the loop
-    loop.set_debug(True)
-
-    asyncio.set_event_loop(loop)
-    print(f"Created event loop with id: {id(loop)}")
-
-    yield loop
-
-    print(f"Checking loop status with id: {id(loop)}")
-    # Close the loop after all tests complete
-    if not loop.is_closed():
-        pending = asyncio.all_tasks(loop=loop)
-        if pending:
-            print(f"Canceling {len(pending)} pending tasks before closing the loop")
-            for task in pending:
-                task.cancel()
-            loop.run_until_complete(asyncio.gather(*pending, return_exceptions=True))
-
-    print(f"Closing event loop with id: {id(loop)}")
-    loop.run_until_complete(loop.shutdown_asyncgens())
-    loop.close()
-
-
-@pytest.fixture(scope="function")
-async def test_db(event_loop):
+async def test_db():
     """Initialize test database connection and Beanie."""
     mongo_uri = os.environ["MONGODB_URI"]
     test_db_name = os.environ["MONGODB_DB"]
@@ -90,7 +61,9 @@ async def test_db(event_loop):
     if "_test" not in test_db_name.lower():
         raise ValueError("Test is attempting to use production database! Aborting.")
 
-    client = AsyncIOMotorClient(mongo_uri, io_loop=event_loop)
+    # pytest-asyncio (auto mode) runs this fixture and the test in the same
+    # function-scoped loop; let motor bind to that running loop.
+    client = AsyncIOMotorClient(mongo_uri)
 
     db = client[test_db_name]
 
