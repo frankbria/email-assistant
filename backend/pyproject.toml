@@ -5,7 +5,7 @@ description = "Backend API for an AI email assistant that processes emails, clas
 readme = "README.md"
 requires-python = ">=3.13"
 dependencies = [
-    "beanie",
+    "beanie<2",
     "fastapi",
     "httpx",
     "mailslurp-client>=17.5.0",
