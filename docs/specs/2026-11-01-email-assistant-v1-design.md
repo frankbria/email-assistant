@@ -149,7 +149,18 @@ Secrets (the Bridge password, OAuth tokens, plugin tokens) are referenced by nam
   - It has no permanent delete.
 - **`run_logged.pyw` plus two Task Scheduler tasks:** these run at logon, delayed so Bridge starts first, and the supervisor restarts the scripts if they crash. This is the reboot story §6.3 builds on.
 - **Gap this design closes:** if Bridge itself is down, the gateway returns 502. Nothing diagnoses or restarts Bridge, and the client just sees "unreachable."
-- **Where the plugin's code lives (extend this or build fresh in this repo):** see Q2 in §15.
+- **Decision: start fresh in this repo** (`plugins/proton/`), porting the proven pieces. **[Frank: "build on it if the background is good"; Call: fresh]** Reasons:
+  - the gateway isn't version-controlled
+  - its two-hop layout (REST gateway + MCP adapter + OAuth server) is heavier than one `mailbox/1` server
+  - its MOVE fallback calls a folder-wide `EXPUNGE`, which can permanently remove unrelated messages flagged as deleted (violates A1)
+- **Ported pieces:**
+  - STARTTLS connect and the plain-language login and reachability errors
+  - MUTF-7 folder-name decoding
+  - plain/HTML body extraction
+  - the Task Scheduler at-logon and supervisor pattern
+- **Rules for the new plugin:**
+  - any copy-and-delete fallback must use `UID EXPUNGE` scoped to the one message, or fail instead
+- **Migration:** the existing claude.ai connector keeps running until the plugin replaces it.
 
 ### 6.1 Connection **[Frank: Proton-specific because of setup; Call: details]**
 - **It talks to Proton Mail Bridge over IMAP and SMTP.** Bridge's defaults are 127.0.0.1, IMAP 1143 and SMTP 1025, both with STARTTLS. The username is the Proton address, and the password is the one Bridge generates, not the account password. **[Builder: verify current Bridge defaults]**
@@ -183,10 +194,18 @@ A checklist in the app's settings, with live checks:
 - **Catch-up.** When the plugin recovers, mail is picked up from the stored cursor. Nothing is lost or duplicated (duplicates are detected by message ref plus Message-ID).
 - **Proton only.** Other plugins report `health` without repair. **[Frank]**
 
-## 7. Gmail plugin
-- **Archive** means removing the `INBOX` label. **Restore** means adding it back. Sent replies keep the Gmail thread intact.
-- **API versus IMAP**: see open question Q1 in §15. Either way, the plugin passes the conformance suite.
-- **New mail is detected by polling, not Gmail's Pub/Sub push,** because Pub/Sub needs a public HTTPS endpoint and the app is Tailscale-only. **[Call]**
+## 7. Gmail plugin **[Frank: IMAP, so every mail plugin works the same way]**
+- **Access:** IMAP (`imap.gmail.com:993`) and SMTP (`smtp.gmail.com:587` or `465`), signing in with the account address and a Google **app password**. The account needs 2-Step Verification.
+- **Archive** means `UID MOVE` from `INBOX` to `[Gmail]/All Mail`, i.e. removing the Inbox label. **Restore** moves it back. The plugin uses the Gmail IMAP extensions:
+  - `X-GM-MSGID` for stable refs
+  - `X-GM-THRID` for threads
+  - `X-GM-LABELS` for verification
+- **Gmail's "auto-expunge" setting:** setup checks it and warns if it's set so that deleting from a folder could remove mail. The plugin never issues `EXPUNGE` anyway.
+- **New mail:** polling, with IDLE as the `push` capability.
+- **Nothing is lost compared with the Gmail API for v1:**
+  - labels, threads and search (`X-GM-RAW`) are all available over IMAP
+  - Pub/Sub push is unusable without a public endpoint anyway
+- **Fallback if app passwords stop being available** for an account (Advanced Protection, or a Workspace admin policy): OAuth (XOAUTH2) **over the same IMAP/SMTP connection**. That only changes the sign-in, not the plugin. **[Call]**
 
 ## 8. AI pipeline
 
@@ -323,7 +342,12 @@ Written as Given / When / Then. Each maps to a pytest-bdd or Playwright scenario
   - remove unused `add`, `input` and `mongodb`
   - pick one toast library (sonner) and drop `react-toastify`
   - lucide-react → Hugeicons
-- **Open issues to fix along the way:** #4 (backend test failures), #8 (lint broken / not in CI), #24 (deploys need a Tailscale step).
+- **Open issues to fix along the way:** #4 (backend test failures), #8 (lint broken / not in CI), #24 (deploy).
+- **Hosting:** **[Frank]**
+  - **AWS is retired.** Its SSH deploy workflows are removed.
+  - **The app ships as Docker Compose** (backend + frontend) for a Docker host on the tailnet, or for the owner's machine.
+  - **MongoDB Atlas is the default database,** set by `MONGODB_URI`. An optional Compose profile runs MongoDB locally for people who don't want Atlas.
+  - **Atlas means stored mail content leaves the owner's machines.** The owner accepts this. The privacy modes cover only what is sent to AI providers, and the docs say so.
 - **CI:** backend tests, frontend tests, lint, type-check and the conformance suite (against a mock IMAP/SMTP server in CI) run on every PR. GitHub Actions move to current major versions.
 - **Docs:**
   - rewrite `AI_GUIDELINES.md`: uv instead of Poetry; correct paths; add security, secrets, prompt-injection and privacy guidance
@@ -347,15 +371,10 @@ Written as Given / When / Then. Each maps to a pytest-bdd or Playwright scenario
 - Calendar-aware scheduling.
 - Reading attachments.
 
-## 15. Open questions
-- **Q2. Proton plugin origin.** Should it be built from the existing gateway and MCP adapter (§6.0), or written fresh in this repo along with the conformance suite? **[pending owner decision]**
-- **Q3. Hosting and data.**
-  - **Proposed:** retire the AWS dev deploy (#24) and the Atlas dependency, and ship Docker Compose with MongoDB alongside the app on the owner's machine or tailnet VPS. Atlas would still be usable through config.
-  - **Why it matters:** this decides whether mail content leaves the owner's machines. **[pending owner decision]**
-- **Q1. Gmail access method.**
-  - **Option A: Gmail API with OAuth.** Gives clean label handling. For a personal OSS install, each user creates a Google Cloud OAuth client. Refresh tokens expire every 7 days while that client is in "testing" mode, so the owner would either re-authorize weekly or publish the client unverified.
-  - **Option B: Gmail IMAP and SMTP with an app password.** Needs 2-step verification on the Google account. Setup is simpler, and it shares IMAP code with Proton, but it depends on Google keeping app passwords available.
-  - Proposed: **[pending owner decision]**.
+## 15. Resolved decisions (2026-11-01)
+- **Gmail:** IMAP with an app password (§7). **[Frank]**
+- **Proton plugin:** written fresh in this repo, porting proven gateway pieces (§6.0). **[Frank: delegated; Call]**
+- **Hosting:** no AWS; Docker Compose on a Docker host; MongoDB Atlas by default (§12). **[Frank]**
 
 ## 16. Left to the builder
 - Exact MCP tool schemas and error codes.
