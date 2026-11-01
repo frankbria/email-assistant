@@ -2,7 +2,7 @@ name: Deploy email-assistant-backend-dev
 
 on:
   push:
-    branches: [master]
+    branches: [main]
 
 jobs:
   deploy:
