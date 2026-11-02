@@ -14,7 +14,9 @@ from pathlib import Path
 from app.plugins.config import load_plugins_config
 from app.plugins.registry import PluginRegistry
 import logging
+import asyncio
 import os
+from contextlib import suppress
 
 # Configure logging manually
 LOG_LEVEL = os.getenv("LOG_LEVEL", "INFO").upper()
@@ -77,13 +79,19 @@ async def lifespan(app: FastAPI):
     # An invalid plugins.yaml (e.g. an inline secret) stops startup; a plugin that
     # can't connect is only recorded as failed.
     plugins = PluginRegistry()
-    await plugins.connect_all(load_plugins_config(Path(os.getenv("PLUGINS_CONFIG", "plugins.yaml"))))
+    ready = asyncio.Event()
+    plugin_task = asyncio.create_task(
+        plugins.run(load_plugins_config(Path(os.getenv("PLUGINS_CONFIG", "plugins.yaml"))), ready)
+    )
+    await ready.wait()
     app.state.plugins = plugins
 
     try:
         yield
     finally:
-        await plugins.close()
+        plugin_task.cancel()
+        with suppress(asyncio.CancelledError):
+            await plugin_task
 
     logger.debug("🌟 Lifespan: Shutting down DB")
     if client is not None:

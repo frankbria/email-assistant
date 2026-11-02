@@ -98,10 +98,24 @@ class HttpTransport(ConfigModel):
         return None if name is None else require_env_name(name)
 
 
+class WatchdogConfig(ConfigModel):
+    """The plugin machine's watchdog status endpoint (Proton, spec §6.3)."""
+
+    url: str = Field(description="e.g. http://<tailscale-ip>:8766/status")
+    token_env: str
+    machine: str = Field(description="The machine's name, as shown to the owner.")
+
+    @field_validator("token_env")
+    @classmethod
+    def require_token_env_name(cls, name: str) -> str:
+        return require_env_name(name)
+
+
 class PluginConfig(ConfigModel):
     id: str = Field(pattern=r"^[a-z0-9][a-z0-9_-]*$")
     enabled: bool = True
     transport: Annotated[StdioTransport | HttpTransport, Field(discriminator="type")]
+    watchdog: WatchdogConfig | None = None
 
 
 class PluginsFile(ConfigModel):

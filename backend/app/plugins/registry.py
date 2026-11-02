@@ -5,33 +5,27 @@ import asyncio
 import logging
 import os
 from contextlib import AsyncExitStack
-from typing import Literal
 
 import httpx2
 from mcp import Client, StdioServerParameters
 from mcp.client import Transport
 from mcp.client.streamable_http import streamable_http_client
 from mcp.types import TextContent
-from pydantic import BaseModel
 
 from app.plugins.config import HttpTransport, PluginConfig, StdioTransport
-from mailbox_contract import SUPPORTED_MAJOR, MailboxInfo, is_supported
+from app.plugins.diagnosis import ConnectionState, diagnose
+from app.plugins.state import PluginState
+from mailbox_contract import SUPPORTED_MAJOR, Health, MailboxInfo, is_supported
 
 logger = logging.getLogger(__name__)
 
 CONNECT_TIMEOUT_SECONDS = 15
 CLOSE_TIMEOUT_SECONDS = 5
+REFRESH_SECONDS = 60  # owner fixes show up within a minute (AC-P.4)
 
 
 class PluginConnectError(Exception):
     """A plugin could not be connected; the message is shown to the owner."""
-
-
-class PluginState(BaseModel):
-    id: str
-    status: Literal["connected", "refused", "failed", "disabled"]
-    reason: str | None = None
-    info: MailboxInfo | None = None
 
 
 def read_env(name: str) -> str:
@@ -54,14 +48,59 @@ async def close_quietly(plugin_id: str, connection: AsyncExitStack) -> None:
 # exited by the task that entered them, which is the app's lifespan task.
 class PluginRegistry:
     def __init__(self) -> None:
+        self.configs: dict[str, PluginConfig] = {}
         self.states: dict[str, PluginState] = {}
+        self.diagnoses: dict[str, ConnectionState] = {}
         self.clients: dict[str, Client] = {}
         self._connections: dict[str, AsyncExitStack] = {}
 
     async def connect_all(self, configs: list[PluginConfig]) -> None:
         for config in configs:
+            self.configs[config.id] = config
             self.states[config.id] = await self._connect(config)
             logger.info("Plugin %s: %s", config.id, self.states[config.id].status)
+
+    async def run(self, configs: list[PluginConfig], ready: asyncio.Event, interval_seconds: float = REFRESH_SECONDS) -> None:
+        """Connect, then refresh every interval until cancelled, all in this one task:
+        MCP clients must be closed by the task that opened them."""
+        try:
+            await self.connect_all(configs)
+            await self.refresh()
+            ready.set()
+            while True:
+                await asyncio.sleep(interval_seconds)
+                await self.refresh()
+        finally:
+            ready.set()
+            await self.close()
+
+    async def refresh(self, timeout: float = 5) -> None:
+        """Reconnect plugins that aren't connected, then re-diagnose every plugin, so an
+        owner's fix shows up within one refresh."""
+        for plugin_id, config in self.configs.items():
+            if config.enabled and self.states[plugin_id].status != "connected":
+                connection = self._connections.pop(plugin_id, None)
+                if connection is not None:
+                    await close_quietly(plugin_id, connection)
+                self.clients.pop(plugin_id, None)
+                self.states[plugin_id] = await self._connect(config)
+            health = await self._health(plugin_id)
+            self.diagnoses[plugin_id] = await diagnose(self.states[plugin_id], health, config.watchdog, timeout)
+
+    async def _health(self, plugin_id: str) -> Health | None:
+        client = self.clients.get(plugin_id)
+        if client is None:
+            return None
+        try:
+            async with asyncio.timeout(CONNECT_TIMEOUT_SECONDS):
+                result = await client.call_tool("health", {})
+            if result.is_error or result.structured_content is None:
+                raise PluginConnectError("health failed")
+            return Health.model_validate(result.structured_content)
+        except Exception as error:
+            # The plugin stopped answering: drop the connection; the next refresh reconnects.
+            self.states[plugin_id] = PluginState(id=plugin_id, status="failed", reason=f"Not answering: {error}")
+            return None
 
     async def close(self) -> None:
         for plugin_id, connection in self._connections.items():

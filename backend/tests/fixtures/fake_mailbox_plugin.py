@@ -8,7 +8,7 @@ import sys
 
 from mcp.server.mcpserver import MCPServer
 
-from mailbox_contract import MailboxInfo, Folders
+from mailbox_contract import Folders, Health, HealthCheck, MailboxInfo
 
 server = MCPServer("fake-mailbox")
 
@@ -23,6 +23,11 @@ def mailbox_info() -> MailboxInfo:
         capabilities=[],
         folders=Folders(inbox="INBOX", archive="Archive", sent="Sent"),
     )
+
+
+@server.tool()
+def health() -> Health:
+    return Health(status="ok", checks=[HealthCheck(layer="plugin", ok=True, detail="ok")], repair_actions=[])
 
 
 if __name__ == "__main__":
