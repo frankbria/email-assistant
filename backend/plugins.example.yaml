@@ -1,0 +1,24 @@
+# Mailbox plugins (mailbox/1 MCP servers). Copy to backend/plugins.yaml, or point the
+# PLUGINS_CONFIG env var at your file. Read at startup: adding or removing a plugin is a
+# config change plus a restart, never a code change.
+#
+# Secrets are never written here. Name the environment variable that holds them
+# (bearer_token_env, env_from); an inline token or password is rejected at startup.
+plugins:
+  # A plugin running elsewhere on the tailnet, over Streamable HTTP.
+  - id: proton
+    enabled: true
+    transport:
+      type: http
+      url: http://proton-plugin.example:8765/mcp
+      bearer_token_env: PROTON_PLUGIN_TOKEN
+
+  # A plugin started by the app as a subprocess, over stdio.
+  - id: gmail
+    enabled: false
+    transport:
+      type: stdio
+      command: uv
+      args: [run, --directory, ../plugins/gmail, gmail-plugin]
+      env_from:
+        GMAIL_APP_PASSWORD: GMAIL_APP_PASSWORD
