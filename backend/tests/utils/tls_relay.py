@@ -44,11 +44,11 @@ def write_certificate(directory: Path, name: str) -> tuple[Path, Path]:
     return cert_path, key_path
 
 
-def start_tls_relay(target_port: int, cert_path: Path, key_path: Path) -> int:
+def start_tls_relay(target_port: int, cert_path: Path, key_path: Path, listen_port: int = 0) -> int:
     """Implicit-TLS front-end on a random port, forwarding plaintext to target_port."""
     context = ssl.SSLContext(ssl.PROTOCOL_TLS_SERVER)
     context.load_cert_chain(cert_path, key_path)
-    listener = socket.create_server(("127.0.0.1", 0))
+    listener = socket.create_server(("127.0.0.1", listen_port))
 
     def pipe(source: socket.socket, sink: socket.socket) -> None:
         try:

@@ -46,3 +46,19 @@ the app shows: **plugin** answering → **imap_port** (Bridge listening) → **i
 Failures are reported in plain words, e.g. "Proton Bridge isn't answering IMAP at
 127.0.0.1:1143. Is Bridge running and signed in?" or "Bridge's IMAP certificate doesn't
 match the pinned one … Export it again from Bridge".
+
+## Watchdog
+
+`python -m proton_plugin.watchdog` is a small, always-on process for the Bridge machine
+(installed to start at login: #49). Every 60 seconds it:
+
+- checks Bridge with the plugin's layered `health`, and restarts Bridge with
+  `MAILBOX_BRIDGE_RESTART_COMMAND` when it's down. Failed restarts back off: 30 s, 1 m,
+  2 m, 5 m, 15 m. After that it stops and asks for the owner.
+- stops restarting immediately on owner-only failures (e.g. Bridge needs re-login), and
+  keeps checking, so it recovers by itself within a minute of the owner's fix.
+- in HTTP mode (`MAILBOX_HTTP_HOST` set), starts the plugin and restarts it if it dies.
+- serves `GET /status` (JSON: Bridge state, first failing layer, restarts; plugin state)
+  on `MAILBOX_HTTP_HOST:MAILBOX_WATCHDOG_PORT` (default 8766), only with
+  `Authorization: Bearer $MAILBOX_WATCHDOG_TOKEN`. The app reads it when the plugin itself
+  doesn't answer, to tell "plugin down" from "machine offline".
