@@ -71,6 +71,7 @@ async def test_db():
     # covers data left behind by an aborted run.
     for model in document_models:
         await model.find_all().delete()
+    await db["user"].delete_many({})  # Better Auth's owner record, read by the sync engine
 
     yield db
 

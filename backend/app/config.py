@@ -37,6 +37,9 @@ class Settings(BaseSettings):
     ai_provider: str = "anthropic"
     ai_model: str = "claude-opus-5-5"
 
+    # How often each plugin's inbox is polled (env SYNC_POLL_SECONDS); a push polls sooner.
+    sync_poll_seconds: float = Field(default=120, gt=0)
+
     # new flag for AI summarization
     use_ai_summary: bool = False
 

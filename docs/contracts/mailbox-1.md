@@ -136,6 +136,15 @@ Optional: offered only when `capabilities` contains `repair`. Input:
 `health.repair_actions`. Output: [`RepairResult`](mailbox-1/RepairResult.schema.json)
 `{ok, detail}`.
 
+## Push
+
+Optional: offered only when `capabilities` contains `push`. The app polls `list_messages`
+every few minutes regardless; a push only makes it poll at once. The app opens an MCP
+`subscriptions/listen` stream for the resource `mailbox://inbox` (`INBOX_URI`), and the plugin
+publishes `notifications/resources/updated` for that URI whenever new mail may be in the
+inbox (e.g. on IMAP IDLE `EXISTS`). The event carries no data; the app lists from its cursor.
+Events are not replayed, so a missed push only delays mail until the next poll.
+
 ## Conformance suite
 
 A plugin is **supported** only when it passes `backend/tests/conformance/` (spec §5.5):

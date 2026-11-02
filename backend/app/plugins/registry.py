@@ -12,7 +12,7 @@ import httpx2
 from mcp import Client, StdioServerParameters
 from mcp.client import Transport
 from mcp.client.streamable_http import streamable_http_client
-from mcp.types import TextContent
+from mcp.types import CallToolResult, TextContent
 
 from app.plugins.config import HttpTransport, PluginConfig, StdioTransport
 from app.plugins.diagnosis import ConnectionState, diagnose
@@ -35,6 +35,11 @@ def read_env(name: str) -> str:
     if not value:
         raise PluginConnectError(f"environment variable {name} is not set")
     return value
+
+
+def result_text(result: CallToolResult) -> str:
+    """The text a tool returned, e.g. an error message without structured content."""
+    return " ".join(block.text for block in result.content if isinstance(block, TextContent))
 
 
 @dataclass
@@ -209,6 +214,5 @@ class PluginRegistry:
     async def _mailbox_info(client: Client) -> MailboxInfo:
         result = await client.call_tool("mailbox_info", {})
         if result.is_error or result.structured_content is None:
-            text = " ".join(block.text for block in result.content if isinstance(block, TextContent))
-            raise PluginConnectError(f"mailbox_info failed: {text or 'no structured result'}")
+            raise PluginConnectError(f"mailbox_info failed: {result_text(result) or 'no structured result'}")
         return MailboxInfo.model_validate(result.structured_content)
