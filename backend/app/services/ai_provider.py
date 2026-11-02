@@ -1,4 +1,5 @@
 # backend/app/services/ai_provider.py
+from functools import lru_cache
 from typing import Protocol, TypeVar
 
 from anthropic import AsyncAnthropic
@@ -45,6 +46,8 @@ class AnthropicProvider:
         return response.parsed_output
 
 
+# One provider (and HTTP connection pool) per process, like get_settings().
+@lru_cache
 def get_ai_provider() -> AIProvider:
     settings = get_settings()
     if settings.ai_provider == "anthropic":

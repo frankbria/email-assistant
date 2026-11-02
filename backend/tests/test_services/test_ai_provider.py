@@ -7,6 +7,19 @@ from app.services import ai_provider
 from app.services.ai_provider import AnthropicProvider, get_ai_provider
 
 
+@pytest.fixture(autouse=True)
+def fresh_provider():
+    get_ai_provider.cache_clear()
+    yield
+    get_ai_provider.cache_clear()
+
+
+def test_provider_is_reused_across_calls(monkeypatch):
+    monkeypatch.setattr(ai_provider, "get_settings", lambda: Settings())
+
+    assert get_ai_provider() is get_ai_provider()
+
+
 def test_default_provider_is_anthropic_with_current_claude_model(monkeypatch):
     monkeypatch.setattr(ai_provider, "get_settings", lambda: Settings())
 
