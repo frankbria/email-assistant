@@ -24,6 +24,11 @@ class ProtonSettings(ImapMailboxSettings):
     http_host: str | None = Field(default=None, description="The machine's Tailscale IP, for HTTP mode.")
     http_port: int = 8765
     http_token: str | None = Field(default=None, description="Bearer token the app must send in HTTP mode.")
+    bridge_restart_command: list[str] | None = Field(
+        default=None,
+        description='How to restart Bridge, as a JSON list (e.g. ["systemctl", "--user", "restart", "proton-bridge"]). Enables repair.',
+    )
+    repair_wait_seconds: int = Field(default=60, description="How long repair waits for Bridge to answer again.")
 
     @field_validator("tls", "imap_tls", "smtp_tls")
     @classmethod

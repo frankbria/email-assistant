@@ -29,6 +29,7 @@ from mailbox_contract import (
     MessageDetail,
     MessageSummary,
     MoveResult,
+    RepairResult,
     SendResult,
 )
 
@@ -44,10 +45,13 @@ CONTROL_CHARACTERS = re.compile(r"[\x00-\x1f\x7f]")
 class MailboxError(Exception):
     """A failure the plugin reports as a mailbox/1 ToolError."""
 
-    def __init__(self, code: ErrorCode, message: str) -> None:
+    def __init__(self, code: ErrorCode, message: str, restartable: bool = False) -> None:
         super().__init__(message)
         self.code = code
         self.message = message
+        # True when restarting the mail server might fix it (it's down or hung), not when
+        # the fix is configuration or credentials.
+        self.restartable = restartable
 
 
 class TextExtractor(HTMLParser):
@@ -126,11 +130,13 @@ class ImapMailbox:
                     connection.starttls(ssl_context=self._tls_context())
         except ssl.SSLCertVerificationError as error:
             raise MailboxError(ErrorCode.UNAVAILABLE, self.untrusted_certificate_message("IMAP", error)) from error
-        except (ssl.SSLError, TimeoutError, imaplib.IMAP4.error) as error:
-            # A TLS/plaintext mismatch shows up as a stall or a garbled greeting.
+        except TimeoutError as error:
+            # A hung server, or a TLS/plaintext mismatch where each side waits for the other.
+            raise MailboxError(ErrorCode.UNAVAILABLE, self.handshake_failed_message("IMAP", host, port), restartable=True) from error
+        except (ssl.SSLError, imaplib.IMAP4.error) as error:
             raise MailboxError(ErrorCode.UNAVAILABLE, self.handshake_failed_message("IMAP", host, port)) from error
         except OSError as error:
-            raise MailboxError(ErrorCode.UNAVAILABLE, self.unreachable_message("IMAP", host, port)) from error
+            raise MailboxError(ErrorCode.UNAVAILABLE, self.unreachable_message("IMAP", host, port), restartable=True) from error
         try:
             connection.login(self.settings.username, self.settings.password)
         except imaplib.IMAP4.error as error:
@@ -160,10 +166,12 @@ class ImapMailbox:
             raise MailboxError(ErrorCode.AUTH_FAILED, self.login_rejected_message("SMTP")) from error
         except ssl.SSLCertVerificationError as error:
             raise MailboxError(ErrorCode.UNAVAILABLE, self.untrusted_certificate_message("SMTP", error)) from error
-        except (ssl.SSLError, TimeoutError, smtplib.SMTPServerDisconnected) as error:
+        except TimeoutError as error:
+            raise MailboxError(ErrorCode.UNAVAILABLE, self.handshake_failed_message("SMTP", host, port), restartable=True) from error
+        except (ssl.SSLError, smtplib.SMTPServerDisconnected) as error:
             raise MailboxError(ErrorCode.UNAVAILABLE, self.handshake_failed_message("SMTP", host, port)) from error
         except (OSError, smtplib.SMTPException) as error:
-            raise MailboxError(ErrorCode.UNAVAILABLE, self.unreachable_message("SMTP", host, port)) from error
+            raise MailboxError(ErrorCode.UNAVAILABLE, self.unreachable_message("SMTP", host, port), restartable=True) from error
         try:
             yield connection
         finally:
@@ -347,6 +355,10 @@ class ImapMailbox:
                         ],
                     )
         raise MailboxError(ErrorCode.NOT_FOUND, "No message with that ref.")
+
+    def repair(self, action: str) -> RepairResult:
+        """Providers with a `repair` capability override this."""
+        raise MailboxError(ErrorCode.UNSUPPORTED, "This plugin has no repair actions.")
 
     def archive(self, ref: str) -> MoveResult:
         return self._move(ref, self.folders.inbox, self.folders.archive)

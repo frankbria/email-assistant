@@ -16,7 +16,7 @@ from pydantic import BaseModel
 
 from imap_mailbox.mailbox import ImapMailbox, MailboxError
 from imap_mailbox.settings import ImapMailboxSettings
-from mailbox_contract import Address, ErrorCode, RETRYABLE_CODES, ToolError
+from mailbox_contract import Address, Capability, ErrorCode, RETRYABLE_CODES, ToolError
 
 
 def respond(produce: Callable[[], BaseModel]) -> CallToolResult:
@@ -85,6 +85,12 @@ def build_server(mailbox: ImapMailbox, name: str = "imap-mailbox") -> MCPServer:
         in_reply_to_ref: str | None = None,
     ) -> CallToolResult:
         return respond(lambda: mailbox.send(to, cc or [], subject, body_text, in_reply_to_ref))
+
+    if Capability.REPAIR in mailbox.mailbox_info().capabilities:
+
+        @server.tool()
+        def repair(action: str) -> CallToolResult:
+            return respond(lambda: mailbox.repair(action))
 
     return server
 
