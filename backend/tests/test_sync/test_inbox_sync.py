@@ -7,8 +7,10 @@ from contextlib import asynccontextmanager
 from pathlib import Path
 
 import pytest
+from pydantic import ValidationError
 from pymongo.asynchronous.database import AsyncDatabase
 
+from app.config import Settings
 from app.models.message import Message
 from app.models.sync_cursor import SyncCursor
 from app.plugins.config import PluginConfig, StdioTransport
@@ -170,3 +172,10 @@ async def test_push_from_a_plugin_polls_it_without_waiting_for_the_interval(test
         finally:
             running.cancel()
             await asyncio.wait({running})
+
+
+@pytest.mark.parametrize("seconds", ["0", "-5"])
+def test_a_poll_interval_that_is_not_positive_is_rejected_at_startup(monkeypatch, seconds):
+    monkeypatch.setenv("SYNC_POLL_SECONDS", seconds)
+    with pytest.raises(ValidationError, match="sync_poll_seconds"):
+        Settings()
