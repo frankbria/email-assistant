@@ -107,8 +107,9 @@ content anywhere must go through the minimize (and redact) stages.
 - **No mocks for integration tests.** Use the real MongoDB (`test_db` fixture) and, from
   M1, the containerized IMAP/SMTP server. Unit tests may use small in-repo test doubles
   (`tests/utils/fakes.py`). Don't patch third-party clients.
-- Live AI-provider tests live in `tests/integration/`, call the real API, and are
-  skipped only when the provider's API key is unset.
+- Live AI-provider tests live in `tests/integration/`. They must call the real API and
+  skip only when the provider's API key is unset. (Today's OpenAI test does neither; #35
+  replaces it with a real Anthropic test.)
 - Don't change a test's expectation to make it pass. Fix the code, unless the expectation
   was demonstrably wrong, and then say why in the commit message.
 - Every test file must also pass on its own (`uv run pytest path/to/test_file.py`), not
