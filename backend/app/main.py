@@ -5,6 +5,9 @@ from contextlib import asynccontextmanager
 from app.models.email_message import EmailMessage
 from app.models.assistant_task import AssistantTask
 from app.models.user_settings import UserSettings
+from app.models.job import Job
+from app.models.message import Message
+from app.models.sync_cursor import SyncCursor
 from beanie import init_beanie
 from app.api.routers import connections, email, tasks, settings
 from app.middleware import setup_cors
@@ -51,7 +54,7 @@ async def init_db(settings: Settings | None = None):
     )
     await init_beanie(
         database=client[settings.current_mongodb_db],
-        document_models=[EmailMessage, AssistantTask, UserSettings],
+        document_models=[EmailMessage, AssistantTask, UserSettings, Message, Job, SyncCursor],
         allow_index_dropping=True,
     )
 

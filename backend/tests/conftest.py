@@ -21,6 +21,9 @@ from app.main import app
 from app.models.email_message import EmailMessage
 from app.models.assistant_task import AssistantTask
 from app.models.user_settings import UserSettings
+from app.models.job import Job
+from app.models.message import Message
+from app.models.sync_cursor import SyncCursor
 from app.config import Settings
 from app.strategies.action_registry import ActionRegistry
 import json
@@ -63,7 +66,7 @@ async def test_db():
 
     db = client[test_db_name]
 
-    document_models = [EmailMessage, AssistantTask, UserSettings]
+    document_models = [EmailMessage, AssistantTask, UserSettings, Message, Job, SyncCursor]
     await init_beanie(
         database=db, document_models=document_models, allow_index_dropping=True
     )
