@@ -42,6 +42,7 @@ async def test_a_message_archived_outside_the_app_closes_its_job_on_the_next_pol
         messages = {message.message_id: message for message in await Message.find_all().to_list()}
         jobs = {message_id: await job_over(message) for message_id, message in messages.items()}
         dismissed = await job_over(messages[on_phone[0]], state="dismissed")
+        snoozed = await job_over(messages[on_phone[1]], state="snoozed")  # its mail may be out of the inbox on purpose
         for message_id in on_phone:
             mailbox.move(message_id, "Archive")
 
@@ -50,7 +51,7 @@ async def test_a_message_archived_outside_the_app_closes_its_job_on_the_next_pol
     assert {message_id: await state_of(job) for message_id, job in jobs.items()} == {
         on_phone[0]: "handled_elsewhere", on_phone[1]: "handled_elsewhere", still_there: "open"
     }
-    assert await state_of(dismissed) == "dismissed"
+    assert (await state_of(dismissed), await state_of(snoozed)) == ("dismissed", "snoozed")
     # Archived once, by the owner; the app archived nothing and left the rest alone.
     assert sorted(str(m["Message-ID"]) for m in mailbox.messages("Archive")) == sorted(on_phone)
     assert [str(m["Message-ID"]) for m in mailbox.messages("INBOX")] == [still_there]
@@ -84,6 +85,23 @@ async def test_a_failing_inbox_check_raises_with_the_plugins_words_and_closes_no
     job = await job_over(message)
     async with connected(fake_plugin("fake", {})) as registry:
         with pytest.raises(SyncError, match="fake.*inbox_contains failed"):
+            await close_handled_elsewhere(OWNER, "fake", registry.clients["fake"])
+
+    assert await state_of(job) == "open"
+
+
+@pytest.mark.parametrize("answer", ["extra", "missing"])
+async def test_an_answer_that_is_not_exactly_the_asked_refs_closes_nothing(test_db, monkeypatch, answer):
+    monkeypatch.setenv("FAKE_ANSWER", answer)
+    message = Message.model_validate({
+        "owner_id": OWNER, "plugin_id": "fake", "ref": "r1", "message_id": "<m@x>",
+        "sender": {"email": "a@example.com"}, "to": [], "cc": [], "date": "2026-11-02T12:00:00Z",
+        "subject": "s", "snippet": "",
+    })
+    await message.insert()
+    job = await job_over(message)
+    async with connected(fake_plugin("fake", {"FAKE_INBOX_CONTAINS": "FAKE_ANSWER"})) as registry:
+        with pytest.raises(SyncError, match="fake: inbox_contains answered for other refs"):
             await close_handled_elsewhere(OWNER, "fake", registry.clients["fake"])
 
     assert await state_of(job) == "open"

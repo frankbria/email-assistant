@@ -7,11 +7,10 @@ import logging
 from datetime import UTC, datetime, timedelta
 from itertools import batched
 
+from beanie.operators import In
 from mcp import Client
 from mcp.types import CallToolResult
 from pymongo.asynchronous.collection import AsyncCollection
-
-from beanie.operators import In
 
 from app.models.job import Job
 from app.models.message import Message
@@ -134,7 +133,8 @@ async def close_handled_elsewhere(owner_id: str, plugin_id: str, client: Client)
     for batch in batched(messages, INBOX_CONTAINS_BATCH):
         answer = await call_plugin(plugin_id, client, "inbox_contains", {"refs": [message.ref for message in batch]})
         in_inbox = InboxContainsOutput.model_validate(answer).root
-        # A ref missing from the answer breaks the contract: KeyError fails the pass and closes nothing.
+        if in_inbox.keys() != {message.ref for message in batch}:  # the contract's exact-keys rule
+            raise SyncError(f"{plugin_id}: inbox_contains answered for other refs than it was asked about")
         gone |= {message.id for message in batch if not in_inbox[message.ref]}
     closing = [job.id for job in open_jobs if gone.intersection(job.message_ids)]
     if not closing:
