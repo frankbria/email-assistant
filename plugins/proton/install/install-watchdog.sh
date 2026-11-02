@@ -10,6 +10,10 @@ uv="$(command -v uv)"
 unit_directory="$HOME/.config/systemd/user"
 
 [[ -f "$env_file" ]] || { echo "Settings file not found: $env_file (copy proton.env.example there and fill it in)." >&2; exit 1; }
+# systemd expands %specifiers in unit values and $VARIABLES in ExecStart; escape them.
+unit_value() { local value="${1//%/%%}"; printf '%s' "${value//\$/\$\$}"; }
+env_value="${env_file//%/%%}"
+
 mkdir -p "$unit_directory"
 cat > "$unit_directory/email-assistant-proton-watchdog.service" <<UNIT
 [Unit]
@@ -17,8 +21,8 @@ Description=email-assistant Proton watchdog (keeps Bridge and the plugin running
 After=default.target
 
 [Service]
-Environment=MAILBOX_ENV_FILE=$env_file
-ExecStart=$uv run --directory $plugin_directory python -m proton_plugin.watchdog
+Environment="MAILBOX_ENV_FILE=$env_value"
+ExecStart="$(unit_value "$uv")" run --directory "$(unit_value "$plugin_directory")" python -m proton_plugin.watchdog
 Restart=always
 RestartSec=60
 
