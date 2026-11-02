@@ -30,7 +30,7 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)
 logger.info("Logger initialized. Log level is %s", LOG_LEVEL)
 
-PLUGIN_SHUTDOWN_SECONDS = 30  # each plugin closes within 5 s; this bounds a stuck task
+PLUGIN_SHUTDOWN_SECONDS = 30  # plugins close concurrently, each within 10 s; this bounds a stuck task
 
 
 async def init_db(settings: Settings | None = None):

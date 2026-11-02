@@ -51,9 +51,10 @@ async def close_quietly(plugin_id: str, held: HeldConnection) -> None:
     held.closing.set()
     await asyncio.wait({held.task}, timeout=CLOSE_TIMEOUT_SECONDS)
     if not held.task.done():
+        logger.error("Plugin %s did not close within %s s; cancelling it", plugin_id, CLOSE_TIMEOUT_SECONDS)
         held.task.cancel()
-        logger.error("Plugin %s did not close within %s s", plugin_id, CLOSE_TIMEOUT_SECONDS)
-    elif not held.task.cancelled() and (error := held.task.exception()) is not None:
+        await asyncio.wait({held.task}, timeout=CLOSE_TIMEOUT_SECONDS)
+    if held.task.done() and not held.task.cancelled() and (error := held.task.exception()) is not None:
         logger.error("Plugin %s connection ended with an error", plugin_id, exc_info=error)
 
 
@@ -126,8 +127,7 @@ class PluginRegistry:
             await close_quietly(plugin_id, connection)
 
     async def close(self) -> None:
-        for plugin_id, connection in self._connections.items():
-            await close_quietly(plugin_id, connection)
+        await asyncio.gather(*(close_quietly(plugin_id, held) for plugin_id, held in self._connections.items()))
         self._connections.clear()
         self.clients.clear()
 
@@ -145,6 +145,9 @@ class PluginRegistry:
             await close_quietly(config.id, connection)
             reason = str(error) or type(error).__name__
             return PluginState(id=config.id, status="failed", reason=f"Could not connect: {reason}")
+        except BaseException:  # shutdown mid-connect: the holder isn't stored yet, so close it here
+            await close_quietly(config.id, connection)
+            raise
         if not is_supported(info.contract_version):
             await close_quietly(config.id, connection)
             return PluginState(

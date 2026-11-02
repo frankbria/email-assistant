@@ -1,6 +1,6 @@
 """A minimal real mailbox/1 MCP server for tests (stdio by default, `http <port>` for HTTP).
 
-FAKE_CONTRACT_VERSION, FAKE_ACCOUNT and FAKE_HEALTH_DELAY (seconds) in its environment
+FAKE_CONTRACT_VERSION, FAKE_ACCOUNT, FAKE_INFO_DELAY and FAKE_HEALTH_DELAY (seconds) in its environment
 control what it reports.
 """
 
@@ -17,7 +17,8 @@ server = MCPServer("fake-mailbox")
 
 
 @server.tool()
-def mailbox_info() -> MailboxInfo:
+async def mailbox_info() -> MailboxInfo:
+    await anyio.sleep(float(os.environ.get("FAKE_INFO_DELAY", "0")))
     return MailboxInfo(
         contract_version=os.environ.get("FAKE_CONTRACT_VERSION", "1.0"),
         plugin_name="fake",

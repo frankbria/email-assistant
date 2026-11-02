@@ -236,6 +236,22 @@ async def test_shutdown_during_a_slow_health_check_still_cancels(tmp_path, monke
     assert registry.clients == {}
 
 
+async def test_shutdown_while_connecting_closes_the_half_open_connection(tmp_path, monkeypatch):
+    import asyncio
+
+    monkeypatch.setenv("SLOW_INFO", "30")
+    entry = stdio_entry("slow", env_from="{FAKE_INFO_DELAY: SLOW_INFO}")
+    registry = PluginRegistry()
+    running = asyncio.create_task(registry.run(load_plugins_config(write_config(tmp_path, "plugins:" + entry)), asyncio.Event()))
+    await asyncio.sleep(2)  # the plugin has started; mailbox_info (30 s) is in flight
+
+    running.cancel()
+    await asyncio.wait([running], timeout=15)
+
+    holders = [task for task in asyncio.all_tasks() if task.get_coro().__qualname__ == "PluginRegistry._hold"]
+    assert running.cancelled() and holders == []
+
+
 def test_app_connects_configured_plugins_on_startup(tmp_path, monkeypatch):
     """AC-C.1 end to end: the app's startup reads the config file and connects."""
     monkeypatch.setenv("PLUGINS_CONFIG", str(write_config(tmp_path, "plugins:" + stdio_entry("proton"))))
