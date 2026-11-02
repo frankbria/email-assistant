@@ -26,7 +26,7 @@ whose name lacks `_test`.
 
 ```bash
 cd backend
-uv sync
+uv sync --locked
 uv run pytest
 uv run ruff check .
 uv run mypy app
@@ -64,8 +64,9 @@ CI (`.github/workflows/ci.yml`) runs exactly these on every PR.
 - Never log message bodies, tokens or credentials. Log IDs and outcomes instead.
 - No host names, IP addresses, SSH users or cluster names in the repo: hosts are reached
   over Tailscale and documented in the operator's local runbook.
-- A pre-commit hook and GitGuardian scan for secrets. If either flags a false positive,
-  restructure the code. Don't bypass the hook with `--no-verify`.
+- GitGuardian scans every PR for secrets. A local pre-commit secret scan exists only in
+  the maintainer's clone (`.git/hooks` isn't versioned; versioned hooks are #113). If a
+  scanner flags a false positive, restructure the code. Never bypass it with `--no-verify`.
 
 ## Email is untrusted input (prompt injection)
 
