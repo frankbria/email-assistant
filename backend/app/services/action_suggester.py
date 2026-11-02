@@ -1,12 +1,11 @@
 # backend/app/services/action_suggester.py
 
-import json
 from typing import List, Protocol
 import logging
 from pydantic import BaseModel
 from app.models.email_message import EmailMessageBase
 from app.config import get_settings
-from app.services.ai_client import openai_client
+from app.services.ai_provider import get_ai_provider
 
 logger = logging.getLogger(__name__)
 
@@ -27,61 +26,29 @@ class ActionStrategy(Protocol):
         ...
 
 
+class ActionSuggestions(BaseModel):
+    actions: List[SuggestedAction]
+
+
 async def suggest_actions_ai(email: EmailMessageBase) -> List[SuggestedAction] | None:
     """
-    Use OpenAI to suggest actions based on email content and context.
-    Returns AI-generated actions or None if AI fails.
+    Asks the AI provider for up to 3 actions for the email.
+    Returns None when the AI fails or suggests nothing.
     """
-    if not openai_client:
-        return None
+    prompt = f"""Suggest 3 relevant actions for handling this email.
+Each action has a clear label (e.g. "Schedule Meeting"), an action_type (e.g. "schedule")
+and a handler name (e.g. "handle_schedule"). Meetings should include a schedule,
+forward, and decline option.
 
-    try:
-        # Construct prompt for action suggestion
-        system_prompt = """You are an AI assistant that suggests actions for handling emails.
-For each email, suggest 3 relevant actions based on the content and context.
-Each action should have:
-1. A clear label (e.g. "Schedule Meeting", "Forward to Team")
-2. An action_type (e.g. "schedule", "forward")
-3. A handler name (e.g. "handle_schedule", "handle_forward")
-Meetings should include a schedule, forward, and decline option.
-
-Format your response as a JSON array of objects with these exact keys: label, action_type, handler
-Example: [{"label": "Schedule Meeting", "action_type": "schedule", "handler": "handle_schedule"}]"""
-
-        user_prompt = f"""Subject: {email.subject}
+Subject: {email.subject}
 Body: {email.body}
-Context: {email.context if hasattr(email, 'context') else 'unknown'}
-
-Suggest 3 relevant actions for handling this email."""
-
-        response = await openai_client.chat.completions.create(
-            model="gpt-3.5-turbo",
-            messages=[
-                {"role": "system", "content": system_prompt},
-                {"role": "user", "content": user_prompt},
-            ],
-            temperature=0,
-            response_format={"type": "json_object"},
-        )
-
-        # Parse response and convert to SuggestedAction objects
-        actions_data = json.loads(response.choices[0].message.content or "{}")
-
-        actions = []
-        for action in actions_data.get("actions", []):
-            try:
-                actions.append(SuggestedAction(**action))
-            except Exception as e:
-                logger.warning(f"Failed to parse AI action: {e}")
-                continue
-
-        if actions:
-            return actions[:3]
-
-    except Exception as e:
-        logger.error(f"AI action suggestion failed: {e}")
-
-    return None
+Context: {email.context or 'unknown'}"""
+    try:
+        result = await get_ai_provider().propose(prompt, ActionSuggestions)
+    except Exception as error:
+        logger.error(f"AI action suggestion failed: {error}")
+        return None
+    return result.actions[:3] or None
 
 
 async def suggest_actions(email: EmailMessageBase) -> List[SuggestedAction]:

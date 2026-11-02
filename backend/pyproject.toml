@@ -5,10 +5,10 @@ description = "Backend API for an AI email assistant that processes emails, clas
 readme = "README.md"
 requires-python = ">=3.13"
 dependencies = [
+    "anthropic>=2.3.0",
     "beanie>=2",
     "fastapi",
     "httpx",
-    "openai",
     "pydantic",
     "pydantic-settings",
     "pymongo>=4.19.0",

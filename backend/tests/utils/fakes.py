@@ -1,37 +1,25 @@
 # backend/tests/utils/fakes.py
+from typing import TypeVar
+
+from pydantic import BaseModel
+
+SchemaT = TypeVar("SchemaT", bound=BaseModel)
 
 
-def async_return(result):
-    """Wraps a value in an async function that returns it."""
+class FakeAIProvider:
+    """Test double for app.services.ai_provider.AIProvider: returns a canned result
+    or raises a canned error, and records the prompts it was given."""
 
-    async def wrapper(*args, **kwargs):
-        return result
+    def __init__(
+        self, result: BaseModel | None = None, error: Exception | None = None
+    ) -> None:
+        self.result = result
+        self.error = error
+        self.prompts: list[str] = []
 
-    return wrapper
-
-
-def mock_openai_response(result=None, exception=None):
-    """Returns a mock OpenAI client that returns given result or raises exception"""
-
-    class MockResponse:
-        class Choice:
-            def __init__(self, content):
-                self.message = type("Message", (), {"content": content})
-
-        def __init__(self, content):
-            self.choices = [self.Choice(content)]
-
-    class MockOpenAIClient:
-        class Chat:
-            class Completions:
-                @staticmethod
-                async def create(*args, **kwargs):
-                    if exception:
-                        raise exception
-                    return MockResponse(result)
-
-            completions = Completions()
-
-        chat = Chat()
-
-    return MockOpenAIClient()
+    async def propose(self, prompt: str, schema: type[SchemaT]) -> SchemaT:
+        self.prompts.append(prompt)
+        if self.error is not None:
+            raise self.error
+        assert isinstance(self.result, schema), f"canned result is not a {schema.__name__}"
+        return self.result

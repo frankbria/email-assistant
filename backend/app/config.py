@@ -30,6 +30,10 @@ class Settings(BaseSettings):
     # User settings
     DEFAULT_USER_ID: str = os.getenv("DEFAULT_USER_ID", "default")
 
+    # AI provider (env AI_PROVIDER / AI_MODEL); the Anthropic key is ANTHROPIC_API_KEY.
+    ai_provider: str = "anthropic"
+    ai_model: str = "claude-opus-5-5"
+
     # new flag for AI summarization
     use_ai_summary: bool = False
 

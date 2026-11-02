@@ -23,8 +23,6 @@ from app.models.assistant_task import AssistantTask
 from app.models.user_settings import UserSettings
 from app.config import get_settings, Settings
 from app.strategies.action_registry import ActionRegistry
-import json
-from tests.utils.fakes import mock_openai_response
 
 # Load environment variables
 load_dotenv()
@@ -34,8 +32,6 @@ os.environ["MONGODB_URI"] = os.getenv("MONGODB_TEST_URI", "mongodb://localhost:2
 os.environ["MONGODB_DB"] = os.getenv("MONGODB_TEST_DB", "email_assistant_test")
 os.environ["USE_AI_CONTEXT"] = "false"
 os.environ["USE_AI_SUMMARY"] = "false"
-os.environ["OPENAI_API_KEY"] = "test_key"
-os.environ["OPENAI_API_MODEL"] = "gpt-3-5-turbo"
 
 # ---------------------
 # Core Fixtures
@@ -134,32 +130,6 @@ async def setup_test_data(db_transaction):
 # ---------------------
 # AI + Mock Fixtures
 # ---------------------
-
-
-@pytest.fixture
-def mock_openai_success_scenario(monkeypatch):
-    """Mock OpenAI client to always return a successful response."""
-
-    result = {
-        "actions": [
-            {"label": "Mock Action", "action_type": "mock", "handler": "handle_mock"}
-        ]
-    }
-    monkeypatch.setattr(
-        "app.services.action_suggester.openai_client",
-        mock_openai_response(json.dumps(result)),
-    )
-    yield
-
-
-@pytest.fixture
-def mock_openai_failure_scenario(monkeypatch):
-    """Mock OpenAI client to always raise an exception."""
-    monkeypatch.setattr(
-        "app.services.action_suggester.openai_client",
-        mock_openai_response(exception=Exception("API Error")),
-    )
-    yield
 
 
 @pytest.fixture

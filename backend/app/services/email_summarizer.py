@@ -2,11 +2,17 @@
 
 import os
 import logging
+from pydantic import BaseModel
 from app.models.email_message import EmailMessageBase
-from app.services.ai_client import openai_client, OPENAI_MODEL, ai_logger
+from app.services.ai_client import ai_logger
+from app.services.ai_provider import get_ai_provider
 from app.utils.email_utils import is_generic_subject, extract_first_sentence
 
 logger = logging.getLogger(__name__)
+
+
+class TaskSummary(BaseModel):
+    summary: str
 
 
 async def generate_summary(email: EmailMessageBase) -> str:
@@ -17,35 +23,20 @@ async def generate_summary(email: EmailMessageBase) -> str:
     """
     use_ai_summary = os.getenv("USE_AI_SUMMARY", "false").lower() == "true"
 
-    if use_ai_summary and openai_client:
+    if use_ai_summary:
+        prompt = (
+            "Summarize this email into one short, actionable task description. "
+            "Focus on what the owner is being asked to do or consider. "
+            "Be specific and concise.\n\n"
+            f"Subject: {email.subject or '(No Subject)'}\n"
+            f"Body: {email.body or '(No Body)'}"
+        )
         try:
-            prompt = (
-                "You are an executive assistant. "
-                "Summarize the following email into one short, actionable task description. "
-                "Focus on what the user is being asked to do or consider. "
-                "Avoid vague language. Be specific and concise.\n\n"
-                f"Subject: {email.subject or '(No Subject)'}\n"
-                f"Body: {email.body or '(No Body)'}"
-            )
-            logger.debug("🔄 Sending summary prompt to OpenAI: ", prompt)
-            response = await openai_client.chat.completions.create(
-                model=OPENAI_MODEL,
-                messages=[
-                    {
-                        "role": "system",
-                        "content": "You are an executive assistant helping summarize emails into tasks.",
-                    },
-                    {"role": "user", "content": prompt},
-                ],
-                temperature=0,
-            )
-            summary = (response.choices[0].message.content or "").strip()
-            if summary:
-                logger.debug("✅ Received AI-generated task summary: ", summary)
-                return summary
-        except Exception as e:
-            ai_logger.error(f"AI summarization failed: {e}")
-            logger.debug("⚠️ AI summarization failed, falling back: ", e)
+            result = await get_ai_provider().propose(prompt, TaskSummary)
+            if result.summary.strip():
+                return result.summary.strip()
+        except Exception as error:
+            ai_logger.error(f"AI summarization failed: {error}")
 
     # Non-AI fallback path
     if not email.subject and not email.body:

@@ -25,7 +25,7 @@ Think: 1950s secretary triaging your morning mail.
 | Backend   | FastAPI + Beanie (MongoDB ODM) (Python 3.13+) |
 | Database  | MongoDB Atlas |
 | Auth      | (TBD — Clerk or custom) |
-| AI        | OpenAI or mock assistant logic |
+| AI        | Anthropic Claude (provider interface) or rule-based fallback |
 | Package Mgmt | uv (backend), npm (frontend) |
 
 ---
@@ -116,8 +116,8 @@ Create environment files to configure AI classification and the API base URL:
 
 **Backend** (in `backend/.env` or project root `.env`):
 ```dotenv
-OPENAI_API_KEY=your_api_key_here
-OPENAI_API_MODEL=gpt-3.5-turbo
+ANTHROPIC_API_KEY=your_api_key_here
+AI_MODEL=claude-opus-5-5
 USE_AI_CONTEXT=true
 USE_AI_SUMMARY=true
 USE_AI_ACTIONS=true
@@ -142,7 +142,7 @@ NEXT_PUBLIC_DEBUG=true
 The assistant suggests relevant actions for each email task based on its content and context. This can be powered by either:
 
 1. **AI-based suggestions** (when `USE_AI_ACTIONS=true`):
-   - Uses OpenAI to analyze email content and context
+   - Uses the AI provider (Claude by default) to analyze email content and context
    - Generates contextually relevant actions (e.g., "Schedule Meeting" for calendar requests)
    - Falls back to rule-based if AI is unavailable
 
