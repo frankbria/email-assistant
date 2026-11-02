@@ -29,6 +29,11 @@ jobs:
           --health-cmd "mongosh --quiet --eval 'db.runCommand({ping: 1})'"
           --health-interval 5s
           --health-retries 12
+      greenmail:  # IMAP/SMTP test server, same as docker-compose.test.yml
+        image: greenmail/standalone:2.1.15
+        env:
+          GREENMAIL_OPTS: -Dgreenmail.setup.test.smtp -Dgreenmail.setup.test.imap -Dgreenmail.hostname=0.0.0.0 -Dgreenmail.auth.disabled
+        ports: ["3025:3025", "3143:3143"]
     steps:
       - uses: actions/checkout@v7
       - uses: astral-sh/setup-uv@v10.3.3 # no floating major tag upstream

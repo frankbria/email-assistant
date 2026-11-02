@@ -220,3 +220,23 @@ def auto_inject_user_id(monkeypatch):
     monkeypatch.setattr(EmailMessage, "__init__", wrap_init(EmailMessage.__init__))
     monkeypatch.setattr(AssistantTask, "__init__", wrap_init(AssistantTask.__init__))
     yield
+
+
+# ---------------------
+# Mail server (GreenMail, see docker-compose.test.yml)
+# ---------------------
+
+
+@pytest.fixture(scope="session")
+def mail_server():
+    from tests.utils.mail_server import wait_until_ready
+
+    wait_until_ready()
+
+
+@pytest.fixture
+def mailbox(mail_server):
+    """A fresh, empty mailbox on the test mail server."""
+    from tests.utils.mail_server import new_mailbox
+
+    return new_mailbox()
