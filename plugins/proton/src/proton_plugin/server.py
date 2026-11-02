@@ -8,7 +8,7 @@ from starlette.types import ASGIApp, Receive, Scope, Send
 
 from imap_mailbox.server import build_server
 from proton_plugin.mailbox import ProtonMailbox
-from proton_plugin.settings import ProtonSettings
+from proton_plugin.settings import load_settings
 
 
 class BearerTokenGuard:
@@ -29,7 +29,7 @@ class BearerTokenGuard:
 
 
 def main() -> None:
-    settings = ProtonSettings()  # type: ignore[call-arg]  # required fields come from the environment
+    settings = load_settings()
     server = build_server(ProtonMailbox(settings), name="proton")
     if sys.argv[1:2] != ["http"]:
         server.run()

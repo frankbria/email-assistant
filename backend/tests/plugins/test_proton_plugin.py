@@ -6,6 +6,7 @@ import subprocess
 import sys
 import time
 from collections.abc import Iterator
+from pathlib import Path
 
 import pytest
 from pydantic import ValidationError
@@ -14,7 +15,7 @@ from app.plugins.config import HttpTransport, PluginConfig, StdioTransport
 from app.plugins.registry import PluginRegistry
 from proton_plugin.mailbox import ProtonMailbox
 from proton_plugin.mutf7 import decode_mutf7
-from proton_plugin.settings import ProtonSettings
+from proton_plugin.settings import ProtonSettings, load_settings
 from tests.utils.mail_server import Mailbox
 from tests.utils.tls_relay import fake_bridge
 
@@ -186,3 +187,13 @@ async def test_app_connects_over_http_only_with_the_bearer_token(
         assert registry.states["proton"].status == status, registry.states["proton"].reason
     finally:
         await registry.close()
+
+
+def test_settings_load_from_the_env_file_the_logon_task_points_at(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
+    env_file = tmp_path / "proton.env"
+    env_file.write_text("MAILBOX_ACCOUNT=me@proton.me\nMAILBOX_USERNAME=me\nMAILBOX_PASSWORD=x\nMAILBOX_CA_CERT_PATH=/c.pem\nMAILBOX_IMAP_PORT=1144\n")
+    monkeypatch.setenv("MAILBOX_ENV_FILE", str(env_file))
+
+    settings = load_settings()
+
+    assert settings.account == "me@proton.me" and settings.imap_port == 1144
