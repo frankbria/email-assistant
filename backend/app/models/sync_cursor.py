@@ -14,6 +14,7 @@ class SyncCursor(Document):
     plugin_id: str
     folder: Literal["inbox", "sent"]
     cursor: str | None = None
+    first_pass_complete: bool = False
     updated_at: datetime = Field(default_factory=lambda: datetime.now(UTC))
 
     class Settings:

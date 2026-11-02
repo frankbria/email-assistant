@@ -4,6 +4,7 @@ import asyncio
 import sys
 from collections.abc import AsyncIterator, Awaitable, Callable
 from contextlib import asynccontextmanager
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
 import pytest
@@ -124,6 +125,59 @@ async def test_a_cursor_the_plugin_no_longer_accepts_restarts_without_duplicates
     assert sorted(await stored_message_ids()) == sorted([seen, unseen])
 
 
+def days_ago(days: int) -> datetime:
+    return datetime.now(UTC) - timedelta(days=days)
+
+
+async def test_first_connect_takes_only_the_last_14_days_and_archives_nothing(test_db, mailbox: Mailbox):
+    """Spec §5.3 first connect: older mail stays untouched; the first pass is all `ask`."""
+    older = mailbox.append("INBOX", sender="a@example.com", subject="15 days", body="x", received=days_ago(15))
+    recent = mailbox.append("INBOX", sender="a@example.com", subject="13 days", body="x", received=days_ago(13))
+    async with connected(reference_imap_plugin(mailbox)) as registry:
+        first_pass = await sync_inbox(OWNER, PLUGIN, registry.clients[PLUGIN])
+
+    assert [(message.message_id, message.first_pass) for message in first_pass] == [(recent, True)]
+    assert await stored_message_ids() == [recent]
+    assert sorted(message["Message-ID"] for message in mailbox.messages("INBOX")) == sorted([older, recent])
+
+
+async def test_the_whole_first_pass_is_marked_even_across_pages_but_later_mail_is_not(test_db, mailbox: Mailbox):
+    week_old = [
+        mailbox.append("INBOX", sender="a@example.com", subject=f"Week {n}", body="x", received=days_ago(7))
+        for n in range(3)
+    ]
+    async with connected(reference_imap_plugin(mailbox)) as registry:
+        first_pass = await sync_inbox(OWNER, PLUGIN, registry.clients[PLUGIN], page_size=1)
+        later = mailbox.deliver(sender="b@example.com", subject="Later", body="x")
+        afterwards = await sync_inbox(OWNER, PLUGIN, registry.clients[PLUGIN])
+
+    assert [(message.message_id, message.first_pass) for message in first_pass] == [(m, True) for m in week_old]
+    assert [(message.message_id, message.first_pass) for message in afterwards] == [(later, False)]
+
+
+async def test_the_first_connect_window_is_configurable(test_db, mailbox: Mailbox):
+    older = mailbox.append("INBOX", sender="a@example.com", subject="15 days", body="x", received=days_ago(15))
+    async with connected(reference_imap_plugin(mailbox)) as registry:
+        first_pass = await sync_inbox(OWNER, PLUGIN, registry.clients[PLUGIN], window_days=16)
+
+    assert [message.message_id for message in first_pass] == [older]
+
+
+async def test_restarting_after_a_rejected_cursor_keeps_the_window_and_is_not_a_first_pass(test_db, mailbox: Mailbox):
+    async with connected(reference_imap_plugin(mailbox)) as registry:
+        await sync_inbox(OWNER, PLUGIN, registry.clients[PLUGIN])
+        cursor = await SyncCursor.find_one(SyncCursor.owner_id == OWNER)
+        assert cursor is not None
+        cursor.cursor = "0:999"  # e.g. the folder was rebuilt and its UIDVALIDITY changed
+        await cursor.save()
+        mailbox.append("INBOX", sender="a@example.com", subject="Moved back in", body="x", received=days_ago(30))
+        unseen = mailbox.deliver(sender="a@example.com", subject="Unseen", body="x")
+
+        new = await sync_inbox(OWNER, PLUGIN, registry.clients[PLUGIN])
+
+    assert [(message.message_id, message.first_pass) for message in new] == [(unseen, False)]
+
+
 async def test_a_failing_list_messages_raises_with_the_plugins_words(test_db, monkeypatch):
     monkeypatch.setenv("FAKE_FAILS", "1")
     async with connected(fake_plugin("broken", {"FAKE_LIST_FAILS": "FAKE_FAILS"})) as registry:
@@ -211,8 +265,9 @@ async def test_push_from_a_plugin_polls_it_without_waiting_for_the_interval(test
             await asyncio.wait({running})
 
 
-@pytest.mark.parametrize("seconds", ["0", "-5"])
-def test_a_poll_interval_that_is_not_positive_is_rejected_at_startup(monkeypatch, seconds):
-    monkeypatch.setenv("SYNC_POLL_SECONDS", seconds)
-    with pytest.raises(ValidationError, match="sync_poll_seconds"):
+@pytest.mark.parametrize("variable", ["SYNC_POLL_SECONDS", "FIRST_CONNECT_DAYS"])
+@pytest.mark.parametrize("value", ["0", "-5"])
+def test_a_poll_interval_or_window_that_is_not_positive_is_rejected_at_startup(monkeypatch, variable, value):
+    monkeypatch.setenv(variable, value)
+    with pytest.raises(ValidationError, match=variable.lower()):
         Settings()
