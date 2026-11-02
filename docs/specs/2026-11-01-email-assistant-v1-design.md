@@ -336,7 +336,7 @@ Written as Given / When / Then. Each maps to a pytest-bdd or Playwright scenario
   - the `/email/incoming` webhook and webhook-security admin UI
   - the `?user_id` mechanism and `ForwardingInstructionsModal`
   - Reusable pieces (duplicate detection, summarizer fallbacks) may be kept if they fit the pipeline. **[Builder]**
-- **Database driver:** Motor → PyMongo's async API, and Beanie → 2.x. Motor is deprecated. **[Builder: verify Beanie 2 + PyMongo async compatibility]**
+- **Database driver:** Motor → PyMongo's async API, and Beanie → 2.x. Motor is deprecated. (Done in #30: Beanie 2.2 on `pymongo.AsyncMongoClient`.)
 - **AI provider:** replace the direct OpenAI client with a provider interface, defaulting to Anthropic. `gpt-3.5-turbo` is retired.
 - **Frontend dependencies:**
   - remove unused `add`, `input` and `mongodb`

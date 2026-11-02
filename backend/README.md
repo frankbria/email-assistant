@@ -5,8 +5,8 @@ The backend API for an executive-style AI assistant that processes emails, class
 ## 🚀 Tech Stack
 
 - **FastAPI**: Modern, high-performance web framework
-- **Beanie**: MongoDB ODM for Python 3.7+ based on Motor and Pydantic
-- **Motor**: Asynchronous MongoDB driver
+- **Beanie 2**: MongoDB ODM based on PyMongo and Pydantic
+- **PyMongo** (`AsyncMongoClient`): asynchronous MongoDB driver
 - **uv**: Fast Python package and project manager
 - **OpenAI**: AI-powered classification and summary generation (optional)
 
