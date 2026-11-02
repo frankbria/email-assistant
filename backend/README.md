@@ -70,7 +70,10 @@ backend/
 │   ├── main.py              # Application entry point
 │   ├── config.py            # Configuration settings
 │   ├── models/              # Beanie models
-│   │   ├── email_task.py    # Email task data model
+│   │   ├── message.py       # One mail in one account (plugin ref + Message-ID)
+│   │   ├── job.py           # One action for the owner over one or more messages
+│   │   ├── sync_cursor.py   # Where sync left off per plugin folder
+│   │   ├── assistant_task.py, email_message.py  # legacy, until the jobs API replaces them
 │   ├── routes/              # API endpoints
 │   │   ├── email.py         # Email ingestion endpoints
 │   │   ├── tasks.py         # Task management endpoints
