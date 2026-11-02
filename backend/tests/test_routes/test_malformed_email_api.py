@@ -1,7 +1,6 @@
 # backend/tests/test_routes/test_malformed_email_api.py
 
 import pytest
-from httpx import AsyncClient
 from app.models.assistant_task import AssistantTask
 from app.models.email_message import EmailMessage
 

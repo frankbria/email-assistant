@@ -1,5 +1,4 @@
 # backend/tests/test_services/test_email_summarizer.py
-import os
 import importlib
 import pytest
 from types import SimpleNamespace

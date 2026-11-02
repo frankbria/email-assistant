@@ -3,7 +3,6 @@
 import textwrap
 
 import pytest
-from pydantic import ValidationError
 
 from app.models.email_message import EmailMessage
 from app.models.assistant_task import AssistantTask

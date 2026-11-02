@@ -1,7 +1,6 @@
 # backend/tests/test_routes/test_email_end_to_end.py
 
 import pytest
-from httpx import AsyncClient
 from beanie import PydanticObjectId
 import json
 

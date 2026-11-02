@@ -31,8 +31,6 @@ async def test_full_mapping_and_defaults(monkeypatch):
         lambda: Settings(use_ai_actions=False),
     )
 
-    from app.strategies.default import DefaultEmailStrategy
-    from app.strategies.action_registry import ActionRegistry
 
     ActionRegistry._strategies.clear()
     ActionRegistry.register("default", DefaultEmailStrategy)

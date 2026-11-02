@@ -35,7 +35,8 @@ async def create_email_task(
 
     # Use centralized mapping logic (includes defaults, classification, summary)
     task = await map_email_to_task(email, actions)
-    logger.debug("🔄 Mapping email to task")
+    if task is None:  # spam: the mapper flagged the email and created no task
+        return {"email_id": str(email.id), "task_id": None}
     await task.insert()
     logger.debug("✅ Task created and saved")
     return {"email_id": str(email.id), "task_id": str(task.id)}

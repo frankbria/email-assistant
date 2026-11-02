@@ -1,11 +1,9 @@
 # backend/app/api/routers/settings.py
 
-from fastapi import APIRouter, HTTPException, Depends, Body, Request
+from fastapi import APIRouter, HTTPException, Body, Request
 from typing import Optional
 from app.models.user_settings import UserSettings
 from pydantic import BaseModel, Field, ValidationError
-from beanie import PydanticObjectId
-from beanie.operators import Eq
 from app.utils.user_utils import get_current_user_id
 
 router = APIRouter(prefix="/api/v1/settings", tags=["settings"])

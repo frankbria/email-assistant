@@ -1,5 +1,4 @@
 # backend/tests/test_services/test_task_classifier.py
-import pytest
 from app.models.email_message import EmailMessageBase
 from app.services.task_classifier import classify_context
 

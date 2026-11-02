@@ -18,10 +18,12 @@ dependencies = [
 
 [dependency-groups]
 dev = [
+    "mypy>=2.4.1",
     "pytest",
     "pytest-asyncio",
     "pytest-benchmark",
     "pytest-cov",
+    "ruff>=0.17.3",
 ]
 
 [tool.pytest.ini_options]
@@ -35,3 +37,7 @@ markers = [
     "e2e: marks tests as end-to-end tests (deselect with '-m \"not e2e\"')",
 ]
 pythonpath = ["."]
+
+[tool.ruff.lint]
+# Pinned: ruff 0.17 widened its default rule set.
+select = ["E4", "E7", "E9", "F"]

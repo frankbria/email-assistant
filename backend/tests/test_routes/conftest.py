@@ -3,7 +3,6 @@
 import pytest
 from app.models.email_message import EmailMessage
 from app.models.assistant_task import AssistantTask
-from app.models.user_settings import UserSettings
 
 @pytest.fixture
 async def setup_test_data(db_transaction):

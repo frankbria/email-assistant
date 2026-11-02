@@ -1,8 +1,10 @@
 # backend/app/api/routers/tasks.py
 
-from fastapi import APIRouter, Depends, HTTPException, Query, Request
+from fastapi import APIRouter, HTTPException, Query, Request
+from collections.abc import Mapping
 from typing import List, Optional
 from app.models.assistant_task import AssistantTask
+from app.models.email_message import EmailMessage
 from beanie import PydanticObjectId
 from beanie.operators import Eq
 from pydantic import BaseModel, Field
@@ -35,11 +37,8 @@ async def get_tasks(
     # Get the current user ID
     user_id = await get_current_user_id(request)
 
-    filters = [
-        # Filter tasks by the current user_id
-        AssistantTask.user_id
-        == user_id
-    ]
+    # Beanie field comparisons build query operators (Mappings), not bools.
+    filters: list[Mapping[str, object] | bool] = [AssistantTask.user_id == user_id]
 
     if status == "active":
         filters.append(AssistantTask.status != "done")
@@ -49,17 +48,13 @@ async def get_tasks(
     if spam is not None:
         filters.append(Eq("email.is_spam", spam))
 
-    # filters.append(AssistantTask.user_id == user_id)
-
-    query = AssistantTask.find(*filters, fetch_links=["email"])
+    query = AssistantTask.find(*filters, fetch_links=True)
 
     tasks = await query.to_list()
 
     for t in tasks:
-        await t.fetch_all_links()
-        await t.fetch_link(AssistantTask.email)
-
-        if not t.context:
+        # fetch_links=True resolved t.email; a dangling link stays a Link.
+        if not t.context and isinstance(t.email, EmailMessage):
             t.context = await context_classifier.classify_context(
                 t.subject or t.email.subject, t.email.body
             )

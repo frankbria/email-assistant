@@ -72,6 +72,8 @@ function TaskList({ onLoadTasks }: { onLoadTasks: (loadTasksFn: () => Promise<vo
   }, [isOnline])
 
   useEffect(() => {
+    // shortcut: the mount fetch sets loading state synchronously (one extra render); this page is replaced by the job queue in #75.
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- see shortcut above
     loadTasks()
     onLoadTasks(loadTasks)
     // Listen for online/offline events to update readOnly state

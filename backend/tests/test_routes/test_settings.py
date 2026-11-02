@@ -1,7 +1,6 @@
 # backend/tests/test_routes/test_settings.py
 import pytest
 from fastapi.testclient import TestClient
-from app.models.user_settings import UserSettings
 from app.utils.user_utils import DEFAULT_USER_ID
 from app.main import app
 

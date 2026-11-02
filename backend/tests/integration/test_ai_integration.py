@@ -8,7 +8,6 @@ from app.services.ai_client import classify_context_ai
 @pytest.mark.asyncio
 async def test_ai_client_live():
     api_key = os.getenv("OPENAI_API_KEY")
-    model = os.getenv("OPENAI_API_MODEL", "gpt-3.5-turbo")
     assert api_key, "Set OPENAI_API_KEY for integration tests"
 
     # This will actually call OpenAI; make sure rate limits and costs are acceptable

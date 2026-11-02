@@ -31,8 +31,8 @@ async def get_current_user_id(request: Optional[Request] = None) -> str:
     #     # return user_id
 
     # For now, get a user_id from query parameters for demo purposes (if provided)
-    if request and request.query_params.get("user_id"):
-        return request.query_params.get("user_id")
+    if request and (user_id := request.query_params.get("user_id")):
+        return user_id
 
     # Otherwise use a default user ID
     settings = get_settings()
