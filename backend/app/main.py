@@ -10,6 +10,9 @@ from app.api.routers import email, tasks, settings
 from app.middleware import setup_cors
 from app.config import get_settings, Settings
 from pymongo import AsyncMongoClient
+from pathlib import Path
+from app.plugins.config import load_plugins_config
+from app.plugins.registry import PluginRegistry
 import logging
 import os
 
@@ -71,8 +74,15 @@ async def lifespan(app: FastAPI):
     app.state.settings = settings
     logger.debug("🌟 Lifespan: DB client assigned to app.state")
 
-    # Database setup only in lifespan
+    # An invalid plugins.yaml (e.g. an inline secret) stops startup; a plugin that
+    # can't connect is only recorded as failed.
+    plugins = PluginRegistry()
+    await plugins.connect_all(load_plugins_config(Path(os.getenv("PLUGINS_CONFIG", "plugins.yaml"))))
+    app.state.plugins = plugins
+
     yield
+
+    await plugins.close()
 
     logger.debug("🌟 Lifespan: Shutting down DB")
     if client is not None:

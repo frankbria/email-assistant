@@ -23,3 +23,6 @@ Thumbs.db
 # Python bytecode
 __pycache__/
 *.pyc
+
+# Local plugin config (copy of backend/plugins.example.yaml)
+backend/plugins.yaml
