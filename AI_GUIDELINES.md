@@ -62,8 +62,9 @@ CI (`.github/workflows/ci.yml`) runs exactly these on every PR.
 - Reference secrets by environment-variable name. Never inline them in code, tests,
   fixtures, logs, docs, commit messages, issues or PRs.
 - Never log message bodies, tokens or credentials. Log IDs and outcomes instead.
-- No host names, IP addresses, SSH users or cluster names in the repo: hosts are reached
-  over Tailscale and documented in the operator's local runbook.
+- No real infrastructure identifiers in the repo: production or tailnet host names and
+  IPs, SSH users, cluster names. Those live in the operator's local runbook. Loopback
+  addresses (`localhost`, `127.0.0.1`) and Compose service names (`mongo`) are fine.
 - GitGuardian scans every PR for secrets. A local pre-commit secret scan exists only in
   the maintainer's clone (`.git/hooks` isn't versioned; versioned hooks are #113). If a
   scanner flags a false positive, restructure the code. Never bypass it with `--no-verify`.
