@@ -16,6 +16,7 @@ from pymongo import AsyncMongoClient
 from pathlib import Path
 from app.plugins.config import load_plugins_config
 from app.plugins.registry import PluginRegistry
+from app.sync import SyncEngine
 import logging
 import asyncio
 import os
@@ -87,13 +88,19 @@ async def lifespan(app: FastAPI):
     plugin_task = asyncio.create_task(
         plugins.run(load_plugins_config(Path(os.getenv("PLUGINS_CONFIG", "plugins.yaml"))), ready)
     )
+    sync_task: asyncio.Task[None] | None = None
     try:
         await ready.wait()
         if plugin_task.done():
             raise RuntimeError("Plugins failed to start; the error is logged below")
         app.state.plugins = plugins
+        sync = SyncEngine(plugins, client[settings.current_mongodb_db]["user"], settings.sync_poll_seconds)
+        sync_task = asyncio.create_task(sync.run())
         yield
     finally:
+        if sync_task is not None:  # stop syncing before its plugins close
+            sync_task.cancel()
+            await asyncio.wait({sync_task})
         plugin_task.cancel()
         await asyncio.wait({plugin_task}, timeout=PLUGIN_SHUTDOWN_SECONDS)
         if not plugin_task.done():

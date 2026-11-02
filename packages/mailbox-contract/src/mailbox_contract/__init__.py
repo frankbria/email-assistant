@@ -33,6 +33,11 @@ class Capability(StrEnum):
     REPAIR = "repair"
 
 
+# A `push` plugin publishes `notifications/resources/updated` for this URI on
+# `subscriptions/listen` when new mail may be in the inbox; the app then polls at once.
+INBOX_URI = "mailbox://inbox"
+
+
 class Folders(ContractModel):
     """The plugin's names for the three folders the app uses."""
 

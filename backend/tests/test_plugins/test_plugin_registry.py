@@ -1,4 +1,5 @@
 # Plugins are real MCP server processes (tests/fixtures/fake_mailbox_plugin.py); no mocks.
+import os
 import socket
 import subprocess
 import sys
@@ -280,9 +281,32 @@ def test_connections_lists_every_configured_plugin_with_its_state(tmp_path, monk
     assert proton["plugin_id"] == "proton" and proton["status"] == "connected"
     assert proton["account"] == "owner@example.com" and proton["plugin_name"] == "fake"
     assert proton["diagnosis"]["kind"] == "ok" and proton["repairing"] is False
-    assert proton["last_synced_at"] is None
     assert future["plugin_id"] == "future" and future["status"] == "refused"
     assert "mailbox/2.0" in future["reason"] and "1.x" in future["reason"]
+
+
+def test_connections_shows_when_each_plugin_last_synced(tmp_path, monkeypatch):
+    """The sync engine starts with the app; a plugin's last sync is its inbox cursor's."""
+    from pymongo import MongoClient
+
+    from tests.utils.auth import OWNER_ID, bearer_headers
+
+    monkeypatch.setenv("PLUGINS_CONFIG", str(write_config(tmp_path, "plugins:" + stdio_entry("proton"))))
+    with MongoClient(os.environ["MONGODB_URI"]) as mongo:
+        database = mongo[os.environ["MONGODB_DB"]]
+        database["sync_cursors"].delete_many({})
+        database["user"].delete_many({})
+        database["user"].insert_one({"_id": OWNER_ID, "role": "owner"})
+        try:
+            with TestClient(app, headers=bearer_headers()) as client:
+                deadline = time.monotonic() + 10
+                while (row := client.get("/api/v1/connections").json()[0])["last_synced_at"] is None:
+                    assert time.monotonic() < deadline, "the first sync never happened"
+                    time.sleep(0.1)
+        finally:
+            database["user"].delete_many({})
+
+    assert row["plugin_id"] == "proton"
 
 
 def test_connections_requires_the_owner(tmp_path, monkeypatch):
