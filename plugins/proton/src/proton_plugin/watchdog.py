@@ -6,6 +6,7 @@ Run as its own always-on process: python -m proton_plugin.watchdog
 """
 
 import hmac
+import logging
 import subprocess
 import sys
 import threading
@@ -18,6 +19,8 @@ from pydantic import BaseModel
 
 from proton_plugin.mailbox import ProtonMailbox
 from proton_plugin.settings import ProtonSettings
+
+logger = logging.getLogger(__name__)
 
 CHECK_INTERVAL_SECONDS = 60
 # Wait after the 1st, 2nd, … failed restart. After the last one, restarts stop.
@@ -34,8 +37,9 @@ class BridgeStatus(BaseModel):
 
 
 class PluginStatus(BaseModel):
-    state: Literal["not_supervised", "running", "restarting"] = "not_supervised"
+    state: Literal["not_supervised", "running", "restarting", "needs_owner"] = "not_supervised"
     restarts: int = 0
+    failed_restarts: int = 0
 
 
 class WatchdogStatus(BaseModel):
@@ -54,6 +58,7 @@ class Watchdog:
         self.plugin = PluginStatus(state="not_supervised" if plugin_command is None else "restarting")
         self.checked_at: datetime | None = None
         self._next_restart_at = 0.0
+        self._next_plugin_start_at = 0.0
         self._lock = threading.Lock()
 
     def status(self) -> dict[str, object]:
@@ -62,7 +67,7 @@ class Watchdog:
 
     def tick(self, now: float) -> None:
         """One round of checks. `now` is a monotonic time in seconds."""
-        self._supervise_plugin()
+        self._supervise_plugin(now)
         health = self.mailbox.health()
         failing = next((check for check in health.checks if not check.ok), None)
         with self._lock:
@@ -77,6 +82,9 @@ class Watchdog:
                 # Owner-only (e.g. Bridge needs re-login), or no restart command configured.
                 self.bridge.state, self.bridge.detail = "needs_owner", failing.detail
                 return
+            if now < self._next_restart_at:  # still within the last restart's wait
+                self.bridge.state, self.bridge.detail = "restarting", failing.detail
+                return
             if self.bridge.failed_restarts >= len(BACKOFF_SECONDS):
                 self.bridge.state = "needs_owner"
                 self.bridge.detail = (
@@ -84,8 +92,6 @@ class Watchdog:
                 )
                 return
             self.bridge.state, self.bridge.detail = "restarting", failing.detail
-            if now < self._next_restart_at:
-                return
             self.bridge.failed_restarts += 1
             self.bridge.restarts += 1
             self._next_restart_at = now + BACKOFF_SECONDS[self.bridge.failed_restarts - 1]
@@ -102,21 +108,42 @@ class Watchdog:
             with self._lock:
                 self.bridge.detail = f"Restarting Bridge failed: {error}"
 
-    def _supervise_plugin(self) -> None:
+    def _supervise_plugin(self, now: float) -> None:
+        """Start the plugin, and restart it with the same backoff as Bridge when it dies."""
         if self.plugin_command is None:
             return
-        if self.plugin_process is not None and self.plugin_process.poll() is None:
-            self.plugin.state = "running"
-            return
-        if self.plugin_process is not None:
-            self.plugin.restarts += 1
-        self.plugin_process = subprocess.Popen(self.plugin_command)
-        self.plugin.state = "running"
+        with self._lock:
+            process = self.plugin_process
+            if process is not None and process.poll() is None:
+                # Alive at a check after its start: running, and its failure count resets.
+                self.plugin.state, self.plugin.failed_restarts = "running", 0
+                return
+            if process is not None and now < self._next_plugin_start_at:
+                self.plugin.state = "restarting"
+                return
+            if process is not None and self.plugin.failed_restarts >= len(BACKOFF_SECONDS):
+                self.plugin.state = "needs_owner"
+                return
+            if process is not None:
+                self.plugin.restarts += 1
+                self.plugin.failed_restarts += 1
+                self._next_plugin_start_at = now + BACKOFF_SECONDS[self.plugin.failed_restarts - 1]
+            self.plugin.state = "restarting"  # until a later check sees it alive
+            try:
+                self.plugin_process = subprocess.Popen(self.plugin_command)
+            except OSError:
+                self.plugin_process = None
+                self.plugin.state = "needs_owner"
 
     def stop(self) -> None:
-        if self.plugin_process is not None and self.plugin_process.poll() is None:
-            self.plugin_process.terminate()
-            self.plugin_process.wait(timeout=10)
+        process = self.plugin_process
+        if process is not None and process.poll() is None:
+            process.terminate()
+            try:
+                process.wait(timeout=10)
+            except subprocess.TimeoutExpired:
+                process.kill()
+                process.wait(timeout=10)
 
 
 def serve_status(watchdog: Watchdog, host: str, port: int, token: str) -> ThreadingHTTPServer:
@@ -158,7 +185,10 @@ def main() -> None:
     serve_status(watchdog, settings.http_host or "127.0.0.1", settings.watchdog_port, settings.watchdog_token)
     try:
         while True:
-            watchdog.tick(time.monotonic())
+            try:
+                watchdog.tick(time.monotonic())
+            except Exception:  # the watchdog is the last line of defence: never die
+                logger.exception("Watchdog check failed; trying again next interval")
             time.sleep(CHECK_INTERVAL_SECONDS)
     finally:
         watchdog.stop()

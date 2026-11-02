@@ -91,10 +91,12 @@ def test_killed_plugin_is_restarted(bridge_layout):
         first.wait(timeout=10)
 
         watchdog.tick(now=60)
+        assert watchdog.status()["plugin"]["state"] == "restarting"
+        watchdog.tick(now=120)
 
         second = watchdog.plugin_process
         assert second is not None and second.poll() is None and second.pid != first.pid
-        assert watchdog.status()["plugin"]["restarts"] == 1
+        assert watchdog.status()["plugin"] == {"state": "running", "restarts": 1, "failed_restarts": 0}
     finally:
         watchdog.stop()
 
@@ -158,3 +160,20 @@ def test_status_endpoint_requires_the_token(bridge_layout):
 
     assert set(body) >= {"bridge", "plugin", "checked_at"}
     assert refused.value.code == 401
+
+
+def test_crash_looping_plugin_backs_off_then_asks_for_the_owner(bridge_layout):
+    # No Bridge restarts here: only the plugin supervision is under test.
+    watchdog = Watchdog(settings(bridge_layout, bridge_restart_command=None), plugin_command=[sys.executable, "-c", "raise SystemExit(1)"])
+    starts = []
+    for now in range(0, 3600, 10):
+        before = watchdog.plugin_process
+        watchdog.tick(now=now)
+        if watchdog.plugin_process is not before:
+            starts.append(now)
+        if watchdog.plugin_process is not None:
+            watchdog.plugin_process.wait(timeout=10)
+
+    gaps = [later - earlier for earlier, later in zip(starts[1:], starts[2:])]
+    assert gaps == [round_up(seconds) for seconds in BACKOFF_SECONDS[:-1]]
+    assert watchdog.status()["plugin"]["state"] == "needs_owner"
