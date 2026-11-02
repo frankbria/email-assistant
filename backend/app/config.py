@@ -2,7 +2,7 @@
 
 from pydantic_settings import BaseSettings
 from functools import lru_cache
-from typing import Optional, List
+from typing import List
 import os
 from dotenv import load_dotenv
 import sys
@@ -30,9 +30,6 @@ class Settings(BaseSettings):
     # User settings
     DEFAULT_USER_ID: str = os.getenv("DEFAULT_USER_ID", "default")
 
-    # email settings
-    duplicate_threshold: float = os.getenv("DUPLICATE_THRESHOLD", 0.9)
-
     # new flag for AI summarization
     use_ai_summary: bool = False
 
@@ -50,18 +47,6 @@ class Settings(BaseSettings):
         ]
         if origin
     ]
-
-    # === Email box provider information ===
-    mailbox_domain: str = os.getenv("MAILBOX_DOMAIN", "mailslurp.biz")
-    mailbox_api_key: Optional[str] = os.getenv("MAILBOX_API_KEY")
-
-    # === Temporary IMAP for mailslurp (before webhook is implemented) ===
-    imap_host: str = os.getenv("IMAP_HOST", "mailslurpimap.click")
-    imap_port: int = os.getenv("IMAP_PORT", 8993)
-    imap_username: Optional[str] = os.getenv("IMAP_USERNAME")
-    imap_password: Optional[str] = os.getenv("IMAP_PASSWORD")
-
-    emergency_webhook_api_key: Optional[str] = os.getenv("EMERGENCY_WEBHOOK_API_KEY")
 
     @property
     def is_test(self) -> bool:

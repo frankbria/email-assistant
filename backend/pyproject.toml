@@ -8,13 +8,11 @@ dependencies = [
     "beanie<2",
     "fastapi",
     "httpx",
-    "mailslurp-client>=17.5.0",
     "motor",
     "openai",
     "pydantic",
     "pydantic-settings",
     "python-dotenv",
-    "slowapi",
     "uvicorn",
 ]
 

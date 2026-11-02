@@ -5,11 +5,10 @@ from contextlib import asynccontextmanager
 from app.models.email_message import EmailMessage
 from app.models.assistant_task import AssistantTask
 from app.models.user_settings import UserSettings
-from app.models.webhook_security import WebhookSecurity
 from beanie import init_beanie
 import motor.motor_asyncio
-from app.api.routers import email, tasks, settings, admin
-from app.middleware import setup_cors, limiter, RATE_LIMIT
+from app.api.routers import email, tasks, settings
+from app.middleware import setup_cors
 from app.config import get_settings, Settings
 from motor.motor_asyncio import AsyncIOMotorClient, AsyncIOMotorDatabase
 import uuid
@@ -17,9 +16,6 @@ from beanie.exceptions import CollectionWasNotInitialized
 from typing import Optional
 import logging
 import os
-from slowapi.middleware import SlowAPIMiddleware
-from slowapi.errors import RateLimitExceeded
-from slowapi import _rate_limit_exceeded_handler
 
 # Configure logging manually
 LOG_LEVEL = os.getenv("LOG_LEVEL", "INFO").upper()
@@ -53,7 +49,7 @@ async def init_db(settings: Settings = None):
     )
     await init_beanie(
         database=client[settings.current_mongodb_db],
-        document_models=[EmailMessage, AssistantTask, UserSettings, WebhookSecurity],
+        document_models=[EmailMessage, AssistantTask, UserSettings],
         allow_index_dropping=True,
     )
 
@@ -92,11 +88,6 @@ async def lifespan(app: FastAPI):
 
 app = FastAPI(title="Email Assistant API", lifespan=lifespan)
 
-# Configure rate limiting middleware
-app.state.limiter = limiter
-app.add_middleware(SlowAPIMiddleware)
-app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
-
 # Setup CORS middleware
 setup_cors(app)
 
@@ -104,7 +95,6 @@ setup_cors(app)
 app.include_router(email.router)  # router already has prefix in its definition
 app.include_router(tasks.router)  # router already has prefix in its definition
 app.include_router(settings.router)  # router already has prefix in its definition
-app.include_router(admin.router)  # admin endpoints for webhook security
 
 
 @app.get("/")

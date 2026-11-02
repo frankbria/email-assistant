@@ -23,7 +23,6 @@ from fastapi.testclient import TestClient
 from app.main import app
 from app.models.email_message import EmailMessage
 from app.models.assistant_task import AssistantTask
-from app.models.webhook_security import WebhookSecurity
 from app.models.user_settings import UserSettings
 from app.config import get_settings, Settings
 from app.strategies.action_registry import ActionRegistry
@@ -69,7 +68,7 @@ async def test_db():
 
     await init_beanie(
         database=db,
-        document_models=[EmailMessage, AssistantTask, WebhookSecurity, UserSettings],
+        document_models=[EmailMessage, AssistantTask, UserSettings],
         allow_index_dropping=True,
     )
 
@@ -118,24 +117,6 @@ async def async_client():
 # ---------------------
 
 
-@pytest.fixture
-async def set_webhook_security(test_db, db_transaction):
-    """Set up a valid webhook security configuration."""
-    print("Setting up webhook security configuration")
-    # Create a valid WebhookSecurity object
-    config = WebhookSecurity(api_key="validkey", allowed_ips=["127.0.0.1"], active=True)
-
-    try:
-        # Insert the configuration into the database
-        await config.insert()
-        print("Webhook security configuration inserted successfully")
-    except Exception as e:
-        print(f"Error inserting webhook security configuration: {e}")
-        raise e
-
-    yield config
-
-    print("Cleaning up webhook security configuration")
 
 
 @pytest.fixture
@@ -155,19 +136,11 @@ async def setup_test_data(db_transaction):
     )
     await task.insert()
 
-    webhook = WebhookSecurity(
-        api_key="test_key",
-        allowed_ips=["127.0.0.1"],
-        active=True,
-    )
-    await webhook.insert()
-
     yield
 
     # No need to clean up test data; each test runs in its own transaction
     # await EmailMessage.find_all().delete()
     # await AssistantTask.find_all().delete()
-    # await WebhookSecurity.find_all().delete()
 
 
 # ---------------------
@@ -254,7 +227,4 @@ def auto_inject_user_id(monkeypatch):
 
     monkeypatch.setattr(EmailMessage, "__init__", wrap_init(EmailMessage.__init__))
     monkeypatch.setattr(AssistantTask, "__init__", wrap_init(AssistantTask.__init__))
-    monkeypatch.setattr(
-        WebhookSecurity, "__init__", wrap_init(WebhookSecurity.__init__)
-    )
     yield
