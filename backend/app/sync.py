@@ -70,7 +70,7 @@ async def inbox_cursor(owner_id: str, plugin_id: str) -> SyncCursor:
     stored = await SyncCursor.find_one(
         SyncCursor.owner_id == owner_id, SyncCursor.plugin_id == plugin_id, SyncCursor.folder == "inbox"
     )
-    return stored or SyncCursor(owner_id=owner_id, plugin_id=plugin_id, folder="inbox")
+    return stored or SyncCursor(owner_id=owner_id, plugin_id=plugin_id, folder="inbox", first_pass_complete=False)
 
 
 async def store_page(

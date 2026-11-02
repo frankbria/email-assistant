@@ -14,7 +14,7 @@ class SyncCursor(Document):
     plugin_id: str
     folder: Literal["inbox", "sent"]
     cursor: str | None = None
-    first_pass_complete: bool = False
+    first_pass_complete: bool = True  # cursors saved before this field existed were past their first pass
     updated_at: datetime = Field(default_factory=lambda: datetime.now(UTC))
 
     class Settings:

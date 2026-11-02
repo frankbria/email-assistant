@@ -155,12 +155,24 @@ async def test_the_whole_first_pass_is_marked_even_across_pages_but_later_mail_i
     assert [(message.message_id, message.first_pass) for message in afterwards] == [(later, False)]
 
 
+async def test_a_cursor_saved_before_first_pass_tracking_counts_as_past_its_first_pass(test_db, mailbox: Mailbox):
+    async with connected(reference_imap_plugin(mailbox)) as registry:
+        await sync_inbox(OWNER, PLUGIN, registry.clients[PLUGIN])
+        await test_db["sync_cursors"].update_many({}, {"$unset": {"first_pass_complete": ""}})
+        later = mailbox.deliver(sender="b@example.com", subject="Later", body="x")
+
+        afterwards = await sync_inbox(OWNER, PLUGIN, registry.clients[PLUGIN])
+
+    assert [(message.message_id, message.first_pass) for message in afterwards] == [(later, False)]
+
+
 async def test_the_first_connect_window_is_configurable(test_db, mailbox: Mailbox):
+    await add_owner(test_db)
     older = mailbox.append("INBOX", sender="a@example.com", subject="15 days", body="x", received=days_ago(15))
     async with connected(reference_imap_plugin(mailbox)) as registry:
-        first_pass = await sync_inbox(OWNER, PLUGIN, registry.clients[PLUGIN], window_days=16)
+        await SyncEngine(registry, test_db["user"], poll_seconds=60, first_connect_days=16).sync_all()
 
-    assert [message.message_id for message in first_pass] == [older]
+    assert await stored_message_ids() == [older]
 
 
 async def test_restarting_after_a_rejected_cursor_keeps_the_window_and_is_not_a_first_pass(test_db, mailbox: Mailbox):
