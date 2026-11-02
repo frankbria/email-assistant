@@ -3,6 +3,7 @@
 import imaplib
 from collections.abc import Iterator
 from contextlib import contextmanager
+from datetime import UTC, datetime, timedelta
 
 import pytest
 
@@ -88,3 +89,23 @@ def test_a_cursor_with_a_tampered_window_is_rejected(mailbox: Mailbox, window: s
         plugin.list_messages("inbox", f"{cursor}:{window}", None, 1)
 
     assert rejected.value.code == ErrorCode.INVALID_CURSOR
+
+
+class MailboxWithoutUidNext(ImapMailbox):
+    @staticmethod
+    def _select(connection: imaplib.IMAP4, folder: str, readonly: bool = True) -> None:
+        ImapMailbox._select(connection, folder, readonly)
+        connection.untagged_responses.pop("UIDNEXT", None)
+
+
+def test_a_server_that_omits_uidnext_still_ends_a_since_listing_past_older_mail(mailbox: Mailbox):
+    now = datetime.now(UTC)
+    mailbox.append("INBOX", sender="a@example.com", subject="recent", body="x", received=now - timedelta(days=2))
+    mailbox.append("INBOX", sender="a@example.com", subject="older", body="x", received=now - timedelta(days=30))
+    plugin = MailboxWithoutUidNext(settings_for(mailbox))
+
+    listing = plugin.list_messages("inbox", None, now - timedelta(days=14), 100)
+    resumed = plugin.list_messages("inbox", listing.next_cursor, None, 100)
+
+    assert [m.subject for m in listing.messages] == ["recent"]
+    assert resumed.messages == []

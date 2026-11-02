@@ -307,8 +307,8 @@ class ImapMailbox:
             self._select(connection, folder_name)
             validity = str(connection.response("UIDVALIDITY")[1][0], "ascii")
             after, window = self._resume(cursor, validity) if cursor else (0, since and since.strftime("%d-%b-%Y"))
-            # Searched before the window, so mail arriving in between is re-listed rather than skipped.
-            ceiling = max(self._search(connection, "ALL"), default=0) if window else 0
+            # Highest UID as of SELECT (before the search), so mail arriving in between is never skipped.
+            ceiling = self._last_uid(connection) if window else 0
             criteria = ("UID", f"{after + 1}:*", *(("SINCE", window) if window else ()))
             # "UID n:*" always returns the newest message, even below n; filter it.
             uids = [uid for uid in self._search(connection, *criteria) if uid > after]
@@ -320,6 +320,13 @@ class ImapMailbox:
             # Listing complete: resume after everything in the folder, mail outside the window included.
             next_cursor = f"{validity}:{max(ceiling, after, *page[-1:])}"
         return ListMessagesOutput(messages=messages, next_cursor=next_cursor, has_more=len(uids) > limit)
+
+    def _last_uid(self, connection: imaplib.IMAP4) -> int:
+        """From SELECT's UIDNEXT (RFC 3501 requires it); a full search only if a server omits it."""
+        _, uid_next = connection.response("UIDNEXT")
+        if uid_next and uid_next[0]:
+            return int(uid_next[0]) - 1
+        return max(self._search(connection, "ALL"), default=0)
 
     @staticmethod
     def _resume(cursor: str, validity: str) -> tuple[int, str | None]:
