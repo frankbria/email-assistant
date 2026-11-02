@@ -54,7 +54,7 @@ function TaskList({ onLoadTasks }: { onLoadTasks: (loadTasksFn: () => Promise<vo
       setError(null)
       setReadOnly(false)
       
-      // Use the fetchTasks service function that includes user_id
+      // fetchTasks authenticates with the Better Auth JWT (services/apiClient.ts)
       const tasksWithIds = await fetchTasks('active', false)
       
       setTasks(tasksWithIds)

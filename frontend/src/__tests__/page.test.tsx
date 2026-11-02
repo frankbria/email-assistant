@@ -10,9 +10,17 @@ import { Toaster } from 'sonner'
 import Page from '@/app/page'
 import { createEmail } from 'services/emailService'
 
-// Mock fetch globally
-const mockFetch = vi.fn()
-global.fetch = mockFetch
+// Mock fetch globally, before any import: Better Auth's client keeps the fetch it sees at
+// import time. Its JWT endpoint answers for the signed-in owner; every other call goes to
+// mockFetch, which each test scripts.
+const { mockFetch } = vi.hoisted(() => {
+  const mockFetch = vi.fn()
+  globalThis.fetch = ((input: RequestInfo | URL, init?: RequestInit) =>
+    String(input instanceof Request ? input.url : input).includes('/api/auth/token')
+      ? Promise.resolve(Response.json({ token: 'test-jwt' }))
+      : mockFetch(input, init)) as typeof fetch
+  return { mockFetch }
+})
 
 // Mock window.matchMedia for all tests
 beforeAll(() => {

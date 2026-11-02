@@ -2,6 +2,7 @@ import { betterAuth } from 'better-auth'
 import { APIError, createAuthMiddleware } from 'better-auth/api'
 import { mongodbAdapter } from 'better-auth/adapters/mongodb'
 import { nextCookies } from 'better-auth/next-js'
+import { jwt } from 'better-auth/plugins'
 import { MongoClient } from 'mongodb'
 
 export const mongoClient = new MongoClient(process.env.MONGODB_URI ?? 'mongodb://localhost:27017')
@@ -32,5 +33,6 @@ export const auth = betterAuth({
       }
     }),
   },
-  plugins: [nextCookies()],
+  // jwt(): /api/auth/token issues short-lived JWTs for FastAPI, which verifies them against /api/auth/jwks.
+  plugins: [jwt(), nextCookies()],
 })
