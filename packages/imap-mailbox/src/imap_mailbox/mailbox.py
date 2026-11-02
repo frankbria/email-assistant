@@ -59,12 +59,13 @@ class TextExtractor(HTMLParser):
     plain-text mail, so the app can tell quoted history from new content; style and script are dropped."""
 
     LINE_TAGS = frozenset({"br", "p", "div", "li", "tr", "blockquote", "h1", "h2", "h3", "h4", "h5", "h6"})
-    HIDDEN_TAGS = frozenset({"style", "script", "head", "title"})
+    MAX_QUOTE_MARKERS = 8  # deeper nesting adds no meaning, only size (hostile HTML nests thousands)
+    HIDDEN_TAGS = frozenset({"style", "script", "title"})  # not "head": its end tag is optional
 
     def __init__(self) -> None:
         super().__init__()
         self.lines: list[str] = []
-        self.line = ""
+        self.line: list[str] = []  # chunks; joining once per line keeps long inline runs linear
         self.quote_depth = 0
         self.hidden_depth = 0
 
@@ -87,15 +88,16 @@ class TextExtractor(HTMLParser):
         if self.hidden_depth:
             return
         first, *rest = data.split("\n")
-        self.line += first
+        self.line.append(first)
         for piece in rest:
             self.end_line()
-            self.line = piece
+            self.line.append(piece)
 
     def end_line(self) -> None:
-        if self.line.strip():
-            self.lines.append("> " * self.quote_depth + self.line.strip())
-        self.line = ""
+        line = "".join(self.line).strip()
+        if line:
+            self.lines.append("> " * min(self.quote_depth, self.MAX_QUOTE_MARKERS) + line)
+        self.line = []
 
 
 def html_to_text(html: str) -> str:
