@@ -100,14 +100,12 @@ async def populate_default(num_emails: int = 10):
                 is_archived=False,
                 user_id=user_id,  # Assign user_id to each email
             )
-            for i, email in enumerate(base_emails)
+            for i, email in enumerate(base_emails[:num_emails])
         ]
 
-        # Insert into DB
-        await EmailMessage.insert_many(email_objects)
-
-        # Map each to a task and insert
+        # One insert per email: insert_many leaves ids unset, and tasks link by id.
         for email in email_objects:
+            await email.insert()
             task = await map_email_to_task(email)
             if task:  # Some emails might be marked as spam and return None
                 await task.insert()
