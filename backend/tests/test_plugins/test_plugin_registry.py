@@ -70,6 +70,8 @@ plugins:
         '{type: http, url: "http://127.0.0.1:9/mcp", password: "abc"}',
         '{type: stdio, command: python, args: ["--password=abc"]}',
         '{type: stdio, command: python, args: ["--token", "abc"]}',
+        '{type: stdio, command: python, args: ["--secret-key=abc"]}',
+        '{type: stdio, command: python, args: ["--password2=abc"]}',
         '{type: http, url: "http://owner:abc@127.0.0.1:9/mcp"}',
         '{type: http, url: "http://127.0.0.1:9/mcp", bearer_token_env: "abc 123"}',
         '{type: stdio, command: python, env_from: {APP_PASSWORD: "abc123"}}',
@@ -171,6 +173,7 @@ def http_plugin():
             time.sleep(0.1)
     else:
         process.kill()
+        process.wait(timeout=10)
         pytest.fail("fake HTTP plugin did not start listening")
     yield f"http://127.0.0.1:{port}/mcp"
     process.terminate()

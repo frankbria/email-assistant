@@ -16,7 +16,11 @@ from pydantic import BaseModel, ConfigDict, Field, field_validator, model_valida
 logger = logging.getLogger(__name__)
 
 SECRET_WORDS = re.compile(r"token|password|passwd|secret|api_?key", re.IGNORECASE)
-INLINE_SECRET_ARGUMENT = re.compile(r"(token|password|passwd|secret|api[-_]?key)(=\S|$)", re.IGNORECASE)
+# A flag whose name mentions a secret, with or without =VALUE (e.g. --password,
+# --secret-key=…, --password2=…).
+INLINE_SECRET_ARGUMENT = re.compile(
+    r"^-{1,2}[\w-]*(token|password|passwd|secret|api[-_]?key)[\w-]*(=|$)", re.IGNORECASE
+)
 # Uppercase by convention, which also catches most literal secrets pasted in by mistake.
 ENV_NAME = re.compile(r"[A-Z_][A-Z0-9_]*")
 
