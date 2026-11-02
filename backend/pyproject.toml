@@ -30,6 +30,8 @@ dev = [
 asyncio_mode = "auto"
 asyncio_default_fixture_loop_scope = "function"
 testpaths = ["tests"]
+# Dump every thread's traceback when a test hangs.
+faulthandler_timeout = 60
 markers = [
     "integration: marks tests as integration (deselect with '-m \"not integration\"')",
     "dependency: mark tests with dependencies",
