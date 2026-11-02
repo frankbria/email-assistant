@@ -86,6 +86,8 @@ async def test_bridge_restarting_is_reported_from_the_watchdog(running_watchdog)
 
     assert state.kind in {"bridge_restarting", "owner_action"}
     assert "Bridge" in state.message
+    assert watchdog.bridge.first_failing_layer is not None
+    assert state.first_failing_layer == watchdog.bridge.first_failing_layer
 
 
 async def test_owner_only_failure_shows_the_exact_instruction(tmp_path: Path):

@@ -31,6 +31,7 @@ class ConnectionState(BaseModel):
 class WatchdogReport(BaseModel):
     bridge_state: str
     bridge_detail: str
+    bridge_layer: str | None
     bridge_restarts: int
     plugin_state: str
 
@@ -63,6 +64,7 @@ async def read_watchdog(
     try:
         return WatchdogReport(
             bridge_state=body["bridge"]["state"], bridge_detail=body["bridge"]["detail"],
+            bridge_layer=body["bridge"].get("first_failing_layer"),
             bridge_restarts=body["bridge"]["restarts"], plugin_state=body["plugin"]["state"],
         )
     except (KeyError, TypeError, ValueError):
@@ -114,9 +116,9 @@ async def diagnose(
     if not isinstance(report, WatchdogReport):
         return result("plugin_failed", f"The {state.id} plugin isn't answering and the watchdog on {watchdog.machine} can't be read; check its token.")
     if report.bridge_state == "needs_owner":
-        return result("owner_action", report.bridge_detail)
+        return result("owner_action", report.bridge_detail, report.bridge_layer)
     if report.plugin_state == "needs_owner":
         return result("owner_action", f"The {state.id} plugin keeps stopping; check its logs on {watchdog.machine}.")
     if report.bridge_state == "restarting":
-        return result("bridge_restarting", f"Bridge is down → restarting. {report.bridge_detail}".rstrip())
+        return result("bridge_restarting", f"Bridge is down → restarting. {report.bridge_detail}".rstrip(), report.bridge_layer)
     return result("plugin_restarting", f"The {state.id} plugin is down → restarting.")
