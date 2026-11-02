@@ -13,9 +13,10 @@ from app.models.message import Message
 from app.models.sync_cursor import SyncCursor
 from app.plugins.config import PluginConfig, StdioTransport
 from app.plugins.registry import PluginRegistry
-from app.sync import SyncEngine, SyncError, sync_inbox
+from app.sync import SyncEngine, SyncError, store_page, sync_inbox
+from mailbox_contract import ListMessagesOutput, MessageSummary
 from tests.conformance.test_mailbox_conformance import reference_imap_plugin
-from tests.utils.mail_server import Mailbox, build_message
+from tests.utils.mail_server import Mailbox
 
 FAKE_PLUGIN = Path(__file__).resolve().parents[1] / "fixtures" / "fake_mailbox_plugin.py"
 OWNER = "owner-1"
@@ -78,17 +79,24 @@ async def test_catches_up_after_an_outage_with_no_duplicates_or_missed_mail(test
     assert cursor is not None and cursor.folder == "inbox" and cursor.cursor
 
 
-async def test_same_message_id_twice_in_one_inbox_is_stored_once(test_db, mailbox: Mailbox):
-    duplicate = build_message(sender="list@example.com", to=mailbox.address, subject="Twice", body="x")
-    with mailbox.imap() as connection:
-        for _ in range(2):
-            connection.append("INBOX", None, None, duplicate.as_bytes())
+async def test_one_mail_under_two_refs_or_listed_twice_is_stored_once(test_db):
+    """Dedupe by ref and by Message-ID: refs are opaque, and one delivery can get two."""
+    def summary(ref: str, message_id: str) -> MessageSummary:
+        return MessageSummary.model_validate({
+            "ref": ref, "message_id": message_id, "from": {"email": "a@example.com"}, "to": [], "cc": [],
+            "date": "2026-11-02T12:00:00Z", "subject": "s", "snippet": "",
+        })
 
-    async with connected(reference_imap_plugin(mailbox)) as registry:
-        new = await sync_inbox(OWNER, PLUGIN, registry.clients[PLUGIN])
+    page = ListMessagesOutput(
+        messages=[summary("uid-1", "<one@x>"), summary("uid-2", "<one@x>"), summary("uid-3", "<two@x>")],
+        next_cursor="3", has_more=False,
+    )
+    first = await store_page(OWNER, PLUGIN, page)
+    relisted = await store_page(OWNER, PLUGIN, page)
 
-    assert [message.message_id for message in new] == [duplicate["Message-ID"]]
-    assert await stored_message_ids() == [duplicate["Message-ID"]]
+    assert [message.ref for message in first] == ["uid-1", "uid-3"]
+    assert relisted == []
+    assert sorted(await stored_message_ids()) == ["<one@x>", "<two@x>"]
 
 
 async def test_a_cursor_the_plugin_no_longer_accepts_restarts_without_duplicates(test_db, mailbox: Mailbox):
