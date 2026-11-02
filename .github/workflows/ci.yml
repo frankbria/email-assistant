@@ -13,7 +13,9 @@ permissions:
 
 jobs:
   backend:
-    runs-on: ubuntu-latest
+    # shortcut: mongod refuses to start on ubuntu-24.04's 7.0 kernel (SERVER-121912);
+    # move back to ubuntu-latest once a MongoDB release accepts fixed kernels.
+    runs-on: ubuntu-22.04
     timeout-minutes: 15
     defaults:
       run:
@@ -22,6 +24,11 @@ jobs:
       mongodb:
         image: mongo:8
         ports: ["27017:27017"]
+        # Fail the job at startup if mongod dies, instead of 30 s server-selection waits per test.
+        options: >-
+          --health-cmd "mongosh --quiet --eval 'db.runCommand({ping: 1})'"
+          --health-interval 5s
+          --health-retries 12
     steps:
       - uses: actions/checkout@v7
       - uses: astral-sh/setup-uv@v10.3.3 # no floating major tag upstream
@@ -33,9 +40,7 @@ jobs:
       - name: mypy
         run: uv run mypy app
       - name: pytest
-        env:
-          PYTHONFAULTHANDLER: "1"
-        run: timeout -s ABRT 120 uv run pytest -v -p no:cacheprovider
+        run: uv run pytest -q
 
   frontend:
     runs-on: ubuntu-latest
