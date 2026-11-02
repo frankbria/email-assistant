@@ -55,3 +55,4 @@ async def update_email_settings(
         raise HTTPException(
             status_code=500, detail=f"Failed to update settings: {str(e)}"
         )
+import json
