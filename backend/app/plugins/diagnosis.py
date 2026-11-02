@@ -92,7 +92,7 @@ async def diagnose(
         failing = next((check for check in health.checks if not check.ok), None)
         if failing is not None:
             if health.repair_actions:  # restartable: the watchdog or a repair is on it
-                return result("bridge_restarting", f"Bridge is down → restarting. {failing.detail}", failing.layer)
+                return result("bridge_restarting", f"Bridge is down → restarting. {failing.detail}".rstrip(), failing.layer)
             return result("owner_action", failing.detail, failing.layer)
         if watchdog is not None:
             report = await read_watchdog(watchdog, timeout)
@@ -118,5 +118,5 @@ async def diagnose(
     if report.plugin_state == "needs_owner":
         return result("owner_action", f"The {state.id} plugin keeps stopping; check its logs on {watchdog.machine}.")
     if report.bridge_state == "restarting":
-        return result("bridge_restarting", f"Bridge is down → restarting. {report.bridge_detail}")
+        return result("bridge_restarting", f"Bridge is down → restarting. {report.bridge_detail}".rstrip())
     return result("plugin_restarting", f"The {state.id} plugin is down → restarting.")
