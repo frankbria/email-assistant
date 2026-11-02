@@ -33,7 +33,9 @@ jobs:
       - name: mypy
         run: uv run mypy app
       - name: pytest
-        run: uv run pytest -q
+        env:
+          PYTHONFAULTHANDLER: "1"
+        run: timeout -s ABRT 120 uv run pytest -v -p no:cacheprovider
 
   frontend:
     runs-on: ubuntu-latest
