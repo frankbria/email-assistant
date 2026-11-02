@@ -2,6 +2,7 @@
 'use client'
 
 import { useEffect, useState } from 'react'
+import Link from 'next/link'
 import { HugeiconsIcon } from '@hugeicons/react'
 import { Alert02Icon, CheckmarkCircle01Icon, Loading03Icon } from '@hugeicons/core-free-icons'
 import { fetchConnections } from '@/services/connectionsService'
@@ -58,6 +59,16 @@ function ConnectionRow({ connection }: { connection: Connection }) {
       {detail && <p className="mt-2 text-sm text-gray-700 dark:text-gray-300">{detail}</p>}
       {layer && <p className="mt-1 text-sm text-gray-500 dark:text-gray-400">First failing layer: {layer}</p>}
       {connection.repairing && <p className="mt-1 text-sm text-gray-500 dark:text-gray-400">Repair in progress.</p>}
+      {/* shortcut: a plugin that hasn't connected yet can't say what it is, so it gets the Proton
+          checklist; give each plugin kind its own once Gmail setup (#97) exists. */}
+      {connection.status !== 'disabled' && (connection.plugin_name === 'proton' || connection.plugin_name === null) && (
+        <Link
+          href={`/connections/${encodeURIComponent(connection.plugin_id)}/setup`}
+          className="mt-2 inline-block text-sm font-medium text-blue-700 underline underline-offset-4 dark:text-blue-300"
+        >
+          Setup checklist
+        </Link>
+      )}
       <p className="mt-2 text-xs text-gray-500 dark:text-gray-400">
         Last sync: {connection.last_synced_at ? new Date(connection.last_synced_at).toLocaleString() : 'not yet'}
       </p>

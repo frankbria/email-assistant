@@ -22,6 +22,7 @@ function row(overrides: Partial<Connection>): Connection {
   return {
     plugin_id: 'proton',
     status: 'connected',
+    plugin_name: 'proton',
     account: 'owner@example.com',
     reason: null,
     diagnosis: { kind: 'ok', message: 'Connected.', first_failing_layer: null, checked_at: '2026-11-02T10:00:00Z' },
@@ -82,6 +83,23 @@ describe('Connections page', () => {
     const labels = (await screen.findAllByRole('listitem')).map((item) => item.querySelector('span')?.textContent)
     expect(labels).toEqual(['Offline', 'Needs you', 'Not working', 'Disabled', 'Checking…', 'Connected'])
     expect(screen.getByText(`Last sync: ${new Date('2026-11-02T09:30:00Z').toLocaleString()}`)).toBeTruthy()
+  })
+
+  it('offers the Proton setup checklist for Proton plugins and ones not connected yet, never disabled ones', async () => {
+    api.rows = [
+      row({}),
+      row({ plugin_id: 'new', status: 'failed', plugin_name: null, diagnosis: null }),
+      row({ plugin_id: 'other', plugin_name: 'fake' }),
+      row({ plugin_id: 'paused', status: 'disabled', plugin_name: null, diagnosis: null }),
+    ]
+
+    render(<ConnectionsPage />)
+
+    const rows = await screen.findAllByRole('listitem')
+    expect(within(rows[0]).getByRole('link', { name: 'Setup checklist' }).getAttribute('href')).toBe('/connections/proton/setup')
+    expect(within(rows[1]).getByRole('link', { name: 'Setup checklist' }).getAttribute('href')).toBe('/connections/new/setup')
+    expect(within(rows[2]).queryByRole('link')).toBeNull()
+    expect(within(rows[3]).queryByRole('link')).toBeNull()
   })
 
   it('says how to add a mailbox when none is configured', async () => {

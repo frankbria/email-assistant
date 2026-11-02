@@ -278,7 +278,7 @@ def test_connections_lists_every_configured_plugin_with_its_state(tmp_path, monk
     assert response.status_code == 200
     proton, future = response.json()
     assert proton["plugin_id"] == "proton" and proton["status"] == "connected"
-    assert proton["account"] == "owner@example.com"
+    assert proton["account"] == "owner@example.com" and proton["plugin_name"] == "fake"
     assert proton["diagnosis"]["kind"] == "ok" and proton["repairing"] is False
     assert proton["last_synced_at"] is None
     assert future["plugin_id"] == "future" and future["status"] == "refused"

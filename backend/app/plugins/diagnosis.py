@@ -36,6 +36,9 @@ class WatchdogReport(BaseModel):
     plugin_state: str
 
 
+WatchdogRead = WatchdogReport | Literal["refused", "offline", "unreadable"]
+
+
 def refused(error: BaseException) -> bool:
     """A refused connection means the machine answered: it's up, the service isn't."""
     current: BaseException | None = error
@@ -46,9 +49,7 @@ def refused(error: BaseException) -> bool:
     return False
 
 
-async def read_watchdog(
-    config: WatchdogConfig, timeout: float
-) -> WatchdogReport | Literal["refused", "offline", "unreadable"]:
+async def read_watchdog(config: WatchdogConfig, timeout: float) -> WatchdogRead:
     headers = {"Authorization": f"Bearer {os.environ.get(config.token_env, '')}"}
     try:
         async with httpx.AsyncClient(timeout=timeout) as client:

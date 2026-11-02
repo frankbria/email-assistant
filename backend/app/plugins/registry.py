@@ -4,6 +4,7 @@
 import asyncio
 import logging
 import os
+from collections import defaultdict
 from contextlib import AsyncExitStack
 from dataclasses import dataclass
 
@@ -63,9 +64,11 @@ class PluginRegistry:
         self.configs: dict[str, PluginConfig] = {}
         self.states: dict[str, PluginState] = {}
         self.diagnoses: dict[str, ConnectionState] = {}
+        self.healths: dict[str, Health | None] = {}
         self.clients: dict[str, Client] = {}
         self._seen_restarts: dict[str, int] = {}
         self._connections: dict[str, HeldConnection] = {}
+        self._checking: defaultdict[str, asyncio.Lock] = defaultdict(asyncio.Lock)
 
     async def connect_all(self, configs: list[PluginConfig]) -> None:
         for config in configs:
@@ -92,7 +95,14 @@ class PluginRegistry:
     async def refresh(self, timeout: float = 5) -> None:
         """Reconnect plugins that aren't connected, then re-diagnose every plugin, so an
         owner's fix shows up within one refresh."""
-        for plugin_id, config in self.configs.items():
+        for plugin_id in self.configs:
+            await self.check(plugin_id, timeout)
+
+    async def check(self, plugin_id: str, timeout: float = 5) -> None:
+        """Reconnect one plugin if it isn't connected, then re-check its health and diagnosis.
+        Locked per plugin: the refresh loop and an owner's "check now" never overlap."""
+        async with self._checking[plugin_id]:
+            config = self.configs[plugin_id]
             if config.enabled and self.states[plugin_id].status != "connected":
                 await self._drop(plugin_id)
                 self.states[plugin_id] = await self._connect(config)
@@ -102,6 +112,7 @@ class PluginRegistry:
             )
             if diagnosis.bridge_restarts is not None:
                 self._seen_restarts[plugin_id] = diagnosis.bridge_restarts
+            self.healths[plugin_id] = health
             self.diagnoses[plugin_id] = diagnosis
 
     async def _health(self, plugin_id: str) -> Health | None:

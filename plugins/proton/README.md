@@ -61,7 +61,9 @@ match the pinned one … Export it again from Bridge".
 - serves `GET /status` (JSON: Bridge state, first failing layer, restarts; plugin state)
   on `MAILBOX_HTTP_HOST:MAILBOX_WATCHDOG_PORT` (default 8766), only with
   `Authorization: Bearer $MAILBOX_WATCHDOG_TOKEN`. The app reads it when the plugin itself
-  doesn't answer, to tell "plugin down" from "machine offline".
+  doesn't answer, to tell "plugin down" from "machine offline". The app's setup checklist
+  (Connections → Setup checklist) also reads it: the "Install the plugin and the watchdog"
+  step stays red until the plugin's `watchdog:` entry in `plugins.yaml` answers.
 
 ## Start at login (watchdog install)
 
