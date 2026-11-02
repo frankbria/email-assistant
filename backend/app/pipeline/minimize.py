@@ -25,12 +25,7 @@ ANY_FORWARDED_BLOCK = re.compile(
     "|".join(pattern.pattern for pattern in (FORWARDED_BLOCK, OUTLOOK_HISTORY, ORIGINAL_MESSAGE)),
     re.MULTILINE | re.IGNORECASE,
 )
-# An attribution names the sender's address or the year; prose that merely ends in "wrote:" does not.
-# A wrapped one continues onto a second line, which is never itself a new "On …" line.
-ATTRIBUTION = re.compile(
-    r"^On\b[^\n]*(?:\n(?!On\b)[^\n]*)?@[^\n]*\bwrote:[ \t]*$\n?|^On\b[^\n]*\b(?:19|20)\d\d\b[^\n]*\bwrote:[ \t]*$\n?",
-    re.MULTILINE,
-)
+YEAR = re.compile(r"\b(?:19|20)\d\d\b")
 QUOTED_LINE = re.compile(r"^>(?!=?[ \t]*\d).*$\n?", re.MULTILINE)  # "> 50 units" is prose, not a quote
 SIGNATURE = re.compile(r"^-- $", re.MULTILINE)  # RFC 3676; a bare "--" is often a divider in the body
 MOBILE_FOOTER = re.compile(
@@ -51,7 +46,8 @@ def minimize(text: str, subject: str = "") -> str:
     if not forwarded:
         text = cut_at_first(text, (OUTLOOK_HISTORY, ORIGINAL_MESSAGE))
     text = without_signature(text, forwarded)
-    for pattern in (ATTRIBUTION, QUOTED_LINE, MOBILE_FOOTER):
+    text = without_attributions(text)
+    for pattern in (QUOTED_LINE, MOBILE_FOOTER):
         text = pattern.sub("", text)
     text = URL.sub(lambda match: without_tracking(match.group()), text)
     return capped(re.sub(r"\n{3,}", "\n\n", "\n".join(line.rstrip() for line in text.splitlines())).strip())
@@ -60,6 +56,34 @@ def minimize(text: str, subject: str = "") -> str:
 def cut_at_first(text: str, patterns: tuple[re.Pattern[str], ...]) -> str:
     starts = [match.start() for pattern in patterns if (match := pattern.search(text))]
     return text[: min(starts)] if starts else text
+
+
+def without_attributions(text: str) -> str:
+    """Drops "On <date>, <name> wrote:" lines, checked line by line so hostile input stays linear."""
+    lines, kept, index = text.split("\n"), [], 0
+    while index < len(lines):
+        following = lines[index + 1] if index + 1 < len(lines) else ""
+        if is_attribution(lines[index]):
+            index += 1
+        elif is_wrapped_attribution(lines[index], following):
+            index += 2
+        else:
+            kept.append(lines[index])
+            index += 1
+    return "\n".join(kept)
+
+
+def is_attribution(line: str) -> bool:
+    """Names the sender's address or the year; prose that merely ends in "wrote:" does neither."""
+    line = line.rstrip()
+    return line.startswith("On ") and line.endswith("wrote:") and ("@" in line or YEAR.search(line) is not None)
+
+
+def is_wrapped_attribution(first: str, second: str) -> bool:
+    """Only the long-header wrap that splits at the sender's <address>, so new content is never taken."""
+    first, second = first.rstrip(), second.rstrip()
+    split_at_address = first.endswith("<") or second.startswith("<")
+    return first.startswith("On ") and split_at_address and second.endswith("wrote:")
 
 
 def without_signature(text: str, forwarded: bool) -> str:
@@ -77,8 +101,8 @@ def without_tracking(match: str) -> str:
     """Drops tracking parameters as raw segments, so every other byte of the link survives."""
     url = match.rstrip(TRAILING_PUNCTUATION)
     prose = match[len(url) :]
+    url, hash_mark, fragment = url.partition("#")  # a fragment is the page's own route, never tracking
     address, separator, query = url.partition("?")
-    query, hash_mark, fragment = query.partition("#")
     kept = [segment for segment in query.split("&") if not TRACKING_PARAMETER.match(segment)]
     return address + (separator if any(kept) else "") + "&".join(kept) + hash_mark + fragment + prose
 

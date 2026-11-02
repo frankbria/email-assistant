@@ -163,6 +163,7 @@ CORPUS = (
         text=(
             "On Friday we ship the release\n"
             "please confirm, the vendor wrote:\n"
+            "On the topic of the budget, the auditor wrote:\n"
             "> 50 units needed by Friday, >=5 boxes each\n"
             "Part 1 of the plan\n"
             "--\n"
@@ -174,7 +175,7 @@ CORPUS = (
             "Gate B12\n"
         ),
         kept=(
-            "On Friday we ship the release", "the vendor wrote:", "> 50 units needed by Friday, >=5 boxes each",
+            "On Friday we ship the release", "the vendor wrote:", "On the topic of the budget, the auditor wrote:", "> 50 units needed by Friday, >=5 boxes each",
             "Part 2: deadline Friday", "Sent from my warehouse on Monday: 40 pallets", "From: JFK\nDate: Nov 5", "Gate B12",
         ),
         removed=(),
@@ -254,6 +255,22 @@ CORPUS = (
         ),
         kept=("On Friday, please send the signed contract.",),
         removed=("wrote:", "Old request"),
+    ),
+    MinimizeCase(
+        name="new content after a complete attribution line is kept",
+        text=(
+            "On Thu, Nov 1, 2026, Ana <ana@example.com> wrote:\n"
+            "Please ask legal@example.com to review what I wrote:\n"
+            "> Old request\n"
+        ),
+        kept=("Please ask legal@example.com to review what I wrote:",),
+        removed=("On Thu, Nov 1, 2026", "Old request"),
+    ),
+    MinimizeCase(
+        name="a fragment that looks like a query is the app's route, left alone",
+        text="Open https://portal.example/#/settings?utm_source=email&tab=campaigns to update.\n",
+        kept=("https://portal.example/#/settings?utm_source=email&tab=campaigns",),
+        removed=(),
     ),
     MinimizeCase(
         name="plain message is left alone",

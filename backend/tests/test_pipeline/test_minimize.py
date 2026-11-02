@@ -51,3 +51,14 @@ def test_untrusted_punctuation_runs_after_a_link_stay_linear():
     minimize("https://example.com/" + "." * 50_000 + "a")
 
     assert time.perf_counter() - started < 2
+
+
+@pytest.mark.parametrize(
+    "hostile", ["On " + "@" * 50_000, ("On " + "a" * 1000 + "\n") * 2000 + "On a@b wrote:"], ids=["at-signs", "many-on-lines"]
+)
+def test_untrusted_attribution_look_alikes_stay_linear(hostile: str):
+    started = time.perf_counter()
+
+    minimize(hostile)
+
+    assert time.perf_counter() - started < 2
