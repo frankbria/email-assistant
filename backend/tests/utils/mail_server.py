@@ -32,7 +32,7 @@ def wait_until_ready(timeout_seconds: float = 30) -> None:
                 smtp.noop()
             imaplib.IMAP4(MAIL_HOST, IMAP_PORT, timeout=2).logout()
             return
-        except OSError:
+        except (OSError, imaplib.IMAP4.error):  # imaplib errors aren't OSErrors
             if time.monotonic() > deadline:
                 raise RuntimeError(
                     f"No test mail server at {MAIL_HOST}:{SMTP_PORT}/{IMAP_PORT}; "
@@ -84,9 +84,11 @@ class Mailbox:
     def messages(self, folder: str) -> list[EmailMessage]:
         """Every message in the folder, oldest first ([] if the folder doesn't exist)."""
         with self.imap() as connection:
-            status, _ = connection.select(folder, readonly=True)
-            if status != "OK":
+            _, listing = connection.list('""', folder)
+            if listing == [None]:
                 return []
+            status, detail = connection.select(folder, readonly=True)
+            assert status == "OK", f"SELECT {folder} failed: {detail}"
             _, data = connection.uid("SEARCH", None, "ALL")
             parsed = []
             for uid in data[0].split():
