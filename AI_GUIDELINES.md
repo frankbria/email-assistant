@@ -24,8 +24,9 @@ Monorepo, no shared code between the two apps:
 
 ## Commands (run from a fresh clone)
 
-Prerequisites: uv, Node 24, and a MongoDB on `localhost:27017` for the tests (or set
-`MONGODB_TEST_URI`). Tests use the `email_assistant_test` database and never a database
+Prerequisites: uv, Node 24, and the test services: MongoDB on `localhost:27017` (or set
+`MONGODB_TEST_URI`) and the GreenMail IMAP/SMTP server on 3143/3025. Start both with
+`docker compose -f docker-compose.test.yml up -d`. Tests use the `email_assistant_test` database and never a database
 whose name lacks `_test`.
 
 ```bash
@@ -110,8 +111,9 @@ and mail delivery keep the original content.
 
 - RED → GREEN → REFACTOR: write the failing test first, make it pass with the least code,
   then clean up. Test behavior a user would notice, not implementation details.
-- **No mocks for integration tests.** Use the real MongoDB (`test_db` fixture) and, from
-  M1, the containerized IMAP/SMTP server. Unit tests may use small in-repo test doubles
+- **No mocks for integration tests.** Use the real MongoDB (`test_db` fixture) and the
+  containerized IMAP/SMTP server (`mailbox` fixture: a fresh mailbox to seed with
+  `deliver()`/`append()` and inspect with `messages()`). Unit tests may use small in-repo test doubles
   (`tests/utils/fakes.py`). Don't patch third-party clients.
 - Live AI-provider tests live in `tests/integration/`. They must call the real API and
   skip only when the provider's API key is unset. (Today's OpenAI test does neither; #35
