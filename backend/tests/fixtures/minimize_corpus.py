@@ -159,6 +159,46 @@ CORPUS = (
         removed=("utm_source", "utm_medium", "fbclid", "gclid", "mc_eid"),
     ),
     MinimizeCase(
+        name="prose that only looks like history or a signature is kept",
+        text=(
+            "On Friday we ship the release\n"
+            "please confirm, the vendor wrote:\n"
+            "> 50 units needed by Friday, >=5 boxes each\n"
+            "Part 1 of the plan\n"
+            "--\n"
+            "Part 2: deadline Friday\n"
+            "Sent from my warehouse on Monday: 40 pallets\n"
+            "Flight details\n"
+            "From: JFK\n"
+            "Date: Nov 5\n"
+            "Gate B12\n"
+        ),
+        kept=(
+            "On Friday we ship the release", "the vendor wrote:", "> 50 units needed by Friday, >=5 boxes each",
+            "Part 2: deadline Friday", "Sent from my warehouse on Monday: 40 pallets", "From: JFK\nDate: Nov 5", "Gate B12",
+        ),
+        removed=(),
+    ),
+    MinimizeCase(
+        name="outlook separator with a date line",
+        subject="RE: Budget",
+        text="Agreed.\n\n________________________________\nFrom: Bob <bob@example.com>\nDate: Mon, 2 Nov 2026\nSubject: Budget\n\nOld budget thread.\n",
+        kept=("Agreed.",),
+        removed=("From: Bob", "Old budget thread."),
+    ),
+    MinimizeCase(
+        name="windows line endings",
+        text="Sounds good.\r\n\r\nOn Mon, Nov 2, 2026, Ana <ana@example.com> wrote:\r\n> Lunch?\r\n\r\n-- \r\nAna Smith\r\n",
+        kept=("Sounds good.",),
+        removed=("wrote:", "Lunch?", "Ana Smith", "\r"),
+    ),
+    MinimizeCase(
+        name="links keep their punctuation and untouched parameters",
+        text="(see https://x.example/a?flag&id=a%20b&utm_source=news). Also https://x.example/b?utm_medium=mail, ok\n",
+        kept=("(see https://x.example/a?flag&id=a%20b).", "https://x.example/b, ok"),
+        removed=("utm_source", "utm_medium"),
+    ),
+    MinimizeCase(
         name="plain message is left alone",
         text="Hi Frank,\n\nCan you review the draft by Wednesday? https://docs.example/s?q=a%20b\n\nThanks,\nDana\n",
         kept=("Hi Frank,", "Can you review the draft by Wednesday?", "https://docs.example/s?q=a%20b", "Thanks,\nDana"),
