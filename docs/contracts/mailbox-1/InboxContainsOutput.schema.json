@@ -2,7 +2,7 @@
   "additionalProperties": {
     "type": "boolean"
   },
-  "description": "Maps every requested ref to whether the message is still in the inbox.",
+  "description": "Maps every requested ref to whether the message is still in the inbox.\n\nA schema can't tie the keys to the request; the app and the conformance suite check\nthat the keys equal the requested refs.",
   "title": "InboxContainsOutput",
   "type": "object"
 }

@@ -127,3 +127,18 @@ def test_doc_and_package_agree_on_version():
 )
 def test_supported_versions(version, supported):
     assert contract.is_supported(version) is supported
+
+
+def test_non_ascii_digits_are_not_a_supported_version():
+    assert contract.is_supported("١.٠") is False
+
+
+@pytest.mark.parametrize(
+    ("code", "retryable"),
+    [("unavailable", True), ("rate_limited", True), ("internal", True), ("not_found", False), ("auth_failed", False)],
+)
+def test_retryable_follows_the_error_table(code, retryable):
+    contract.ToolError(code=code, message="m", retryable=retryable)
+
+    with pytest.raises(ValidationError):
+        contract.ToolError(code=code, message="m", retryable=not retryable)

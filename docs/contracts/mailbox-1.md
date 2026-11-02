@@ -11,7 +11,8 @@ tool result's `structuredContent`. Design rationale: spec §5
   (`mailbox_contract`), which both the app and the plugins validate against. The JSON
   schemas in [`mailbox-1/`](mailbox-1/) are generated from them
   (`packages/mailbox-contract/write_schemas.py`), and a backend test fails if they drift.
-- **Strict shapes:** unknown fields are rejected in both directions.
+- **Strict shapes:** unknown fields are rejected in both directions (the one map-shaped
+  output, `inbox_contains`, is checked against the request instead).
 - **Nothing is ever permanently removed.** The contract has no tool that deletes a
   message, and no tool may expunge, purge or empty a folder as a side effect. `archive`
   moves; it never removes. The conformance suite (#41) proves every seeded message still
@@ -49,6 +50,8 @@ A failed call is an MCP tool result with `isError: true` and this `structuredCon
 ```json
 {"code": "unavailable", "message": "Bridge isn't running.", "retryable": true}
 ```
+
+`retryable` is fixed by `code` (the models reject a mismatch):
 
 | `code` | Meaning | `retryable` |
 |---|---|---|
@@ -94,7 +97,9 @@ message_id, from, to, cc, date, subject, snippet, `list_id?`, `in_reply_to?`),
 Input: [`InboxContainsInput`](mailbox-1/InboxContainsInput.schema.json): `refs[]` (1–500).
 Output: [`InboxContainsOutput`](mailbox-1/InboxContainsOutput.schema.json): an object that
 maps every requested ref to whether the message is still in the inbox. An unknown ref
-maps to `false`, not to an error. The app uses this to close jobs handled elsewhere.
+maps to `false`, not to an error. The keys must be exactly the requested refs: a schema
+can't express that, so the app and the conformance suite check it. The app uses this to
+close jobs handled elsewhere.
 
 ### `get_message`
 

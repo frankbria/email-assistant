@@ -27,6 +27,7 @@
       "type": "string"
     },
     "retryable": {
+      "description": "Fixed by code: true for unavailable, rate_limited, internal.",
       "title": "Retryable",
       "type": "boolean"
     }

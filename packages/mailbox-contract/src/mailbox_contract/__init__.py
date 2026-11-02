@@ -5,11 +5,12 @@ the pydantic models below; failures use `ToolError`. There is deliberately no to
 deletes or expunges a message.
 """
 
+import re
 from datetime import datetime
 from enum import StrEnum
 from typing import Literal
 
-from pydantic import BaseModel, ConfigDict, Field, RootModel
+from pydantic import BaseModel, ConfigDict, Field, RootModel, model_validator
 
 CONTRACT_VERSION = "1.0"
 SUPPORTED_MAJOR = 1
@@ -110,7 +111,11 @@ class InboxContainsInput(ContractModel):
 
 
 class InboxContainsOutput(RootModel[dict[str, bool]]):
-    """Maps every requested ref to whether the message is still in the inbox."""
+    """Maps every requested ref to whether the message is still in the inbox.
+
+    A schema can't tie the keys to the request; the app and the conformance suite check
+    that the keys equal the requested refs.
+    """
 
 
 class MessageRef(ContractModel):
@@ -188,12 +193,21 @@ class ErrorCode(StrEnum):
     INTERNAL = "internal"
 
 
+RETRYABLE_CODES = frozenset({ErrorCode.UNAVAILABLE, ErrorCode.RATE_LIMITED, ErrorCode.INTERNAL})
+
+
 class ToolError(ContractModel):
     """Structured content of an MCP tool result with isError=true."""
 
     code: ErrorCode
     message: str = Field(description="Plain words the app can show the owner.")
-    retryable: bool
+    retryable: bool = Field(description="Fixed by code: true for unavailable, rate_limited, internal.")
+
+    @model_validator(mode="after")
+    def retryable_matches_code(self) -> "ToolError":
+        if self.retryable != (self.code in RETRYABLE_CODES):
+            raise ValueError(f"retryable must be {self.code in RETRYABLE_CODES} for {self.code}")
+        return self
 
 
 # --- registry -----------------------------------------------------------------------
@@ -224,5 +238,5 @@ TOOLS: dict[str, Tool] = {
 
 def is_supported(contract_version: str) -> bool:
     """The app accepts any minor version of the major it was built for."""
-    major, _, minor = contract_version.partition(".")
-    return major.isdigit() and minor.isdigit() and int(major) == SUPPORTED_MAJOR
+    match = re.fullmatch(r"([0-9]+)\.[0-9]+", contract_version)
+    return match is not None and int(match.group(1)) == SUPPORTED_MAJOR

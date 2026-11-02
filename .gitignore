@@ -19,3 +19,7 @@ Thumbs.db
 .env.local
 .env.*
 !.env.example
+
+# Python bytecode
+__pycache__/
+*.pyc
