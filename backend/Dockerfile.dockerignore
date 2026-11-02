@@ -4,5 +4,6 @@
 !backend/uv.lock
 !backend/app
 !packages/mailbox-contract
+!packages/imap-mailbox
 **/__pycache__
 **/.venv

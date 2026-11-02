@@ -43,7 +43,7 @@ jobs:
       - name: ruff
         run: uv run ruff check . ../packages
       - name: mypy
-        run: uv run mypy app ../packages/mailbox-contract/src
+        run: uv run mypy app ../packages/mailbox-contract/src ../packages/imap-mailbox/src
       - name: pytest
         run: uv run pytest -q
 

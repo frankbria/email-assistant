@@ -135,3 +135,34 @@ Optional: offered only when `capabilities` contains `repair`. Input:
 [`RepairInput`](mailbox-1/RepairInput.schema.json) `{action}`, one of
 `health.repair_actions`. Output: [`RepairResult`](mailbox-1/RepairResult.schema.json)
 `{ok, detail}`.
+
+## Conformance suite
+
+A plugin is **supported** only when it passes `backend/tests/conformance/` (spec §5.5):
+every tool, cursor paging that survives a restart, the `archive` → `restore` round trip,
+`inbox_contains` answering exactly the requested refs, error shapes, a threaded reply,
+and **after every tool has run, every seeded message still exists** (AC-1.1). A static
+check fails on any unscoped expunge in the app, packages or plugins, and on any
+delete-like tool name (AC-1.2).
+
+Run it with the test services up (`docker compose -f docker-compose.test.yml up -d`):
+
+```bash
+cd backend
+uv run pytest tests/conformance
+```
+
+It runs against each entry in `TARGETS` (a plugin config, plus mail seeded on the
+GreenMail test server). The reference IMAP/SMTP plugin, `packages/imap-mailbox`, is the
+first target. Each plugin adds its own.
+
+## Reference plugin: `packages/imap-mailbox`
+
+`mailbox/1` over any IMAP/SMTP server; the Proton and Gmail plugins build on it. It's
+configured from `MAILBOX_*` environment variables (`MAILBOX_ACCOUNT`, `MAILBOX_USERNAME`,
+`MAILBOX_PASSWORD`, `MAILBOX_IMAP_HOST`/`PORT`, `MAILBOX_SMTP_HOST`/`PORT`, `MAILBOX_TLS`
+= `ssl`/`starttls`/`none`, `MAILBOX_CA_CERT_PATH` to pin a CA, `MAILBOX_FOLDER_*`,
+`MAILBOX_APPEND_SENT`), and runs over stdio with `python -m imap_mailbox.server`, or
+Streamable HTTP with `python -m imap_mailbox.server http <port>`.
+Refs are `Message-ID`s (stable across moves). Moves use `MOVE`, or `COPY` + `UID EXPUNGE`
+of that one message, and are re-read before they count as verified.
