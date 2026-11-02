@@ -41,9 +41,9 @@ jobs:
           python-version: "3.14"
       - run: uv sync --locked
       - name: ruff
-        run: uv run ruff check . ../packages
+        run: uv run ruff check . ../packages ../plugins
       - name: mypy
-        run: uv run mypy app ../packages/mailbox-contract/src ../packages/imap-mailbox/src
+        run: uv run mypy app ../packages/mailbox-contract/src ../packages/imap-mailbox/src ../plugins/proton/src
       - name: pytest
         run: uv run pytest -q
 

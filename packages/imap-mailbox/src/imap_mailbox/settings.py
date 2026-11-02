@@ -18,6 +18,8 @@ class ImapMailboxSettings(BaseSettings):
     smtp_port: int = 465
     smtp_login: bool = True
     tls: Literal["ssl", "starttls", "none"] = "ssl"
+    imap_tls: Literal["ssl", "starttls", "none"] | None = Field(default=None, description="Overrides tls for IMAP.")
+    smtp_tls: Literal["ssl", "starttls", "none"] | None = Field(default=None, description="Overrides tls for SMTP.")
     ca_cert_path: str | None = Field(default=None, description="Pin this CA instead of the system store.")
     folder_inbox: str = "INBOX"
     folder_archive: str = "Archive"
