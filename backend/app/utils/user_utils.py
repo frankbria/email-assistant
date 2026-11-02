@@ -41,6 +41,3 @@ async def get_current_user_id(request: Optional[Request] = None) -> str:
         if hasattr(settings, "DEFAULT_USER_ID")
         else DEFAULT_USER_ID
     )
-
-
-TYPE_PROBE: int = "not a number"
