@@ -109,7 +109,14 @@ def proton_settings(mailbox: Mailbox, bridge: dict[str, object], cert: str = "ce
 
 @pytest.mark.parametrize(
     ("encoded", "decoded"),
-    [("Folders/&AOk-t&AOk-", "Folders/été"), ("Labels/&ZeVnLIqe-", "Labels/日本語"), ("R&-D", "R&D"), ("INBOX", "INBOX")],
+    [
+        ("Folders/&AOk-t&AOk-", "Folders/été"),
+        ("Labels/&ZeVnLIqe-", "Labels/日本語"),
+        ("R&-D", "R&D"),
+        ("INBOX", "INBOX"),
+        ("Broken&AOk", "Broken&AOk"),  # unterminated: kept as-is
+        ("Bad&!!!-", "Bad&!!!-"),  # not base64: kept as-is
+    ],
 )
 def test_folder_names_decode_from_modified_utf7(encoded: str, decoded: str):
     assert decode_mutf7(encoded) == decoded
@@ -128,9 +135,15 @@ def test_bridge_connections_must_be_encrypted():
         ProtonSettings(**MINIMAL_SETTINGS, tls="none")
 
 
-def test_http_mode_refuses_all_interfaces():
+@pytest.mark.parametrize("host", ["0.0.0.0", "::", "192.168.1.10", "203.0.113.5"])
+def test_http_mode_binds_only_to_tailscale_or_loopback(host: str):
     with pytest.raises(ValidationError, match="Tailscale"):
-        ProtonSettings(**MINIMAL_SETTINGS, http_host="0.0.0.0")
+        ProtonSettings(**MINIMAL_SETTINGS, http_host=host)
+
+
+@pytest.mark.parametrize("host", ["100.101.102.103", "fd7a:115c:a1e0::1", "127.0.0.1"])
+def test_http_mode_accepts_tailscale_and_loopback(host: str):
+    assert ProtonSettings(**MINIMAL_SETTINGS, http_host=host).http_host == host
 
 
 def test_pinned_bridge_certificate_gives_a_healthy_connection(mailbox: Mailbox, bridge: dict[str, object]):
@@ -151,13 +164,30 @@ def test_wrong_pinned_certificate_fails_in_plain_language(mailbox: Mailbox, brid
 
 
 def test_folder_map_groups_and_decodes_bridge_folders(mailbox: Mailbox, bridge: dict[str, object]):
-    for folder in ("Archive", "Folders/&AOk-t&AOk-", "Labels/&ZeVnLIqe-"):
+    for folder in ("Archive", "Folders/&AOk-t&AOk-", "Labels/&ZeVnLIqe-", 'Folders/Say "hi"'):
         mailbox.append(folder, sender="setup@example.com", subject="x", body="x")
 
     folders = ProtonMailbox(proton_settings(mailbox, bridge)).folder_map()
 
     assert "Archive" in folders["system"] and "INBOX" in folders["system"]
-    assert folders["folders"] == ["été"] and folders["labels"] == ["日本語"]
+    assert sorted(folders["folders"]) == ['Say "hi"', "été"] and folders["labels"] == ["日本語"]
+
+
+def test_custom_archive_folder_counts_as_present(mailbox: Mailbox, bridge: dict[str, object]):
+    for folder in ("Folders/Done", "Sent"):
+        mailbox.append(folder, sender="setup@example.com", subject="x", body="x")
+    settings = proton_settings(mailbox, bridge).model_copy(update={"folder_archive": "Folders/Done"})
+
+    assert ProtonMailbox(settings).health().status == "ok"
+
+
+def test_wrong_security_mode_fails_in_plain_language(mailbox: Mailbox, bridge: dict[str, object]):
+    # Bridge's port speaks implicit TLS but the plugin is set to STARTTLS.
+    settings = proton_settings(mailbox, bridge).model_copy(update={"tls": "starttls"})
+
+    [imap] = [check for check in ProtonMailbox(settings).health().checks if check.layer == "imap_login"]
+
+    assert not imap.ok and "security" in imap.detail.lower()
 
 
 def plugin_environment(mailbox: Mailbox, bridge: dict[str, object]) -> dict[str, str]:

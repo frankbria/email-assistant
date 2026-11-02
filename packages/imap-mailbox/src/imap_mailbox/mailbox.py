@@ -101,6 +101,12 @@ class ImapMailbox:
     def login_rejected_message(self, protocol: str) -> str:
         return f"The {protocol} server rejected the login."
 
+    def handshake_failed_message(self, protocol: str, host: str, port: int) -> str:
+        return (
+            f"The {protocol} server at {host}:{port} didn't respond as expected. "
+            "Check the port and the security setting (STARTTLS or SSL)."
+        )
+
     # --- connections -----------------------------------------------------------------
 
     def _tls_context(self) -> ssl.SSLContext:
@@ -118,8 +124,11 @@ class ImapMailbox:
                 connection = imaplib.IMAP4(host, port, timeout=15)
                 if tls == "starttls":
                     connection.starttls(ssl_context=self._tls_context())
-        except ssl.SSLError as error:
+        except ssl.SSLCertVerificationError as error:
             raise MailboxError(ErrorCode.UNAVAILABLE, self.untrusted_certificate_message("IMAP", error)) from error
+        except (ssl.SSLError, TimeoutError, imaplib.IMAP4.error) as error:
+            # A TLS/plaintext mismatch shows up as a stall or a garbled greeting.
+            raise MailboxError(ErrorCode.UNAVAILABLE, self.handshake_failed_message("IMAP", host, port)) from error
         except OSError as error:
             raise MailboxError(ErrorCode.UNAVAILABLE, self.unreachable_message("IMAP", host, port)) from error
         try:
@@ -149,8 +158,10 @@ class ImapMailbox:
                 connection.login(self.settings.username, self.settings.password)
         except smtplib.SMTPAuthenticationError as error:
             raise MailboxError(ErrorCode.AUTH_FAILED, self.login_rejected_message("SMTP")) from error
-        except ssl.SSLError as error:
+        except ssl.SSLCertVerificationError as error:
             raise MailboxError(ErrorCode.UNAVAILABLE, self.untrusted_certificate_message("SMTP", error)) from error
+        except (ssl.SSLError, TimeoutError, smtplib.SMTPServerDisconnected) as error:
+            raise MailboxError(ErrorCode.UNAVAILABLE, self.handshake_failed_message("SMTP", host, port)) from error
         except (OSError, smtplib.SMTPException) as error:
             raise MailboxError(ErrorCode.UNAVAILABLE, self.unreachable_message("SMTP", host, port)) from error
         try:

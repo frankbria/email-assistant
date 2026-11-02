@@ -1,8 +1,13 @@
+import ipaddress
 from typing import Literal
 
 from pydantic import Field, field_validator
 
 from imap_mailbox.settings import ImapMailboxSettings
+
+
+# Tailscale assigns addresses from these ranges; anything else could be a LAN or public interface.
+TAILSCALE_NETWORKS = (ipaddress.ip_network("100.64.0.0/10"), ipaddress.ip_network("fd7a:115c:a1e0::/48"))
 
 
 class ProtonSettings(ImapMailboxSettings):
@@ -29,7 +34,13 @@ class ProtonSettings(ImapMailboxSettings):
 
     @field_validator("http_host")
     @classmethod
-    def refuse_all_interfaces(cls, host: str | None) -> str | None:
-        if host in {"0.0.0.0", "::", ""}:
-            raise ValueError("bind HTTP mode to the Tailscale IP, never to all interfaces")
+    def require_tailscale_or_loopback(cls, host: str | None) -> str | None:
+        if host is None:
+            return None
+        try:
+            address = ipaddress.ip_address(host)
+        except ValueError:
+            address = None
+        if address is None or not (address.is_loopback or any(address in network for network in TAILSCALE_NETWORKS)):
+            raise ValueError("bind HTTP mode to this machine's Tailscale IP (100.64.0.0/10 or fd7a:115c:a1e0::/48), or loopback")
         return host

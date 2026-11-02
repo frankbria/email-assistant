@@ -25,6 +25,12 @@ class ProtonMailbox(ImapMailbox):
             "Export it again from Bridge (Settings → Export TLS certificates) and point MAILBOX_CA_CERT_PATH at it."
         )
 
+    def handshake_failed_message(self, protocol: str, host: str, port: int) -> str:
+        return (
+            f"Bridge at {host}:{port} didn't speak {protocol} as expected. Check that the security "
+            "setting (STARTTLS or SSL) matches Bridge's mailbox settings."
+        )
+
     def login_rejected_message(self, protocol: str) -> str:
         return (
             f"Bridge rejected the {protocol} login. Use the mailbox password Bridge shows for this "
@@ -42,7 +48,10 @@ class ProtonMailbox(ImapMailbox):
             match = LIST_LINE.search(line) if isinstance(line, bytes) else None
             if match is None:
                 continue
-            name = decode_mutf7(match["name"].decode().strip('"'))
+            raw = match["name"].decode()
+            if raw.startswith('"'):
+                raw = raw[1:-1].replace('\\"', '"').replace("\\\\", "\\")
+            name = decode_mutf7(raw)
             if name.startswith("Folders/"):
                 grouped["folders"].append(name.removeprefix("Folders/"))
             elif name.startswith("Labels/"):
@@ -56,10 +65,14 @@ class ProtonMailbox(ImapMailbox):
         if not all(check.ok for check in health.checks):
             return health
         try:
-            system = self.folder_map()["system"]
-        except MailboxError as error:
-            return Health(status="degraded", checks=[*health.checks, HealthCheck(layer="folders", ok=False, detail=error.message)], repair_actions=[])
-        missing = [name for name in (self.folders.archive, self.folders.sent) if name not in system]
+            folder_map = self.folder_map()
+        except Exception as error:  # report, never crash the health check
+            detail = error.message if isinstance(error, MailboxError) else f"Couldn't list Bridge's folders: {error}"
+            return Health(status="degraded", checks=[*health.checks, HealthCheck(layer="folders", ok=False, detail=detail)], repair_actions=[])
+        present = set(folder_map["system"])
+        present |= {f"Folders/{name}" for name in folder_map["folders"]}
+        present |= {f"Labels/{name}" for name in folder_map["labels"]}
+        missing = [name for name in (self.folders.archive, self.folders.sent) if name not in present]
         folders = HealthCheck(
             layer="folders",
             ok=not missing,
