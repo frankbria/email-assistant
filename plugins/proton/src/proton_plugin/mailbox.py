@@ -117,8 +117,8 @@ class ProtonMailbox(ImapMailbox):
                     pass
             except MailboxError as error:
                 checks.append(HealthCheck(layer=layer, ok=False, detail=error.message))
-                # Rejected credentials need the owner; anything else a restart may fix.
-                return self._result(checks, status, restartable=error.code != ErrorCode.AUTH_FAILED)
+                # Down or hung → a restart may help; credentials or configuration need the owner.
+                return self._result(checks, status, restartable=error.restartable)
             checks.append(HealthCheck(layer=layer, ok=True, detail="ok"))
         folders = self._folders_check()
         checks.append(folders)
@@ -135,7 +135,12 @@ class ProtonMailbox(ImapMailbox):
             first = next((check.detail for check in health.checks if not check.ok), "Bridge is healthy.")
             raise MailboxError(ErrorCode.UNSUPPORTED, f"'{action}' isn't available right now. {first}")
         try:
-            subprocess.run(self.proton.bridge_restart_command, check=True, capture_output=True, timeout=60)
+            # No output capture: a restart that starts Bridge in the background would hand it our
+            # pipes, and run() would wait for them to close until the timeout.
+            subprocess.run(
+                self.proton.bridge_restart_command,
+                check=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, timeout=60,
+            )
         except (OSError, subprocess.SubprocessError) as error:
             return RepairResult(ok=False, detail=f"Restarting Bridge failed: {error}")
         deadline = time.monotonic() + self.proton.repair_wait_seconds
@@ -144,6 +149,8 @@ class ProtonMailbox(ImapMailbox):
             failing = next((check for check in health.checks if not check.ok), None)
             if failing is None:
                 return RepairResult(ok=True, detail="Bridge was restarted and is answering again.")
+            if not health.repair_actions:  # waiting longer can't fix this one
+                return RepairResult(ok=False, detail=f"Bridge was restarted, but this needs your attention: {failing.detail}")
             if time.monotonic() >= deadline:
                 return RepairResult(ok=False, detail=f"Bridge was restarted but still isn't answering: {failing.detail}")
             time.sleep(2)

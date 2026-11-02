@@ -23,14 +23,14 @@ IMAP_PORT = int(os.environ.get("MAIL_TEST_IMAP_PORT", "3143"))
 PASSWORD = "unused"  # auth is disabled on the test server
 
 
-def wait_until_ready(timeout_seconds: float = 30) -> None:
+def wait_until_ready(timeout_seconds: float = 30, imap_port: int = IMAP_PORT, smtp_port: int = SMTP_PORT) -> None:
     """Block until both SMTP and IMAP answer; the port opens before GreenMail is ready."""
     deadline = time.monotonic() + timeout_seconds
     while True:
         try:
-            with smtplib.SMTP(MAIL_HOST, SMTP_PORT, timeout=2) as smtp:
+            with smtplib.SMTP(MAIL_HOST, smtp_port, timeout=2) as smtp:
                 smtp.noop()
-            imaplib.IMAP4(MAIL_HOST, IMAP_PORT, timeout=2).logout()
+            imaplib.IMAP4(MAIL_HOST, imap_port, timeout=2).logout()
             return
         except (OSError, imaplib.IMAP4.error):  # imaplib errors aren't OSErrors
             if time.monotonic() > deadline:

@@ -2,8 +2,10 @@
 # certificate) over GreenMail with authentication on (docker-compose.test.yml).
 import imaplib
 import os
+import signal
 import socket
 import sys
+import time
 from pathlib import Path
 
 import pytest
@@ -33,6 +35,7 @@ def closed_port() -> int:
 @pytest.fixture(scope="module")
 def bridge(tmp_path_factory: pytest.TempPathFactory) -> dict[str, object]:
     wait_until_ready()
+    wait_until_ready(imap_port=AUTH_IMAP_PORT, smtp_port=AUTH_SMTP_PORT)
     cert, key = write_certificate(tmp_path_factory.mktemp("bridge-auth"), "bridge")
     connection = imaplib.IMAP4(MAIL_HOST, AUTH_IMAP_PORT)
     connection.login(USERNAME, SECRET)
@@ -101,9 +104,35 @@ def test_no_restart_command_means_no_repair_offered(bridge):
 
 def test_repair_refuses_an_action_that_is_not_offered(bridge):
     with pytest.raises(MailboxError) as refused:
-        plugin(bridge, bridge_restart_command=["true"]).repair("restart_bridge")
+        plugin(bridge, bridge_restart_command=["true"]).repair("delete_everything")
 
     assert refused.value.code == ErrorCode.UNSUPPORTED
+
+
+def test_repair_stops_early_when_a_restart_cannot_help(bridge, tmp_path: Path):
+    # Bridge is down (restartable). The "restart" brings up something on the port that drops
+    # every TLS handshake: answering, but broken in a way another restart can't fix.
+    port, pid_file = closed_port(), tmp_path / "listener.pid"
+    listener = (
+        "import os, socket\n"
+        f"open({str(pid_file)!r}, 'w').write(str(os.getpid()))\n"
+        f"server = socket.create_server(('127.0.0.1', {port}))\n"
+        "while True:\n    server.accept()[0].close()\n"
+    )
+    starter = f"import subprocess, sys; subprocess.Popen([sys.executable, '-c', {listener!r}], start_new_session=True)"
+    down = plugin(bridge, imap_port=port, bridge_restart_command=[sys.executable, "-c", starter], repair_wait_seconds=30)
+    started = time.monotonic()
+    try:
+        result = down.repair("restart_bridge")
+    finally:
+        deadline = time.monotonic() + 5
+        while not pid_file.exists() and time.monotonic() < deadline:
+            time.sleep(0.1)
+        if pid_file.exists():
+            os.kill(int(pid_file.read_text()), signal.SIGTERM)
+
+    assert not result.ok and "needs your attention" in result.detail
+    assert time.monotonic() - started < 25  # stopped early, not after the full wait
 
 
 def test_repair_runs_the_configured_restart_and_rechecks(bridge, tmp_path: Path):
