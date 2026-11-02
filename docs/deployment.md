@@ -25,7 +25,10 @@ public SSH, and no host names or addresses in this repo (see the operator's loca
    Docker's published ports bypass UFW, which would expose the API publicly.
 3. Start it:
    - with images from GHCR (built by `.github/workflows/images.yml` on every push to
-     `main`): `docker compose pull && docker compose up -d`
+     `main`). **Recommended:** set `IMAGE_TAG=<commit sha>` in `.env` so both services
+     run the same immutable build, then `docker compose pull && docker compose up -d`.
+     Leaving `IMAGE_TAG` unset uses `:latest`. That's convenient, but the two `:latest`
+     tags move one after the other, so a pull during a publish can briefly mix commits.
    - or build on the host: `docker compose up -d --build`
 4. Before relying on it, check CORS from the UI origin:
    `curl -si -X OPTIONS <api>/api/v1/tasks/ -H 'Origin: <FRONTEND_ORIGIN>' -H 'Access-Control-Request-Method: GET'`
@@ -37,6 +40,6 @@ URL in. Building on the host uses the value from `.env`.
 
 ## Updating
 
-Run the same command again: `docker compose pull && docker compose up -d` (or
-`docker compose up -d --build`). It is idempotent: unchanged images keep their
+Set the new `IMAGE_TAG` (or keep `:latest`) and run the same command again:
+`docker compose pull && docker compose up -d` (or `docker compose up -d --build`). It is idempotent: unchanged images keep their
 containers running untouched, and only services whose image changed are recreated.
