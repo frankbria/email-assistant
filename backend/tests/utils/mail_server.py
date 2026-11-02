@@ -91,6 +91,16 @@ class Mailbox:
             assert status == "OK", f"APPEND to {folder} failed"
         return message["Message-ID"]
 
+    def move(self, message_id: str, folder: str) -> None:
+        """Move a message out of INBOX the way a phone or a server filter would, outside the app."""
+        with self.imap() as connection:
+            connection.create(folder)  # "already exists" is fine
+            connection.select("INBOX")
+            _, found = connection.uid("SEARCH", None, "HEADER", "Message-ID", message_id)
+            [uid] = found[0].split()
+            status, detail = connection.uid("MOVE", uid, folder)
+            assert status == "OK", f"MOVE to {folder} failed: {detail}"
+
     def messages(self, folder: str) -> list[EmailMessage]:
         """Every message in the folder, oldest first ([] if the folder doesn't exist)."""
         with self.imap() as connection:

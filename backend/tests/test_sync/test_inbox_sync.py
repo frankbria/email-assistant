@@ -229,7 +229,7 @@ async def test_engine_polls_on_its_interval_and_one_failing_plugin_does_not_stop
 
 async def test_a_plugin_that_never_answers_does_not_hold_up_the_others(test_db, mailbox: Mailbox, monkeypatch):
     monkeypatch.setenv("FAKE_HANGS", "3600")
-    monkeypatch.setattr(sync, "LIST_TIMEOUT_SECONDS", 0.5)
+    monkeypatch.setattr(sync, "PLUGIN_CALL_TIMEOUT_SECONDS", 0.5)
     await add_owner(test_db)
     arrived = mailbox.deliver(sender="a@example.com", subject="New", body="x")
     hung = fake_plugin("hung", {"FAKE_LIST_DELAY": "FAKE_HANGS"})

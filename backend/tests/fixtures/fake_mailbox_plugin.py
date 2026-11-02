@@ -3,7 +3,8 @@
 FAKE_CONTRACT_VERSION, FAKE_ACCOUNT, FAKE_CAPABILITIES (comma-separated), FAKE_INFO_DELAY and
 FAKE_HEALTH_DELAY (seconds) in its environment control what it reports. `list_messages` returns no
 mail and counts its calls in `next_cursor`; FAKE_LIST_FAILS makes it fail and FAKE_LIST_DELAY slow. The `fake_new_mail` tool
-publishes the push event a `push` plugin sends when mail arrives.
+publishes the push event a `push` plugin sends when mail arrives. FAKE_INBOX_CONTAINS (`extra` or
+`missing`) adds an `inbox_contains` that breaks the exact-keys rule that way.
 """
 
 import os
@@ -48,6 +49,18 @@ async def list_messages(folder: str, cursor: str | None = None, limit: int = 100
     await anyio.sleep(float(os.environ.get("FAKE_LIST_DELAY", "0")))
     list_calls += 1
     return ListMessagesOutput(messages=[], next_cursor=str(list_calls), has_more=False)
+
+
+if os.environ.get("FAKE_INBOX_CONTAINS"):
+
+    @server.tool()
+    async def inbox_contains(refs: list[str]) -> dict[str, bool]:
+        answer = {ref: True for ref in refs}
+        if os.environ["FAKE_INBOX_CONTAINS"] == "extra":
+            answer["not-asked-about"] = False
+        else:
+            answer.pop(refs[0])
+        return answer
 
 
 @server.tool()
