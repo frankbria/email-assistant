@@ -15,7 +15,8 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
-import { ChevronDown, Loader2, Check } from "lucide-react";
+import { HugeiconsIcon } from "@hugeicons/react";
+import { ArrowDown01Icon, Loading03Icon, Tick02Icon } from "@hugeicons/core-free-icons";
 import { showToast } from '@/utils/toast'
 
 function useIsMobile() {
@@ -159,9 +160,9 @@ export function TaskCard({
               title={readOnly ? 'Offline: actions disabled in read-only mode' : undefined}
             >
               {pendingAction ? (
-                <Loader2 className="h-4 w-4 animate-spin" />
+                <HugeiconsIcon icon={Loading03Icon} className="h-4 w-4 animate-spin" />
               ) : (
-                <ChevronDown className="h-4 w-4" />
+                <HugeiconsIcon icon={ArrowDown01Icon} className="h-4 w-4" />
               )}
               {pendingAction ? "Processing..." : readOnly ? "Actions (offline)" : "Actions"}
             </Button>
@@ -176,9 +177,9 @@ export function TaskCard({
                 title={readOnly ? 'Offline: actions disabled in read-only mode' : undefined}
               >
                 {pendingAction === action ? (
-                  <Loader2 className="h-4 w-4 animate-spin" />
+                  <HugeiconsIcon icon={Loading03Icon} className="h-4 w-4 animate-spin" />
                 ) : (
-                  <Check className="h-4 w-4 opacity-0 group-hover:opacity-100" />
+                  <HugeiconsIcon icon={Tick02Icon} className="h-4 w-4 opacity-0 group-hover:opacity-100" />
                 )}
                 {action}
               </DropdownMenuItem>
@@ -203,7 +204,7 @@ export function TaskCard({
             <Button onClick={handleActionConfirm} disabled={!!pendingAction}>
               {pendingAction ? (
                 <>
-                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                  <HugeiconsIcon icon={Loading03Icon} className="mr-2 h-4 w-4 animate-spin" />
                   Processing...
                 </>
               ) : (

@@ -4,7 +4,8 @@ import React, { useEffect, useState, useRef } from "react";
 import { UserSettings } from "../types/api";
 import { fetchUserSettings, updateUserSettings } from "../services/settingsService";
 import { Card } from "./ui/card";
-import { Settings2, CircleAlert } from "lucide-react";
+import { HugeiconsIcon } from "@hugeicons/react";
+import { AlertCircleIcon, Settings02Icon } from "@hugeicons/core-free-icons";
 import { showToast } from "../utils/toast";
 
 export default function SettingsForm() {
@@ -66,7 +67,7 @@ export default function SettingsForm() {
   if (error && !settings) {
     return (
       <div className="max-w-md mx-auto mt-8 bg-red-50 border border-red-200 text-red-700 p-4 rounded flex items-center gap-2">
-        <CircleAlert className="text-destructive" size={16} strokeWidth={2} />
+        <HugeiconsIcon icon={AlertCircleIcon} className="text-destructive" size={16} strokeWidth={2} />
         <p className="text-sm">{error}</p>
         <button
           className="ml-auto px-3 py-1 bg-red-100 border border-red-300 rounded text-red-700 hover:bg-red-200 transition"
@@ -81,7 +82,7 @@ export default function SettingsForm() {
   if (!settings) {
     return (
       <div className="max-w-md mx-auto mt-8 bg-muted border p-4 rounded flex items-center gap-2">
-        <CircleAlert className="text-muted-foreground" size={16} strokeWidth={2} />
+        <HugeiconsIcon icon={AlertCircleIcon} className="text-muted-foreground" size={16} strokeWidth={2} />
         <p className="text-sm">No settings found.</p>
       </div>
     );
@@ -91,7 +92,7 @@ export default function SettingsForm() {
     <Card className="max-w-md mx-auto mt-8 border-border shadow-lg">
       <div className="p-6">
         <div className="flex items-center gap-2 mb-6">
-          <Settings2 className="h-5 w-5 text-primary" />
+          <HugeiconsIcon icon={Settings02Icon} className="h-5 w-5 text-primary" />
           <h2 className="text-xl font-semibold text-foreground">Email Settings</h2>
         </div>
         <div className="border-b mb-6" />

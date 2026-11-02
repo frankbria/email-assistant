@@ -2,10 +2,9 @@
 "use client";
 
 import "./globals.css";
-import "react-toastify/dist/ReactToastify.css";
 import { AssistantHeader } from "@/components/AssistantHeader";
 import { BottomNav }       from "@/components/BottomNav";
-import { ToastContainer }  from "react-toastify";
+import { Toaster }       from "@/components/ui/sonner";
 import { useEffect } from "react";
 import { showToast } from "@/utils/toast";
 
@@ -14,9 +13,6 @@ export default function RootLayout({
 }: {
   children: React.ReactNode;
 }) {
-  const isDark =
-    typeof window !== "undefined" &&
-    window.matchMedia("(prefers-color-scheme: dark)").matches;
 
   useEffect(() => {
     function handleOffline() {
@@ -57,7 +53,7 @@ export default function RootLayout({
         <BottomNav />
 
         {/* Toast notifications */}
-        <ToastContainer theme={isDark ? "dark" : "light"} />
+        <Toaster position="top-right" richColors />
       </body>
     </html>
   );
