@@ -88,6 +88,9 @@ Proton returns layered ones (spec §6.3).
 
 Input: [`ListMessagesInput`](mailbox-1/ListMessagesInput.schema.json): `folder` (`inbox` or
 `sent`), `cursor?`, `since?` (used only without a cursor), `limit` (1–500, default 100).
+A listing started with `since` keeps that window on every page it is paged through, and the
+`next_cursor` of its last page resumes after everything already in the folder, including mail
+outside the window (e.g. imported history at newer positions). Older mail never leaks in later.
 Output: [`ListMessagesOutput`](mailbox-1/ListMessagesOutput.schema.json): `messages[]` (ref,
 message_id, from, to, cc, date, subject, snippet, `list_id?`, `in_reply_to?`),
 `next_cursor`, `has_more`.

@@ -300,34 +300,39 @@ class ImapMailbox:
     def list_messages(
         self, folder: Literal["inbox", "sent"], cursor: str | None, since: datetime | None, limit: int
     ) -> ListMessagesOutput:
+        """Cursor: `UIDVALIDITY:last UID`, plus `:SINCE date` while a `since` listing has more pages,
+        so every page keeps the window and older mail at higher UIDs (imported history) stays out."""
         folder_name = self.folders.inbox if folder == "inbox" else self.folders.sent
         with self._imap() as connection:
             self._select(connection, folder_name)
             validity = str(connection.response("UIDVALIDITY")[1][0], "ascii")
-            if cursor is not None:
-                cursor_validity, _, last = cursor.partition(":")
-                if cursor_validity != validity or not last.isdigit():
-                    raise MailboxError(ErrorCode.INVALID_CURSOR, "The cursor no longer matches this folder.")
-                after = int(last)
-                # "UID n:*" always returns the newest message, even below n; filter it.
-                uids = [uid for uid in self._search(connection, "UID", f"{after + 1}:*") if uid > after]
-            else:
-                criteria = ("SINCE", since.strftime("%d-%b-%Y")) if since else ("ALL",)
-                uids = self._search(connection, *criteria)
-                after = 0
+            after, window = self._resume(cursor, validity) if cursor else (0, since and since.strftime("%d-%b-%Y"))
+            # Searched before the window, so mail arriving in between is re-listed rather than skipped.
+            ceiling = max(self._search(connection, "ALL"), default=0) if window else 0
+            criteria = ("UID", f"{after + 1}:*", *(("SINCE", window) if window else ()))
+            # "UID n:*" always returns the newest message, even below n; filter it.
+            uids = [uid for uid in self._search(connection, *criteria) if uid > after]
             page = uids[:limit]
             messages = [self._summary(self._fetch(connection, uid)) for uid in page]
-            if page:
-                last_uid = page[-1]
-            elif cursor is not None:
-                last_uid = after
-            else:
-                # Nothing matched: start after everything currently in the folder.
-                everything = self._search(connection, "ALL")
-                last_uid = everything[-1] if everything else 0
-        return ListMessagesOutput(
-            messages=messages, next_cursor=f"{validity}:{last_uid}", has_more=len(uids) > limit
-        )
+        if len(uids) > limit:
+            next_cursor = f"{validity}:{page[-1]}" + (f":{window}" if window else "")
+        else:
+            # Listing complete: resume after everything in the folder, mail outside the window included.
+            next_cursor = f"{validity}:{max(ceiling, after, *page[-1:])}"
+        return ListMessagesOutput(messages=messages, next_cursor=next_cursor, has_more=len(uids) > limit)
+
+    @staticmethod
+    def _resume(cursor: str, validity: str) -> tuple[int, str | None]:
+        cursor_validity, _, rest = cursor.partition(":")
+        last, _, window = rest.partition(":")
+        try:
+            # The window goes into an IMAP command, so it must be exactly a date.
+            valid = cursor_validity == validity and last.isdigit() and (not window or bool(datetime.strptime(window, "%d-%b-%Y")))
+        except ValueError:
+            valid = False
+        if not valid:
+            raise MailboxError(ErrorCode.INVALID_CURSOR, "The cursor no longer matches this folder.")
+        return int(last), window or None
 
     def inbox_contains(self, refs: list[str]) -> InboxContainsOutput:
         with self._imap() as connection:

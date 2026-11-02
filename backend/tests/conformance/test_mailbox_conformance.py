@@ -7,6 +7,7 @@ import sys
 from collections.abc import AsyncIterator, Callable
 from contextlib import asynccontextmanager
 from dataclasses import dataclass
+from datetime import UTC, datetime, timedelta
 
 import pytest
 from mcp import Client
@@ -171,6 +172,28 @@ async def test_list_messages_pages_and_resumes_after_a_restart(target: Target):
         resumed = await session.call_as(
             "list_messages", contract.ListMessagesOutput, {"folder": "inbox", "cursor": second.next_cursor}
         )
+        assert [m.message_id for m in resumed.messages] == [newest]
+
+
+async def test_a_since_listing_keeps_its_window_across_pages_and_ends_past_older_mail(target: Target):
+    """Imported history can sit at higher UIDs than recent mail; it stays out of the window."""
+    async with open_session(target) as session:
+        def received(days: int, subject: str) -> str:
+            ago = datetime.now(UTC) - timedelta(days=days)
+            return session.mailbox.append("INBOX", sender="ana@example.com", subject=subject, body="x", received=ago)
+
+        recent_1, _, recent_2, _ = received(2, "r1"), received(30, "o1"), received(3, "r2"), received(40, "o2")
+        listed: list[str] = []
+        page = contract.ListMessagesOutput(messages=[], next_cursor="", has_more=True)
+        arguments: dict[str, object] = {"folder": "inbox", "since": (datetime.now(UTC) - timedelta(days=14)).isoformat()}
+        while page.has_more:
+            page = await session.call_as("list_messages", contract.ListMessagesOutput, {**arguments, "limit": 1})
+            listed += [m.message_id for m in page.messages]
+            arguments = {"folder": "inbox", "cursor": page.next_cursor}
+
+        assert listed == [recent_1, recent_2]
+        newest = session.mailbox.deliver(sender="ana@example.com", subject="new", body="x")
+        resumed = await session.call_as("list_messages", contract.ListMessagesOutput, arguments)
         assert [m.message_id for m in resumed.messages] == [newest]
 
 

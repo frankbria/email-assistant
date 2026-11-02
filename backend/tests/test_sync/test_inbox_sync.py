@@ -141,6 +141,18 @@ async def test_first_connect_takes_only_the_last_14_days_and_archives_nothing(te
     assert sorted(message["Message-ID"] for message in mailbox.messages("INBOX")) == sorted([older, recent])
 
 
+async def test_older_mail_at_a_higher_uid_than_recent_mail_never_enters(test_db, mailbox: Mailbox):
+    """E.g. imported history: IMAP UID order is not date order."""
+    recent = mailbox.append("INBOX", sender="a@example.com", subject="2 days", body="x", received=days_ago(2))
+    mailbox.append("INBOX", sender="a@example.com", subject="30 days", body="x", received=days_ago(30))
+    async with connected(reference_imap_plugin(mailbox)) as registry:
+        first_pass = await sync_inbox(OWNER, PLUGIN, registry.clients[PLUGIN])
+        next_pass = await sync_inbox(OWNER, PLUGIN, registry.clients[PLUGIN])
+
+    assert [message.message_id for message in first_pass] == [recent]
+    assert next_pass == []
+
+
 async def test_the_whole_first_pass_is_marked_even_across_pages_but_later_mail_is_not(test_db, mailbox: Mailbox):
     week_old = [
         mailbox.append("INBOX", sender="a@example.com", subject=f"Week {n}", body="x", received=days_ago(7))

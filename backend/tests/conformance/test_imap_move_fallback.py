@@ -77,3 +77,14 @@ def test_unsafe_refs_are_rejected(mailbox: Mailbox, ref: str):
         with pytest.raises(MailboxError) as rejected:
             action(ref)
         assert rejected.value.code == ErrorCode.INVALID_ARGUMENT
+
+
+@pytest.mark.parametrize("window", ["01-Jan-2026\r\nA001 LOGOUT", "yesterday", "2026-01-01"])
+def test_a_cursor_with_a_tampered_window_is_rejected(mailbox: Mailbox, window: str):
+    plugin = ImapMailbox(settings_for(mailbox))
+    cursor = plugin.list_messages("inbox", None, None, 1).next_cursor
+
+    with pytest.raises(MailboxError) as rejected:
+        plugin.list_messages("inbox", f"{cursor}:{window}", None, 1)
+
+    assert rejected.value.code == ErrorCode.INVALID_CURSOR
