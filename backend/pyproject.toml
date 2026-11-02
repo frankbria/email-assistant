@@ -8,6 +8,7 @@ dependencies = [
     "beanie>=2",
     "fastapi",
     "httpx",
+    "httpx2>=2.16.0",
     "mailbox-contract",
     "mcp>=2.3.0",
     "openai",

@@ -80,9 +80,10 @@ async def lifespan(app: FastAPI):
     await plugins.connect_all(load_plugins_config(Path(os.getenv("PLUGINS_CONFIG", "plugins.yaml"))))
     app.state.plugins = plugins
 
-    yield
-
-    await plugins.close()
+    try:
+        yield
+    finally:
+        await plugins.close()
 
     logger.debug("🌟 Lifespan: Shutting down DB")
     if client is not None:

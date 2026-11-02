@@ -69,6 +69,10 @@ plugins:
         '{type: http, url: "http://127.0.0.1:9/mcp", bearer_token: "abc123"}',
         '{type: http, url: "http://127.0.0.1:9/mcp", password: "abc"}',
         '{type: stdio, command: python, args: ["--password=abc"]}',
+        '{type: stdio, command: python, args: ["--token", "abc"]}',
+        '{type: http, url: "http://owner:abc@127.0.0.1:9/mcp"}',
+        '{type: http, url: "http://127.0.0.1:9/mcp", bearer_token_env: "abc 123"}',
+        '{type: stdio, command: python, env_from: {APP_PASSWORD: "abc123"}}',
     ],
 )
 def test_inline_secret_is_rejected_at_load(tmp_path, transport):
@@ -165,6 +169,9 @@ def http_plugin():
             break
         except OSError:
             time.sleep(0.1)
+    else:
+        process.kill()
+        pytest.fail("fake HTTP plugin did not start listening")
     yield f"http://127.0.0.1:{port}/mcp"
     process.terminate()
     process.wait(timeout=10)

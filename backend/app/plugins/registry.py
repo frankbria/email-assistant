@@ -20,6 +20,7 @@ from mailbox_contract import SUPPORTED_MAJOR, MailboxInfo, is_supported
 logger = logging.getLogger(__name__)
 
 CONNECT_TIMEOUT_SECONDS = 15
+CLOSE_TIMEOUT_SECONDS = 5
 
 
 class PluginConnectError(Exception):
@@ -40,6 +41,17 @@ def read_env(name: str) -> str:
     return value
 
 
+async def close_quietly(plugin_id: str, connection: AsyncExitStack) -> None:
+    """Close one plugin's connection without letting it hang or break the others."""
+    try:
+        async with asyncio.timeout(CLOSE_TIMEOUT_SECONDS):
+            await connection.aclose()
+    except Exception:
+        logger.exception("Plugin %s did not close cleanly", plugin_id)
+
+
+# Plugins connect one after another on purpose: each MCP client's anyio scopes must be
+# exited by the task that entered them, which is the app's lifespan task.
 class PluginRegistry:
     def __init__(self) -> None:
         self.states: dict[str, PluginState] = {}
@@ -52,8 +64,8 @@ class PluginRegistry:
             logger.info("Plugin %s: %s", config.id, self.states[config.id].status)
 
     async def close(self) -> None:
-        for connection in self._connections.values():
-            await connection.aclose()
+        for plugin_id, connection in self._connections.items():
+            await close_quietly(plugin_id, connection)
         self._connections.clear()
         self.clients.clear()
 
@@ -68,11 +80,11 @@ class PluginRegistry:
                 )
                 info = await self._mailbox_info(client)
         except Exception as error:
-            await connection.aclose()
+            await close_quietly(config.id, connection)
             reason = str(error) or type(error).__name__
             return PluginState(id=config.id, status="failed", reason=f"Could not connect: {reason}")
         if not is_supported(info.contract_version):
-            await connection.aclose()
+            await close_quietly(config.id, connection)
             return PluginState(
                 id=config.id,
                 status="refused",
