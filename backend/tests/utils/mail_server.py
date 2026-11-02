@@ -64,6 +64,10 @@ class Mailbox:
         finally:
             connection.logout()
 
+    def create_folder(self, folder: str) -> None:
+        with self.imap() as connection:
+            connection.create(folder)  # "already exists" is fine
+
     def deliver(self, *, sender: str, subject: str, body: str) -> str:
         """Send a message to this mailbox over SMTP, like real inbound mail; returns its Message-ID."""
         message = build_message(sender=sender, to=self.address, subject=subject, body=body)
