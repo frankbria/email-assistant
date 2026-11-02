@@ -7,11 +7,6 @@ import { authClient } from '@/lib/auth-client'
 
 type Mode = 'sign-in' | 'sign-up'
 
-const passwordAutoComplete: Record<Mode, string> = {
-  'sign-up': 'new-password',
-  'sign-in': 'current-password',
-}
-
 export function OwnerAuthForm({ mode }: { mode: Mode }) {
   const [name, setName] = useState('')
   const [email, setEmail] = useState('')
@@ -78,7 +73,7 @@ export function OwnerAuthForm({ mode }: { mode: Mode }) {
           <Input
             name="password"
             type="password"
-            autoComplete={passwordAutoComplete[mode]}
+            autoComplete={`${mode === 'sign-up' ? 'new' : 'current'}-password`}
             minLength={8}
             value={password}
             onChange={(event) => setPassword(event.target.value)}
