@@ -63,7 +63,9 @@ def proton_plugin(mailbox: Mailbox) -> PluginConfig:
         "MAILBOX_SMTP_PORT": str(bridge.smtp_port),
         "MAILBOX_TLS": "ssl",
         "MAILBOX_CA_CERT_PATH": str(bridge.cert),
-        # GreenMail neither authenticates SMTP nor files sent mail; Bridge does both.
+        # GreenMail neither authenticates SMTP nor files sent mail; Bridge does both. So this
+        # target proves the Proton plugin's mailbox/1 behaviour over pinned TLS, not parity
+        # with a live Bridge (checked on the owner's machine, #53).
         "MAILBOX_SMTP_LOGIN": "false",
         "MAILBOX_APPEND_SENT": "true",
     }
