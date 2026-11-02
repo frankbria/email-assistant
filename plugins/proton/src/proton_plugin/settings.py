@@ -1,4 +1,5 @@
 import ipaddress
+import os
 from typing import Literal
 
 from pydantic import Field, field_validator
@@ -51,3 +52,9 @@ class ProtonSettings(ImapMailboxSettings):
         if address is None or not (address.is_loopback or any(address in network for network in TAILSCALE_NETWORKS)):
             raise ValueError("bind HTTP mode to this machine's Tailscale IP (100.64.0.0/10 or fd7a:115c:a1e0::/48), or loopback")
         return host
+
+
+def load_settings() -> ProtonSettings:
+    """Settings from the environment, plus MAILBOX_ENV_FILE if set (how the logon task and the
+    systemd unit pass them; the plugin process inherits the variable from the watchdog)."""
+    return ProtonSettings(_env_file=os.environ.get("MAILBOX_ENV_FILE"))  # type: ignore[call-arg]  # required fields come from env

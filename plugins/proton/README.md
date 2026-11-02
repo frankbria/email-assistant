@@ -62,3 +62,19 @@ match the pinned one … Export it again from Bridge".
   on `MAILBOX_HTTP_HOST:MAILBOX_WATCHDOG_PORT` (default 8766), only with
   `Authorization: Bearer $MAILBOX_WATCHDOG_TOKEN`. The app reads it when the plugin itself
   doesn't answer, to tell "plugin down" from "machine offline".
+
+## Start at login (watchdog install)
+
+Copy `install/proton.env.example` to your settings file and fill it in (keep it private),
+then install the watchdog so it starts with your session. Bridge runs in your session, so
+these are logon tasks, not system services.
+
+- **Windows**: `powershell -ExecutionPolicy Bypass -File install\install-watchdog.ps1`
+  (settings default to `%APPDATA%\email-assistant\proton.env`). It registers a scheduled
+  task at your logon, a minute after login so Bridge starts first, and restarts it if it
+  exits. For unattended reboots, turn on Windows auto-logon (e.g. Sysinternals Autologon).
+  Remove it with `install\uninstall-watchdog.ps1`.
+- **Linux**: `install/install-watchdog.sh [settings file]` (default
+  `~/.config/email-assistant/proton.env`) installs a systemd *user* unit with
+  `Restart=always`. `loginctl enable-linger $USER` keeps it running without an open
+  session. Remove it with `install/uninstall-watchdog.sh`.

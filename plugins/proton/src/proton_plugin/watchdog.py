@@ -18,7 +18,7 @@ from typing import Literal
 from pydantic import BaseModel
 
 from proton_plugin.mailbox import ProtonMailbox
-from proton_plugin.settings import ProtonSettings
+from proton_plugin.settings import ProtonSettings, load_settings
 
 logger = logging.getLogger(__name__)
 
@@ -177,7 +177,7 @@ def serve_status(watchdog: Watchdog, host: str, port: int, token: str) -> Thread
 
 
 def main() -> None:
-    settings = ProtonSettings()  # type: ignore[call-arg]  # required fields come from the environment
+    settings = load_settings()
     if not settings.watchdog_token:
         raise SystemExit("The watchdog needs MAILBOX_WATCHDOG_TOKEN for its status endpoint.")
     plugin_command = [sys.executable, "-m", "proton_plugin.server", "http"] if settings.http_host else None
