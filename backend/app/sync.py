@@ -2,16 +2,17 @@
 once when a `push` plugin says new mail arrived."""
 
 import asyncio
+import contextlib
 import logging
 from datetime import UTC, datetime
 
 from mcp import Client
-from mcp.types import TextContent
+from mcp.types import CallToolResult
 from pymongo.asynchronous.collection import AsyncCollection
 
 from app.models.message import Message
 from app.models.sync_cursor import SyncCursor
-from app.plugins.registry import PluginRegistry
+from app.plugins.registry import PluginRegistry, result_text
 from mailbox_contract import INBOX_URI, Capability, ErrorCode, ListMessagesOutput, ToolError
 
 logger = logging.getLogger(__name__)
@@ -30,16 +31,18 @@ class InvalidCursor(Exception):
 async def list_inbox(plugin_id: str, client: Client, cursor: str | None, page_size: int) -> ListMessagesOutput:
     """One page of the inbox after `cursor`."""
     result = await client.call_tool("list_messages", {"folder": "inbox", "cursor": cursor, "limit": page_size})
-    if not result.is_error and result.structured_content is not None:
-        return ListMessagesOutput.model_validate(result.structured_content)
-    if result.structured_content is not None:
-        error = ToolError.model_validate(result.structured_content)
-        if error.code == ErrorCode.INVALID_CURSOR:
-            raise InvalidCursor(error.message)
-        reason = error.message
-    else:
-        reason = " ".join(block.text for block in result.content if isinstance(block, TextContent))
-    raise SyncError(f"{plugin_id}: list_messages failed: {reason or 'no structured result'}")
+    if result.is_error or result.structured_content is None:
+        raise list_failure(plugin_id, result)
+    return ListMessagesOutput.model_validate(result.structured_content)
+
+
+def list_failure(plugin_id: str, result: CallToolResult) -> InvalidCursor | SyncError:
+    if result.structured_content is None:
+        return SyncError(f"{plugin_id}: list_messages failed: {result_text(result) or 'no structured result'}")
+    error = ToolError.model_validate(result.structured_content)
+    if error.code == ErrorCode.INVALID_CURSOR:
+        return InvalidCursor(error.message)
+    return SyncError(f"{plugin_id}: list_messages failed: {error.message}")
 
 
 async def store_if_new(message: Message) -> bool:
@@ -55,14 +58,29 @@ async def store_if_new(message: Message) -> bool:
     return True
 
 
+async def inbox_cursor(owner_id: str, plugin_id: str) -> SyncCursor:
+    stored = await SyncCursor.find_one(
+        SyncCursor.owner_id == owner_id, SyncCursor.plugin_id == plugin_id, SyncCursor.folder == "inbox"
+    )
+    return stored or SyncCursor(owner_id=owner_id, plugin_id=plugin_id, folder="inbox")
+
+
+async def store_page(owner_id: str, plugin_id: str, page: ListMessagesOutput) -> list[Message]:
+    """The page's messages that weren't stored yet, now stored."""
+    stored = []
+    for summary in page.messages:
+        message = Message(owner_id=owner_id, plugin_id=plugin_id, **summary.model_dump())
+        if await store_if_new(message):
+            stored.append(message)
+    return stored
+
+
 async def sync_inbox(owner_id: str, plugin_id: str, client: Client, page_size: int = PAGE_SIZE) -> list[Message]:
     """Store the inbox mail that arrived since the stored cursor and return it, oldest first.
 
     The cursor is saved after each page is stored: a crash in between re-lists that page,
     and dedupe drops what was already stored, so nothing is missed or duplicated."""
-    cursor = await SyncCursor.find_one(
-        SyncCursor.owner_id == owner_id, SyncCursor.plugin_id == plugin_id, SyncCursor.folder == "inbox"
-    ) or SyncCursor(owner_id=owner_id, plugin_id=plugin_id, folder="inbox")
+    cursor = await inbox_cursor(owner_id, plugin_id)
     new_messages: list[Message] = []
     while True:
         try:
@@ -73,10 +91,7 @@ async def sync_inbox(owner_id: str, plugin_id: str, client: Client, page_size: i
             logger.warning("Plugin %s no longer accepts its cursor (%s); listing the inbox from the start", plugin_id, error)
             cursor.cursor = None
             continue
-        for summary in page.messages:
-            message = Message(owner_id=owner_id, plugin_id=plugin_id, **summary.model_dump())
-            if await store_if_new(message):
-                new_messages.append(message)
+        new_messages += await store_page(owner_id, plugin_id, page)
         cursor.cursor = page.next_cursor
         cursor.updated_at = datetime.now(UTC)
         await cursor.save()
@@ -100,16 +115,11 @@ class SyncEngine:
                 self.wake.clear()
                 self._listen_for_push()
                 await self.sync_all()
-                try:
+                with contextlib.suppress(TimeoutError):
                     async with asyncio.timeout(self.poll_seconds):
                         await self.wake.wait()
-                except TimeoutError:
-                    pass
         finally:
-            listeners = [listener for _, listener in self._listeners.values()]
-            for listener in listeners:
-                listener.cancel()
-            await asyncio.gather(*listeners, return_exceptions=True)
+            await self._stop_listeners()
 
     async def sync_all(self) -> None:
         # Better Auth's `user` collection holds exactly one document: the owner.
@@ -128,13 +138,16 @@ class SyncEngine:
     def _listen_for_push(self) -> None:
         """(Re)subscribe to every connected `push` plugin; a reconnect brings a new client."""
         for plugin_id, client in self.plugins.clients.items():
-            state = self.plugins.states[plugin_id]
-            if state.info is None or Capability.PUSH not in state.info.capabilities:
-                continue
-            listening = self._listeners.get(plugin_id)
-            if listening is not None and listening[0] is client and not listening[1].done():
-                continue
-            self._listeners[plugin_id] = (client, asyncio.create_task(self._listen(plugin_id, client)))
+            if self._pushes(plugin_id) and not self._listening(plugin_id, client):
+                self._listeners[plugin_id] = (client, asyncio.create_task(self._listen(plugin_id, client)))
+
+    def _pushes(self, plugin_id: str) -> bool:
+        info = self.plugins.states[plugin_id].info
+        return info is not None and Capability.PUSH in info.capabilities
+
+    def _listening(self, plugin_id: str, client: Client) -> bool:
+        listening = self._listeners.get(plugin_id)
+        return listening is not None and listening[0] is client and not listening[1].done()
 
     async def _listen(self, plugin_id: str, client: Client) -> None:
         try:
@@ -143,3 +156,9 @@ class SyncEngine:
                     self.wake.set()
         except Exception:
             logger.exception("Push subscription to plugin %s ended; resubscribing next pass", plugin_id)
+
+    async def _stop_listeners(self) -> None:
+        listeners = [listener for _, listener in self._listeners.values()]
+        for listener in listeners:
+            listener.cancel()
+        await asyncio.gather(*listeners, return_exceptions=True)
