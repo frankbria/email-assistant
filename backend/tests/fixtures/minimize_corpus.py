@@ -194,8 +194,11 @@ CORPUS = (
     ),
     MinimizeCase(
         name="links keep their punctuation and untouched parameters",
-        text="(see https://x.example/a?flag&id=a%20b&utm_source=news). Also https://x.example/b?utm_medium=mail, ok\n",
-        kept=("(see https://x.example/a?flag&id=a%20b).", "https://x.example/b, ok"),
+        text=(
+            "(see https://x.example/a?flag&id=a%20b&utm_source=news). Also https://x.example/b?utm_medium=mail, ok\n"
+            "Unsubscribe: <https://x.example/u?id=7&utm_source=email>\n"
+        ),
+        kept=("(see https://x.example/a?flag&id=a%20b).", "https://x.example/b, ok", "<https://x.example/u?id=7>"),
         removed=("utm_source", "utm_medium"),
     ),
     MinimizeCase(
@@ -212,9 +215,11 @@ CORPUS = (
             "Subject: Contract\n"
             "\n"
             "Please sign the contract by Friday.\n"
+            "-- \n"
+            "Legal Team, Example Corp\n"
         ),
         kept=("FYI, needs your signature.", "Forwarded message", "Please sign the contract by Friday."),
-        removed=("Alice",),
+        removed=("Alice", "Legal Team, Example Corp"),
     ),
     MinimizeCase(
         name="outlook forward after the forwarder's signature keeps the payload",

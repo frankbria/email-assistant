@@ -34,3 +34,9 @@ def test_blank_runs_collapse_and_empty_mail_stays_empty():
     assert minimize("first\n\n\n\n\nsecond\n") == "first\n\nsecond"
     assert minimize("") == ""
     assert minimize("> only quoted history\n") == ""
+
+
+def test_a_mail_with_thousands_of_signatures_and_forwards_neither_crashes_nor_keeps_a_signature():
+    nested = minimize("-- \nsignature\n---------- Forwarded message ---------\nbody\n" * 5000, "Fwd: chain")
+
+    assert "signature" not in nested and nested.count("body") > 0

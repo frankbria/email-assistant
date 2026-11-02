@@ -20,6 +20,11 @@ OUTLOOK_HISTORY = re.compile(
 )
 FORWARDED_BLOCK = re.compile(r"^(?:-+ ?Forwarded message ?-+|Begin forwarded message:)", re.MULTILINE | re.IGNORECASE)
 ORIGINAL_MESSAGE = re.compile(r"^-+ ?Original Message ?-+[ \t]*$", re.MULTILINE | re.IGNORECASE)
+# One alternation finds the earliest block in a single scan (separate searches would be quadratic).
+ANY_FORWARDED_BLOCK = re.compile(
+    "|".join(pattern.pattern for pattern in (FORWARDED_BLOCK, OUTLOOK_HISTORY, ORIGINAL_MESSAGE)),
+    re.MULTILINE | re.IGNORECASE,
+)
 # An attribution names the sender's address or the year; prose that merely ends in "wrote:" does not.
 ATTRIBUTION = re.compile(
     r"^On\b[^\n]*(?:\n[^\n]*)?@[^\n]*\bwrote:[ \t]*$\n?|^On\b[^\n]*\b(?:19|20)\d\d\b[^\n]*\bwrote:[ \t]*$\n?",
@@ -32,7 +37,7 @@ MOBILE_FOOTER = re.compile(
     r"|Sent from (?:Mail|Outlook) for \w.*|Get Outlook for \w.*)$\n?",
     re.MULTILINE | re.IGNORECASE,
 )
-URL = re.compile(r"https?://\S+?(?=[.,;:!?)\]'\"]*(?:\s|$))")  # trailing prose punctuation is not the link's
+URL = re.compile(r"https?://[^\s<>]+?(?=[.,;:!?)\]'\"]*(?:[\s<>]|$))")  # trailing prose punctuation is not the link's
 TRACKING_PARAMETER = re.compile(r"^(?:utm_\w+|fbclid|gclid|mc_eid|mc_cid|_hsenc|_hsmi|mkt_tok)(?:=|$)", re.IGNORECASE)
 
 
@@ -56,13 +61,14 @@ def cut_at_first(text: str, patterns: tuple[re.Pattern[str], ...]) -> str:
 
 
 def without_signature(text: str, forwarded: bool) -> str:
-    """Drops from the signature delimiter up to the next forwarded block, which is content."""
-    signature = SIGNATURE.search(text)
-    if signature is None:
-        return text
-    rest = text[signature.end() :]
-    blocks = (FORWARDED_BLOCK, OUTLOOK_HISTORY, ORIGINAL_MESSAGE) if forwarded else (FORWARDED_BLOCK,)
-    return text[: signature.start()] + rest[len(cut_at_first(rest, blocks)) :]
+    """Drops each signature, from its delimiter up to the next forwarded block, which is content."""
+    blocks = ANY_FORWARDED_BLOCK if forwarded else FORWARDED_BLOCK
+    pieces, position = [], 0
+    while (signature := SIGNATURE.search(text, position)) is not None:
+        pieces.append(text[position : signature.start()])
+        payload = blocks.search(text, signature.end())
+        position = payload.start() if payload else len(text)
+    return "".join(pieces) + text[position:]
 
 
 def without_tracking(url: str) -> str:
