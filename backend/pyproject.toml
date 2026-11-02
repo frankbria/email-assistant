@@ -8,12 +8,15 @@ dependencies = [
     "beanie>=2",
     "fastapi",
     "httpx",
+    "httpx2>=2.16.0",
     "mailbox-contract",
+    "mcp>=2.3.0",
     "openai",
     "pydantic",
     "pydantic-settings",
     "pymongo>=4.19.0",
     "python-dotenv",
+    "pyyaml>=6.0.3",
     "uvicorn",
 ]
 
@@ -26,6 +29,7 @@ dev = [
     "pytest-benchmark",
     "pytest-cov",
     "ruff>=0.17.3",
+    "types-pyyaml>=6.0.12.20261030",
 ]
 
 [tool.pytest.ini_options]
