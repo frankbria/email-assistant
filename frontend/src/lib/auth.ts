@@ -1,5 +1,5 @@
 import { betterAuth } from 'better-auth'
-import { APIError } from 'better-auth/api'
+import { APIError, createAuthMiddleware } from 'better-auth/api'
 import { mongodbAdapter } from 'better-auth/adapters/mongodb'
 import { nextCookies } from 'better-auth/next-js'
 import { MongoClient } from 'mongodb'
@@ -22,17 +22,15 @@ export const auth = betterAuth({
       role: { type: 'string', defaultValue: 'owner', input: false },
     },
   },
-  databaseHooks: {
-    user: {
-      create: {
-        before: async () => {
-          await authDb.collection('user').createIndex({ role: 1 }, { unique: true })
-          if (await ownerExists()) {
-            throw new APIError('FORBIDDEN', { message: 'Sign-up is closed: this app already has an owner.' })
-          }
-        },
-      },
-    },
+  hooks: {
+    // Request-level, so a closed sign-up is refused before the password is hashed.
+    before: createAuthMiddleware(async (context) => {
+      if (context.path !== '/sign-up/email') return
+      await authDb.collection('user').createIndex({ role: 1 }, { unique: true })
+      if (await ownerExists()) {
+        throw new APIError('FORBIDDEN', { message: 'Sign-up is closed: this app already has an owner.' })
+      }
+    }),
   },
   plugins: [nextCookies()],
 })
