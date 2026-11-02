@@ -6,7 +6,8 @@ WORKDIR /app/backend
 ENV UV_COMPILE_BYTECODE=1 UV_LINK_MODE=copy PATH="/app/backend/.venv/bin:$PATH"
 
 # Dependencies first so code-only changes reuse this layer.
-COPY packages/mailbox-contract /app/packages/mailbox-contract
+# uv --locked needs every path dependency's project, dev-only ones included.
+COPY packages /app/packages
 COPY backend/pyproject.toml backend/uv.lock ./
 RUN uv sync --locked --no-dev --no-install-project
 

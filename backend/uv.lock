@@ -402,6 +402,7 @@ dependencies = [
 
 [package.dev-dependencies]
 dev = [
+    { name = "imap-mailbox" },
     { name = "jsonschema" },
     { name = "mypy" },
     { name = "pytest" },
@@ -432,6 +433,7 @@ requires-dist = [
 
 [package.metadata.requires-dev]
 dev = [
+    { name = "imap-mailbox", editable = "../packages/imap-mailbox" },
     { name = "jsonschema", specifier = ">=4.26.0" },
     { name = "mypy", specifier = ">=2.4.1" },
     { name = "pytest" },
@@ -540,6 +542,25 @@ source = { registry = "https://pypi.org/simple" }
 sdist = { url = "https://files.pythonhosted.org/packages/5f/f7/abb373e5757eaec4b922b92f97ec8d6d7e057cf06778247604fbc4e7c3f3/idna-3.19.tar.gz", hash = "sha256:5e0811a4383b21dc5838069f801c4fb62113b7447663d2530d2bd6e77b49bf15", size = 215237, upload-time = "2026-08-18T05:14:24.27Z" }
 wheels = [
     { url = "https://files.pythonhosted.org/packages/57/b0/0e52c878c53f245edd3a11020f20979b3f490f245af532c7cae3027754b5/idna-3.19-py3-none-any.whl", hash = "sha256:815e7be7a7806d54abb586dc943addc79e8b2ee16915059658cbeff4b1b43bf4", size = 68550, upload-time = "2026-08-18T05:14:22.343Z" },
+]
+
+[[package]]
+name = "imap-mailbox"
+version = "0.1.0"
+source = { editable = "../packages/imap-mailbox" }
+dependencies = [
+    { name = "mailbox-contract" },
+    { name = "mcp" },
+    { name = "pydantic" },
+    { name = "pydantic-settings" },
+]
+
+[package.metadata]
+requires-dist = [
+    { name = "mailbox-contract", editable = "../packages/mailbox-contract" },
+    { name = "mcp", specifier = ">=2.3" },
+    { name = "pydantic", specifier = ">=2" },
+    { name = "pydantic-settings", specifier = ">=2" },
 ]
 
 [[package]]

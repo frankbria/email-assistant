@@ -23,6 +23,7 @@ dependencies = [
 
 [dependency-groups]
 dev = [
+    "imap-mailbox",
     "jsonschema>=4.26.0",
     "mypy>=2.4.1",
     "pytest",
@@ -53,3 +54,7 @@ select = ["E4", "E7", "E9", "F"]
 
 [tool.uv.sources]
 mailbox-contract = { path = "../packages/mailbox-contract", editable = true }
+imap-mailbox = { path = "../packages/imap-mailbox", editable = true }
+
+[tool.mypy]
+plugins = ["pydantic.mypy"]
