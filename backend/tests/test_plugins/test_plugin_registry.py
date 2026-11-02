@@ -258,3 +258,35 @@ def test_app_connects_configured_plugins_on_startup(tmp_path, monkeypatch):
 
     with TestClient(app):
         assert app.state.plugins.states["proton"].status == "connected"
+
+
+# --- Connections API (#52) ----------------------------------------------------------------
+
+
+def test_connections_lists_every_configured_plugin_with_its_state(tmp_path, monkeypatch):
+    """AC-C.1 + AC-C.2 on the Connections API: a new entry appears after restart with no
+    code change, and an unsupported contract version shows as refused, with why."""
+    from tests.utils.auth import bearer_headers
+
+    monkeypatch.setenv("FAKE_V2", "2.0")
+    entries = stdio_entry("proton") + stdio_entry("future", env_from="{FAKE_CONTRACT_VERSION: FAKE_V2}")
+    monkeypatch.setenv("PLUGINS_CONFIG", str(write_config(tmp_path, "plugins:" + entries)))
+
+    with TestClient(app, headers=bearer_headers()) as client:
+        response = client.get("/api/v1/connections")
+
+    assert response.status_code == 200
+    proton, future = response.json()
+    assert proton["plugin_id"] == "proton" and proton["status"] == "connected"
+    assert proton["account"] == "owner@example.com"
+    assert proton["diagnosis"]["kind"] == "ok" and proton["repairing"] is False
+    assert proton["last_synced_at"] is None
+    assert future["plugin_id"] == "future" and future["status"] == "refused"
+    assert "mailbox/2.0" in future["reason"] and "1.x" in future["reason"]
+
+
+def test_connections_requires_the_owner(tmp_path, monkeypatch):
+    monkeypatch.setenv("PLUGINS_CONFIG", str(write_config(tmp_path, "plugins: []")))
+
+    with TestClient(app) as client:
+        assert client.get("/api/v1/connections").status_code == 401

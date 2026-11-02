@@ -44,7 +44,7 @@ export default function RootLayout({
 
         {/* Scrollable, centered content */}
         <main className="flex-1 overflow-auto bg-gray-100 dark:bg-gray-900">
-          <div className="mx-auto max-w-6xl px-4 py-6">
+          <div className="mx-auto max-w-6xl px-4 pt-6 pb-28">{/* pb clears the fixed bottom nav */}
             {children}
           </div>
         </main>

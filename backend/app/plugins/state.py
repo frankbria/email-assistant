@@ -6,8 +6,11 @@ from pydantic import BaseModel
 from mailbox_contract import MailboxInfo
 
 
+PluginStatus = Literal["connected", "refused", "failed", "disabled"]
+
+
 class PluginState(BaseModel):
     id: str
-    status: Literal["connected", "refused", "failed", "disabled"]
+    status: PluginStatus
     reason: str | None = None
     info: MailboxInfo | None = None

@@ -6,7 +6,7 @@ from app.models.email_message import EmailMessage
 from app.models.assistant_task import AssistantTask
 from app.models.user_settings import UserSettings
 from beanie import init_beanie
-from app.api.routers import email, tasks, settings
+from app.api.routers import connections, email, tasks, settings
 from app.middleware import setup_cors
 from app.config import get_settings, Settings
 from pymongo import AsyncMongoClient
@@ -114,6 +114,7 @@ setup_cors(app)
 app.include_router(email.router)  # router already has prefix in its definition
 app.include_router(tasks.router)  # router already has prefix in its definition
 app.include_router(settings.router)  # router already has prefix in its definition
+app.include_router(connections.router)
 
 
 @app.get("/")

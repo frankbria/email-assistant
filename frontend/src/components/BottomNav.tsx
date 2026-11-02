@@ -34,7 +34,7 @@ export function BottomNav() {
         />
         <NavItem
           href="/settings"
-          active={pathname.startsWith('/settings')}
+          active={pathname.startsWith('/settings') || pathname.startsWith('/connections')}
           icon={<HugeiconsIcon icon={Settings01Icon} className="w-7 h-7 md:w-6 md:h-6" />}
           label="Settings"
         />
