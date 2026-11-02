@@ -1,12 +1,8 @@
 // frontend/src/components/BottomNav.tsx
 import Link from 'next/link'
 import { usePathname } from 'next/navigation'
-import {
-  ClipboardList,
-  Brain,
-  History,
-  Settings,
-} from 'lucide-react'
+import { HugeiconsIcon } from '@hugeicons/react'
+import { AiBrain01Icon, Settings01Icon, Task01Icon, WorkHistoryIcon } from '@hugeicons/core-free-icons'
 
 export function BottomNav() {
   const pathname = usePathname()
@@ -21,25 +17,25 @@ export function BottomNav() {
         <NavItem
           href="/"
           active={pathname === '/'}
-          icon={<ClipboardList className="w-7 h-7 md:w-6 md:h-6" />}
+          icon={<HugeiconsIcon icon={Task01Icon} className="w-7 h-7 md:w-6 md:h-6" />}
           label="Do"
         />
         <NavItem
           href="/train"
           active={pathname.startsWith('/train')}
-          icon={<Brain className="w-7 h-7 md:w-6 md:h-6" />}
+          icon={<HugeiconsIcon icon={AiBrain01Icon} className="w-7 h-7 md:w-6 md:h-6" />}
           label="Train"
         />
         <NavItem
           href="/history"
           active={pathname.startsWith('/history')}
-          icon={<History className="w-7 h-7 md:w-6 md:h-6" />}
+          icon={<HugeiconsIcon icon={WorkHistoryIcon} className="w-7 h-7 md:w-6 md:h-6" />}
           label="History"
         />
         <NavItem
           href="/settings"
           active={pathname.startsWith('/settings')}
-          icon={<Settings className="w-7 h-7 md:w-6 md:h-6" />}
+          icon={<HugeiconsIcon icon={Settings01Icon} className="w-7 h-7 md:w-6 md:h-6" />}
           label="Settings"
         />
       </div>

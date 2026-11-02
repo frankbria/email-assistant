@@ -1,4 +1,5 @@
-import { Inbox } from 'lucide-react'
+import { HugeiconsIcon } from '@hugeicons/react'
+import { InboxIcon } from '@hugeicons/core-free-icons'
 
 interface EmptyStateProps {
   message?: string
@@ -14,7 +15,7 @@ export function EmptyState({
   return (
     <div className="flex flex-col items-center justify-center p-8 bg-white rounded-2xl shadow-sm w-96">
       <div className="bg-gray-100 p-4 rounded-full mb-4">
-        <Inbox className="w-8 h-8 text-gray-500" />
+        <HugeiconsIcon icon={InboxIcon} className="w-8 h-8 text-gray-500" />
       </div>
       <h3 className="text-lg font-medium text-gray-900 mb-2">
         {message}

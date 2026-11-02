@@ -6,7 +6,7 @@ import React from 'react'
 import { describe, it, expect, vi, beforeEach, beforeAll } from 'vitest'
 import { render, screen, act } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
-import { ToastContainer } from 'react-toastify'
+import { Toaster } from 'sonner'
 import Page from '@/app/page'
 import { createEmail } from 'services/emailService'
 
@@ -35,7 +35,7 @@ const renderPage = () => {
   return render(
     <>
       <Page />
-      <ToastContainer />
+      <Toaster />
     </>
   )
 }
