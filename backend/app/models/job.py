@@ -31,7 +31,7 @@ class Job(Document):
     artifacts: Artifacts
     due: datetime | None = None
     state: JobState = "open"
-    message_ids: list[PydanticObjectId] = Field(default_factory=list)
+    message_ids: list[PydanticObjectId] = Field(min_length=1)
     permission_level: PermissionLevel | None = None  # the level it ran under, once acted on
     created_at: datetime = Field(default_factory=lambda: datetime.now(UTC))
 

@@ -2,6 +2,7 @@
 from datetime import UTC, datetime
 
 import pytest
+from beanie import PydanticObjectId
 from pydantic import ValidationError
 from pymongo.errors import DuplicateKeyError
 
@@ -80,8 +81,14 @@ async def test_jobs_are_indexed_on_the_messages_they_reference(test_db):
 
 
 def test_a_job_state_outside_the_lifecycle_is_rejected():
-    with pytest.raises(ValidationError):
-        Job(owner_id=OWNER_ID, verb="reply", title="t", state="archived", artifacts=Artifacts(draft="d"))
+    with pytest.raises(ValidationError, match="state"):
+        Job(owner_id=OWNER_ID, verb="reply", title="t", state="archived", artifacts=Artifacts(draft="d"),
+            message_ids=[PydanticObjectId()])
+
+
+def test_a_job_without_a_message_is_rejected():
+    with pytest.raises(ValidationError, match="message_ids"):
+        Job(owner_id=OWNER_ID, verb="todo", title="t", artifacts=Artifacts(link="https://example.com"), message_ids=[])
 
 
 async def test_one_sync_cursor_per_plugin_and_folder(test_db):
