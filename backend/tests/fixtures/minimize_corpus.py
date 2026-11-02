@@ -199,6 +199,48 @@ CORPUS = (
         removed=("utm_source", "utm_medium"),
     ),
     MinimizeCase(
+        name="forward after the forwarder's signature keeps the payload",
+        subject="Fwd: Contract",
+        text=(
+            "FYI, needs your signature.\n"
+            "-- \n"
+            "Alice\n"
+            "\n"
+            "---------- Forwarded message ---------\n"
+            "From: Legal <legal@example.com>\n"
+            "Date: Mon, Nov 2, 2026\n"
+            "Subject: Contract\n"
+            "\n"
+            "Please sign the contract by Friday.\n"
+        ),
+        kept=("FYI, needs your signature.", "Forwarded message", "Please sign the contract by Friday."),
+        removed=("Alice",),
+    ),
+    MinimizeCase(
+        name="outlook forward after the forwarder's signature keeps the payload",
+        subject="FW: Invoice",
+        text=(
+            "See below.\n"
+            "-- \n"
+            "Alice\n"
+            "\n"
+            "________________________________\n"
+            "From: Vendor <billing@vendor.example>\n"
+            "Sent: Monday, November 2, 2026 8:00 AM\n"
+            "Subject: Invoice\n"
+            "\n"
+            "Invoice 77 is due Nov 20.\n"
+        ),
+        kept=("See below.", "Invoice 77 is due Nov 20."),
+        removed=("Alice",),
+    ),
+    MinimizeCase(
+        name="attribution without an address",
+        text="Count me in.\n\nOn Nov 1, 2026, Bob Smith wrote:\n> Dinner Saturday?\n",
+        kept=("Count me in.",),
+        removed=("wrote:", "Bob Smith", "Dinner Saturday?"),
+    ),
+    MinimizeCase(
         name="plain message is left alone",
         text="Hi Frank,\n\nCan you review the draft by Wednesday? https://docs.example/s?q=a%20b\n\nThanks,\nDana\n",
         kept=("Hi Frank,", "Can you review the draft by Wednesday?", "https://docs.example/s?q=a%20b", "Thanks,\nDana"),

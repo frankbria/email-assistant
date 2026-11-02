@@ -18,9 +18,13 @@ OUTLOOK_HISTORY = re.compile(
     r"^(?:-+ ?Original Message ?-+[ \t]*\n|_{8,}[ \t]*\n)?From:[^\n]*\nSent:|^_{8,}[ \t]*\nFrom:[^\n]*\nDate:",
     re.MULTILINE | re.IGNORECASE,
 )
+FORWARDED_BLOCK = re.compile(r"^(?:-+ ?Forwarded message ?-+|Begin forwarded message:)", re.MULTILINE | re.IGNORECASE)
 ORIGINAL_MESSAGE = re.compile(r"^-+ ?Original Message ?-+[ \t]*$", re.MULTILINE | re.IGNORECASE)
-# An attribution names the sender's address; prose that merely ends in "wrote:" does not.
-ATTRIBUTION = re.compile(r"^On\b[^\n]*(?:\n[^\n]*)?@[^\n]*\bwrote:[ \t]*$\n?", re.MULTILINE)
+# An attribution names the sender's address or the year; prose that merely ends in "wrote:" does not.
+ATTRIBUTION = re.compile(
+    r"^On\b[^\n]*(?:\n[^\n]*)?@[^\n]*\bwrote:[ \t]*$\n?|^On\b[^\n]*\b(?:19|20)\d\d\b[^\n]*\bwrote:[ \t]*$\n?",
+    re.MULTILINE,
+)
 QUOTED_LINE = re.compile(r"^>(?!=?[ \t]*\d).*$\n?", re.MULTILINE)  # "> 50 units" is prose, not a quote
 SIGNATURE = re.compile(r"^-- $", re.MULTILINE)  # RFC 3676; a bare "--" is often a divider in the body
 MOBILE_FOOTER = re.compile(
@@ -36,9 +40,10 @@ def minimize(text: str, subject: str = "") -> str:
     """The new content of a mail body (`MessageDetail.text`). A forward's history is what was
     forwarded, so it is kept; Outlook marks replies and forwards alike, only the subject differs."""
     text = text.replace("\r\n", "\n").replace("\r", "\n")
-    if not FORWARD_SUBJECT.match(subject):
+    forwarded = bool(FORWARD_SUBJECT.match(subject))
+    if not forwarded:
         text = cut_at_first(text, (OUTLOOK_HISTORY, ORIGINAL_MESSAGE))
-    text = cut_at_first(text, (SIGNATURE,))
+    text = without_signature(text, forwarded)
     for pattern in (ATTRIBUTION, QUOTED_LINE, MOBILE_FOOTER):
         text = pattern.sub("", text)
     text = URL.sub(lambda match: without_tracking(match.group()), text)
@@ -48,6 +53,16 @@ def minimize(text: str, subject: str = "") -> str:
 def cut_at_first(text: str, patterns: tuple[re.Pattern[str], ...]) -> str:
     starts = [match.start() for pattern in patterns if (match := pattern.search(text))]
     return text[: min(starts)] if starts else text
+
+
+def without_signature(text: str, forwarded: bool) -> str:
+    """Drops from the signature delimiter up to the next forwarded block, which is content."""
+    signature = SIGNATURE.search(text)
+    if signature is None:
+        return text
+    rest = text[signature.end() :]
+    blocks = (FORWARDED_BLOCK, OUTLOOK_HISTORY, ORIGINAL_MESSAGE) if forwarded else (FORWARDED_BLOCK,)
+    return text[: signature.start()] + rest[len(cut_at_first(rest, blocks)) :]
 
 
 def without_tracking(url: str) -> str:
