@@ -75,7 +75,9 @@ async def test_task_query_filters_by_user_id(db_transaction):
 
     # Query tasks for each user_id and verify only correct tasks are returned
     for user_id in user_ids:
-        user_tasks = await AssistantTask.find({"user_id": user_id}).to_list()
+        user_tasks = await AssistantTask.find(
+            {"user_id": user_id}, fetch_links=True
+        ).to_list()
         assert len(user_tasks) == tasks_per_user
 
         # Verify each task belongs to the correct user

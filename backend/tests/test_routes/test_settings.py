@@ -33,9 +33,8 @@ def test_get_settings_for_new_user(client):
     assert data["skip_low_priority_emails"] is False  # Default value is False
 
 
-@pytest.mark.skip(reason="Issues with async fixture and event loop")
 @pytest.mark.asyncio
-async def test_get_settings_for_existing_user(async_client):
+async def test_get_settings_for_existing_user(async_client, test_db):
     """
     Test that GET /api/v1/settings/email returns the correct settings for an existing user.
     """
@@ -53,8 +52,6 @@ async def test_get_settings_for_existing_user(async_client):
         f"/api/v1/settings/email?user_id={user_id}",
         json=reset_payload,
     )
-
-    print("PATCH response: ", patch_response.status_code, patch_response.text)
 
     assert patch_response.status_code in (200, 201)
 

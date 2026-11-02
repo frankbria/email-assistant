@@ -7,7 +7,8 @@ from app.strategies.action_registry import ActionRegistry
 from app.strategies.default import DefaultEmailStrategy
 from app.config import Settings
 
-pytestmark = pytest.mark.asyncio
+# Every test builds Beanie documents, so each needs its own initialized test DB.
+pytestmark = [pytest.mark.asyncio, pytest.mark.usefixtures("test_db")]
 
 
 async def test_full_mapping_and_defaults(monkeypatch):
@@ -55,6 +56,7 @@ async def test_full_mapping_and_defaults(monkeypatch):
 async def test_summary_truncation(monkeypatch):
     """
     Body longer than 100 chars should be truncated with an ellipsis.
+    A generic subject makes the summarizer read the body.
     """
 
     async def fake_classify2(subject, body):
@@ -65,10 +67,10 @@ async def test_summary_truncation(monkeypatch):
         fake_classify2,
     )
     long_body = "A" * 150
-    email = EmailMessage(subject="Subj", sender="Bob", body=long_body)
+    email = EmailMessage(subject="Re: Subj", sender="Bob", body=long_body)
     task = await map_email_to_task(email)
 
-    assert task.summary.startswith("Subj: ")
+    assert task.summary.startswith("Re: Subj: ")
     # After 'Subj: ' check 100 'A's and an ellipsis
     expected_snippet = "A" * 100 + "…"
     assert expected_snippet in task.summary
@@ -93,7 +95,7 @@ async def test_missing_sender_and_subject(monkeypatch):
     assert task.sender == "Unknown Sender"
     assert task.subject == "(No Subject)"
     # Summary uses the defaulted subject
-    assert task.summary.startswith("(No Subject): Body text")
+    assert task.summary == "(No Subject): Follow up: Body text"
 
 
 async def test_empty_body_summary(monkeypatch):

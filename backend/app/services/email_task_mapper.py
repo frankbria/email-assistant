@@ -44,7 +44,6 @@ async def map_email_to_task(
     if forceFullProcessing or not email.is_spam:
 
         logger.debug("🔄 Mapping email to task in service")
-        print("Mapping email to task in service")
         # Try to extract original sender/subject from forwarded content
         forwarded_sender, forwarded_subject = parse_forwarded_metadata(email.body)
         # Treat empty strings as None for fallback logic
@@ -69,18 +68,11 @@ async def map_email_to_task(
                 if email.sender and email.sender.strip()
                 else "Unknown Sender"
             )
-        if forwarded_subject:
-            subject_val = forwarded_subject
-        else:
-            if not email.subject or not email.subject.strip():
-                logger.warning(
-                    "EmailMessage missing subject; defaulting to '(No Subject)'"
-                )
-            subject_val = (
-                email.subject.strip()
-                if email.subject and email.subject.strip()
-                else "(No Subject)"
-            )
+        # The summarizer gets the real subject so a missing one falls back to the body.
+        raw_subject = forwarded_subject or (email.subject or "").strip()
+        if not raw_subject:
+            logger.warning("EmailMessage missing subject; defaulting to '(No Subject)'")
+        subject_val = raw_subject or "(No Subject)"
         logger.debug("🔄 Classifying context")
         # Classify context using AI or rule-based
         context_label = await context_classifier.classify_context(
@@ -94,7 +86,7 @@ async def map_email_to_task(
             if len(body_text) > 100:
                 snippet = await generate_summary(
                     EmailMessageBase(
-                        subject=subject_val,
+                        subject=raw_subject,
                         body=body_text[:100] + "…",
                         sender=email.sender,
                     )
@@ -103,7 +95,7 @@ async def map_email_to_task(
                 # use AI or rule-based summarizer for concise snippet
                 snippet = await generate_summary(
                     EmailMessageBase(
-                        subject=subject_val, body=email.body, sender=email.sender
+                        subject=raw_subject, body=email.body, sender=email.sender
                     )
                 )
             summary_text = f"{subject_val}: {snippet}" if snippet else subject_val

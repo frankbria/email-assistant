@@ -77,8 +77,11 @@ async def test_generate_summary_ai(monkeypatch):
     async def fake_create(*args, **kwargs):
         return dummy
 
-    # 🚨 Correct patch target!
-    monkeypatch.setattr(es_module.openai_client.chat.completions, "create", fake_create)
+    # No OPENAI_API_KEY in tests, so the module-level client is None; supply a fake one.
+    fake_client = SimpleNamespace(
+        chat=SimpleNamespace(completions=SimpleNamespace(create=fake_create))
+    )
+    monkeypatch.setattr(es_module, "openai_client", fake_client)
 
     email = EmailMessageBase(
         subject="Subj", body="Body text", sender="user@example.com"
@@ -86,5 +89,4 @@ async def test_generate_summary_ai(monkeypatch):
 
     result = await es_module.generate_summary(email)
 
-    # ✅ Now this assertion makes sense
     assert result == "AI result"

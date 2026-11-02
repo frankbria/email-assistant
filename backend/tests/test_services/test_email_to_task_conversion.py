@@ -1,5 +1,7 @@
 # backend/tests/test_services/test_email_to_task_conversion.py
 
+import textwrap
+
 import pytest
 from pydantic import ValidationError
 
@@ -48,6 +50,9 @@ async def test_email_to_task_with_missing_fields(db_transaction):
     """Test that an email with missing fields is converted to a task with appropriate defaults."""
     # Create a test email with minimal fields
     email = EmailMessage(
+        subject="",
+        sender="",
+        body="",
         user_id="test_user",
     )
     await email.insert()
@@ -98,14 +103,15 @@ async def test_email_to_task_with_custom_actions(db_transaction):
 async def test_forwarded_email_to_task(db_transaction):
     """Test that forwarded emails are properly processed with original sender and subject."""
     # Create a test forwarded email
-    forwarded_content = """
+    # Mail clients put forwarded headers at column 0; dedent the triple-quoted block.
+    forwarded_content = textwrap.dedent("""
     ---------- Forwarded message ---------
     From: Jane Smith <jane.smith@example.com>
     Subject: Original Request
     Date: Wed, 1 May 2025 10:00:00 -0700
-    
+
     Can you please review the attached proposal and provide feedback?
-    """
+    """)
 
     email = EmailMessage(
         subject="Fwd: Original Request",
