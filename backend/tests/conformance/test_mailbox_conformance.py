@@ -16,6 +16,7 @@ import mailbox_contract as contract
 from app.plugins.config import PluginConfig, StdioTransport
 from app.plugins.registry import PluginRegistry
 from tests.utils.mail_server import IMAP_PORT, MAIL_HOST, SMTP_PORT, Mailbox, new_mailbox
+from tests.utils.tls_relay import fake_bridge
 
 
 
@@ -52,8 +53,37 @@ def reference_imap_plugin(mailbox: Mailbox) -> PluginConfig:
     )
 
 
-# Each supported plugin adds a target here (Proton: #45, Gmail: #96).
-TARGETS = [Target("reference-imap", reference_imap_plugin)]
+def proton_plugin(mailbox: Mailbox) -> PluginConfig:
+    bridge = fake_bridge()
+    settings = {
+        "MAILBOX_ACCOUNT": mailbox.address,
+        "MAILBOX_USERNAME": mailbox.address,
+        "MAILBOX_PASSWORD": "unused",
+        "MAILBOX_IMAP_PORT": str(bridge.imap_port),
+        "MAILBOX_SMTP_PORT": str(bridge.smtp_port),
+        "MAILBOX_TLS": "ssl",
+        "MAILBOX_CA_CERT_PATH": str(bridge.cert),
+        # GreenMail neither authenticates SMTP nor files sent mail; Bridge does both. So this
+        # target proves the Proton plugin's mailbox/1 behaviour over pinned TLS, not parity
+        # with a live Bridge (checked on the owner's machine, #53).
+        "MAILBOX_SMTP_LOGIN": "false",
+        "MAILBOX_APPEND_SENT": "true",
+    }
+    for name, value in settings.items():
+        os.environ[f"CONFORMANCE_PROTON_{name}"] = value
+    return PluginConfig(
+        id="proton",
+        transport=StdioTransport(
+            type="stdio",
+            command=sys.executable,
+            args=["-m", "proton_plugin.server"],
+            env_from={name: f"CONFORMANCE_PROTON_{name}" for name in settings},
+        ),
+    )
+
+
+# Each supported plugin adds a target here (Gmail: #96).
+TARGETS = [Target("reference-imap", reference_imap_plugin), Target("proton", proton_plugin)]
 
 pytestmark = [
     pytest.mark.usefixtures("mail_server"),
@@ -85,7 +115,8 @@ class Session:
 async def open_session(target: Target) -> AsyncIterator[Session]:
     """Used inside each test body: MCP clients must close in the task that opened them."""
     mailbox = new_mailbox()
-    mailbox.append("Archive", sender="setup@example.com", subject="folder setup", body="Creates Archive.")
+    for folder in ("Archive", "Sent"):  # every real mailbox has both
+        mailbox.create_folder(folder)
     registry = PluginRegistry()
     await registry.connect_all([target.plugin_config(mailbox)])
     try:
