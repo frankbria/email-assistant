@@ -1,7 +1,7 @@
 # backend/tests/test_routes/test_settings.py
 import pytest
 from fastapi.testclient import TestClient
-from app.utils.user_utils import DEFAULT_USER_ID
+from tests.utils.auth import OWNER_ID, bearer_headers
 from app.main import app
 
 client = TestClient(app)
@@ -15,11 +15,8 @@ def test_get_settings_for_new_user(client):
     # Make sure user doesn't exist in test DB
     user_id = "new_test_user"
 
-    # Override default user_id for this test
-    url = f"/api/v1/settings/email?user_id={user_id}"
-
-    # Fetch settings
-    response = client.get(url)
+    # Fetch settings signed in as that user
+    response = client.get("/api/v1/settings/email", headers=bearer_headers(user_id))
 
     # Check status code and response structure
     assert response.status_code == 200
@@ -48,14 +45,13 @@ async def test_get_settings_for_existing_user(async_client, test_db):
 
     # Set initial state
     patch_response = await async_client.patch(
-        f"/api/v1/settings/email?user_id={user_id}",
-        json=reset_payload,
+        "/api/v1/settings/email", json=reset_payload, headers=bearer_headers(user_id)
     )
 
     assert patch_response.status_code in (200, 201)
 
     # Fetch current settings
-    response = await async_client.get(f"/api/v1/settings/email?user_id={user_id}")
+    response = await async_client.get("/api/v1/settings/email", headers=bearer_headers(user_id))
     assert response.status_code == 200
 
     data = response.json()
@@ -84,7 +80,7 @@ def test_update_settings(client):
     data = response.json()
 
     # Verify settings were updated
-    assert data["user_id"] == DEFAULT_USER_ID
+    assert data["user_id"] == OWNER_ID
     assert data["enable_spam_filtering"] is False
     assert data["enable_auto_categorization"] is True
     assert data["skip_low_priority_emails"] is True

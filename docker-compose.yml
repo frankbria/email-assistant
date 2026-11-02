@@ -21,6 +21,9 @@ services:
       MONGODB_DB: ${MONGODB_DB:-email_assistant}
       FRONTEND_ORIGIN: ${FRONTEND_ORIGIN:-http://localhost:3000}
       API_ENVIRONMENT: production
+      # JWT issuer/audience = the public frontend URL; keys are fetched over the Compose network.
+      BETTER_AUTH_URL: ${BETTER_AUTH_URL:-${FRONTEND_ORIGIN:-http://localhost:3000}}
+      BETTER_AUTH_JWKS_URL: http://frontend:3000/api/auth/jwks
     ports:
       - "${BIND_ADDRESS:-127.0.0.1}:${BACKEND_PORT:-8000}:8000"
 
@@ -31,6 +34,11 @@ services:
         NEXT_PUBLIC_API_BASE: ${PUBLIC_API_BASE:-http://localhost:8000}
     image: ghcr.io/frankbria/email-assistant-frontend:${IMAGE_TAG:-latest}
     restart: unless-stopped
+    environment:
+      MONGODB_URI: ${MONGODB_URI:?set MONGODB_URI}
+      MONGODB_DB: ${MONGODB_DB:-email_assistant}
+      BETTER_AUTH_SECRET: ${BETTER_AUTH_SECRET:?set BETTER_AUTH_SECRET (openssl rand -base64 32)}
+      BETTER_AUTH_URL: ${BETTER_AUTH_URL:-${FRONTEND_ORIGIN:-http://localhost:3000}}
     depends_on:
       - backend
     ports:
