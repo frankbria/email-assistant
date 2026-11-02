@@ -1,0 +1,8 @@
+# Build context is the repo root (the backend depends on packages/mailbox-contract).
+*
+!backend/pyproject.toml
+!backend/uv.lock
+!backend/app
+!packages/mailbox-contract
+**/__pycache__
+**/.venv

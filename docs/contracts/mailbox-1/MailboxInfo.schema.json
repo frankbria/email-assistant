@@ -1,0 +1,78 @@
+{
+  "$defs": {
+    "Capability": {
+      "enum": [
+        "push",
+        "repair"
+      ],
+      "title": "Capability",
+      "type": "string"
+    },
+    "Folders": {
+      "additionalProperties": false,
+      "description": "The plugin's names for the three folders the app uses.",
+      "properties": {
+        "inbox": {
+          "title": "Inbox",
+          "type": "string"
+        },
+        "archive": {
+          "title": "Archive",
+          "type": "string"
+        },
+        "sent": {
+          "title": "Sent",
+          "type": "string"
+        }
+      },
+      "required": [
+        "inbox",
+        "archive",
+        "sent"
+      ],
+      "title": "Folders",
+      "type": "object"
+    }
+  },
+  "additionalProperties": false,
+  "properties": {
+    "contract_version": {
+      "pattern": "^\\d+\\.\\d+$",
+      "title": "Contract Version",
+      "type": "string"
+    },
+    "plugin_name": {
+      "title": "Plugin Name",
+      "type": "string"
+    },
+    "plugin_version": {
+      "title": "Plugin Version",
+      "type": "string"
+    },
+    "account": {
+      "description": "The mailbox address, e.g. owner@example.com.",
+      "title": "Account",
+      "type": "string"
+    },
+    "capabilities": {
+      "items": {
+        "$ref": "#/$defs/Capability"
+      },
+      "title": "Capabilities",
+      "type": "array"
+    },
+    "folders": {
+      "$ref": "#/$defs/Folders"
+    }
+  },
+  "required": [
+    "contract_version",
+    "plugin_name",
+    "plugin_version",
+    "account",
+    "capabilities",
+    "folders"
+  ],
+  "title": "MailboxInfo",
+  "type": "object"
+}

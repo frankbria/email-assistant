@@ -1,0 +1,15 @@
+{
+  "additionalProperties": false,
+  "properties": {
+    "action": {
+      "description": "One of health.repair_actions.",
+      "title": "Action",
+      "type": "string"
+    }
+  },
+  "required": [
+    "action"
+  ],
+  "title": "RepairInput",
+  "type": "object"
+}

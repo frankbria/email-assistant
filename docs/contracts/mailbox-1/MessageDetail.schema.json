@@ -1,0 +1,176 @@
+{
+  "$defs": {
+    "Address": {
+      "additionalProperties": false,
+      "properties": {
+        "name": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Name"
+        },
+        "email": {
+          "title": "Email",
+          "type": "string"
+        }
+      },
+      "required": [
+        "email"
+      ],
+      "title": "Address",
+      "type": "object"
+    },
+    "AttachmentMeta": {
+      "additionalProperties": false,
+      "properties": {
+        "name": {
+          "title": "Name",
+          "type": "string"
+        },
+        "content_type": {
+          "title": "Content Type",
+          "type": "string"
+        },
+        "size": {
+          "description": "Bytes.",
+          "minimum": 0,
+          "title": "Size",
+          "type": "integer"
+        }
+      },
+      "required": [
+        "name",
+        "content_type",
+        "size"
+      ],
+      "title": "AttachmentMeta",
+      "type": "object"
+    },
+    "Header": {
+      "additionalProperties": false,
+      "properties": {
+        "name": {
+          "title": "Name",
+          "type": "string"
+        },
+        "value": {
+          "title": "Value",
+          "type": "string"
+        }
+      },
+      "required": [
+        "name",
+        "value"
+      ],
+      "title": "Header",
+      "type": "object"
+    }
+  },
+  "additionalProperties": false,
+  "properties": {
+    "ref": {
+      "description": "Opaque, stable plugin reference to the message.",
+      "title": "Ref",
+      "type": "string"
+    },
+    "message_id": {
+      "description": "The RFC 5322 Message-ID header.",
+      "title": "Message Id",
+      "type": "string"
+    },
+    "from": {
+      "$ref": "#/$defs/Address"
+    },
+    "to": {
+      "items": {
+        "$ref": "#/$defs/Address"
+      },
+      "title": "To",
+      "type": "array"
+    },
+    "cc": {
+      "items": {
+        "$ref": "#/$defs/Address"
+      },
+      "title": "Cc",
+      "type": "array"
+    },
+    "date": {
+      "format": "date-time",
+      "title": "Date",
+      "type": "string"
+    },
+    "subject": {
+      "title": "Subject",
+      "type": "string"
+    },
+    "snippet": {
+      "title": "Snippet",
+      "type": "string"
+    },
+    "list_id": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "List Id"
+    },
+    "in_reply_to": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "In Reply To"
+    },
+    "headers": {
+      "items": {
+        "$ref": "#/$defs/Header"
+      },
+      "title": "Headers",
+      "type": "array"
+    },
+    "text": {
+      "description": "Plain-text body, converted from HTML if needed.",
+      "title": "Text",
+      "type": "string"
+    },
+    "attachments": {
+      "items": {
+        "$ref": "#/$defs/AttachmentMeta"
+      },
+      "title": "Attachments",
+      "type": "array"
+    }
+  },
+  "required": [
+    "ref",
+    "message_id",
+    "from",
+    "to",
+    "cc",
+    "date",
+    "subject",
+    "snippet",
+    "headers",
+    "text",
+    "attachments"
+  ],
+  "title": "MessageDetail",
+  "type": "object"
+}

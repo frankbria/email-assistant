@@ -8,7 +8,9 @@ name: email-assistant
 
 services:
   backend:
-    build: ./backend
+    build:
+      context: .
+      dockerfile: backend/Dockerfile
     image: ghcr.io/frankbria/email-assistant-backend:${IMAGE_TAG:-latest}
     restart: unless-stopped
     env_file:

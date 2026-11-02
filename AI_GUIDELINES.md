@@ -16,6 +16,10 @@ Monorepo, no shared code between the two apps:
   - pages `src/app/` (App Router), components `src/components/` (shadcn primitives in
     `src/components/ui/`), API calls `src/services/`, tests `src/__tests__/`
 - Database: MongoDB through **Beanie 2** on **PyMongo's `AsyncMongoClient`** (no Motor).
+- `packages/mailbox-contract/`: the `mailbox/1` plugin contract models, shared by the app
+  and the mailbox plugins. Spec: `docs/contracts/mailbox-1.md`, plus generated JSON schemas;
+  regenerate them with `uv run python ../packages/mailbox-contract/write_schemas.py` from
+  `backend/` after changing a model.
 - Deployment: `docker-compose.yml` plus `docs/deployment.md`.
 
 ## Commands (run from a fresh clone)

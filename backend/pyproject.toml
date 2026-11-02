@@ -8,6 +8,7 @@ dependencies = [
     "beanie>=2",
     "fastapi",
     "httpx",
+    "mailbox-contract",
     "openai",
     "pydantic",
     "pydantic-settings",
@@ -18,6 +19,7 @@ dependencies = [
 
 [dependency-groups]
 dev = [
+    "jsonschema>=4.26.0",
     "mypy>=2.4.1",
     "pytest",
     "pytest-asyncio",
@@ -43,3 +45,6 @@ pythonpath = ["."]
 [tool.ruff.lint]
 # Pinned: ruff 0.17 widened its default rule set.
 select = ["E4", "E7", "E9", "F"]
+
+[tool.uv.sources]
+mailbox-contract = { path = "../packages/mailbox-contract", editable = true }

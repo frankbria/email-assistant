@@ -1,0 +1,10 @@
+[project]
+name = "mailbox-contract"
+version = "1.0.0"
+description = "The mailbox/1 MCP plugin contract: tool schemas, error codes, version rules."
+requires-python = ">=3.13"
+dependencies = ["pydantic>=2"]
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"

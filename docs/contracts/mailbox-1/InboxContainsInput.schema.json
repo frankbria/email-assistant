@@ -1,0 +1,19 @@
+{
+  "additionalProperties": false,
+  "properties": {
+    "refs": {
+      "items": {
+        "type": "string"
+      },
+      "maxItems": 500,
+      "minItems": 1,
+      "title": "Refs",
+      "type": "array"
+    }
+  },
+  "required": [
+    "refs"
+  ],
+  "title": "InboxContainsInput",
+  "type": "object"
+}

@@ -23,7 +23,11 @@ jobs:
     timeout-minutes: 20
     strategy:
       matrix:
-        service: [backend, frontend]
+        include:
+          - service: backend
+            context: .  # needs packages/mailbox-contract
+          - service: frontend
+            context: frontend
     steps:
       - uses: actions/checkout@v7
       - uses: docker/setup-buildx-action@v4
@@ -35,7 +39,8 @@ jobs:
           password: ${{ secrets.GITHUB_TOKEN }}
       - uses: docker/build-push-action@v7
         with:
-          context: ${{ matrix.service }}
+          context: ${{ matrix.context }}
+          file: ${{ matrix.service }}/Dockerfile
           push: ${{ github.event_name == 'push' }}
           # The frontend bakes the browser-facing API URL in; set the PUBLIC_API_BASE repo variable.
           build-args: NEXT_PUBLIC_API_BASE=${{ vars.PUBLIC_API_BASE || 'http://localhost:8000' }}

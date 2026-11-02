@@ -1,14 +1,16 @@
+# Build from the repo root: docker build -f backend/Dockerfile .
 FROM python:3.14-slim
 COPY --from=ghcr.io/astral-sh/uv:0.13.6 /uv /usr/local/bin/uv
 
-WORKDIR /app
-ENV UV_COMPILE_BYTECODE=1 UV_LINK_MODE=copy PATH="/app/.venv/bin:$PATH"
+WORKDIR /app/backend
+ENV UV_COMPILE_BYTECODE=1 UV_LINK_MODE=copy PATH="/app/backend/.venv/bin:$PATH"
 
 # Dependencies first so code-only changes reuse this layer.
-COPY pyproject.toml uv.lock ./
+COPY packages/mailbox-contract /app/packages/mailbox-contract
+COPY backend/pyproject.toml backend/uv.lock ./
 RUN uv sync --locked --no-dev --no-install-project
 
-COPY app ./app
+COPY backend/app ./app
 
 USER nobody
 EXPOSE 8000

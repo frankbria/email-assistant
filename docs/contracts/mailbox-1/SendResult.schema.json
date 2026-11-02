@@ -1,0 +1,19 @@
+{
+  "additionalProperties": false,
+  "properties": {
+    "ok": {
+      "title": "Ok",
+      "type": "boolean"
+    },
+    "sent_message_id": {
+      "title": "Sent Message Id",
+      "type": "string"
+    }
+  },
+  "required": [
+    "ok",
+    "sent_message_id"
+  ],
+  "title": "SendResult",
+  "type": "object"
+}

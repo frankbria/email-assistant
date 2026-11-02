@@ -1,0 +1,8 @@
+{
+  "additionalProperties": {
+    "type": "boolean"
+  },
+  "description": "Maps every requested ref to whether the message is still in the inbox.",
+  "title": "InboxContainsOutput",
+  "type": "object"
+}
