@@ -46,8 +46,6 @@ The backend API for an executive-style AI assistant that processes emails, class
    USE_AI_ACTIONS=true
    MONGODB_URI=<your_mongodb_uri>
    MONGODB_DB=<your_database_name>
-   WEBHOOK_SECURITY_ENABLED=true
-   WEBHOOK_DEFAULT_ALLOWED_IPS=127.0.0.1
    ```
 
 ## 🏃‍♂️ Running the Application
@@ -73,7 +71,6 @@ backend/
 │   ├── config.py            # Configuration settings
 │   ├── models/              # Beanie models
 │   │   ├── email_task.py    # Email task data model
-│   │   ├── webhook.py       # Webhook security model
 │   ├── routes/              # API endpoints
 │   │   ├── email.py         # Email ingestion endpoints
 │   │   ├── tasks.py         # Task management endpoints
@@ -99,7 +96,6 @@ backend/
 ### Email Management
 
 - `POST /api/v1/email` - Ingest a new email and create a task
-- `POST /api/v1/email/incoming` - Webhook for incoming emails (protected)
 
 ### Task Management
 
@@ -107,11 +103,6 @@ backend/
 - `GET /api/v1/tasks/{id}` - Get a specific task
 - `PATCH /api/v1/tasks/{id}` - Update a task's status or properties
 - `DELETE /api/v1/tasks/{id}` - Delete a task
-
-### Admin & Configuration
-
-- `GET /api/v1/admin/webhook` - Get webhook configuration
-- `PUT /api/v1/admin/webhook` - Update webhook configuration
 
 ## 🧪 Running Tests
 
@@ -124,12 +115,6 @@ Run with coverage report:
 ```bash
 uv run pytest --cov=app
 ```
-
-## 🔒 Security Notes
-
-- Webhook endpoints are protected by API key authentication
-- IP whitelisting is available for additional security
-- All security-related events are logged for audit purposes
 
 ## 📨 Email Parsing
 

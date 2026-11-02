@@ -71,11 +71,6 @@ def test_email_task_context_integration(client, monkeypatch):
         return "scheduling"
 
     monkeypatch.setattr(
-        "app.api.routers.email.context_classifier.classify_context",
-        fake_classify,
-    )
-
-    monkeypatch.setattr(
         "app.services.context_classifier.classify_context",
         fake_classify,
     )
@@ -142,62 +137,5 @@ def test_email_task_actions_fallback(client, monkeypatch):
 
 
 # @pytest.mark.skip
-@pytest.mark.asyncio
-async def test_incoming_webhook_duplicate_detection(async_client, set_webhook_security):
-    """Ensure duplicate incoming emails are rejected with 409 and do not create new tasks."""
-    payload = {"sender": "dup@example.com", "subject": "Dup", "body": "Dup Body"}
-    headers = {"x-api-key": "validkey"}
-
-    # First incoming webhook call should succeed
-    resp1 = await async_client.post(
-        "/api/v1/email/incoming", json=payload, headers=headers
-    )
-    assert resp1.status_code == 200
-    # Capture task count after first call
-    tasks_resp = await async_client.get("/api/v1/tasks/")
-    assert tasks_resp.status_code == 200
-    initial_tasks = tasks_resp.json()
-    count_after_first = len(initial_tasks)
-    # Second call with same payload should be conflict
-    resp2 = await async_client.post(
-        "/api/v1/email/incoming", json=payload, headers=headers
-    )
-    assert resp2.status_code == 409
-    assert resp2.json().get("detail") == "Duplicate email."
-    # Ensure no new task was created
-    tasks_resp2 = await async_client.get("/api/v1/tasks/")
-    assert len(tasks_resp2.json()) == count_after_first
 
 
-@pytest.mark.asyncio
-async def test_incoming_forwarded_email(async_client, set_webhook_security):
-    """Test that forwarded emails are processed correctly."""
-    payload = {
-        "sender": "alice@example.com",
-        "subject": "Fwd: Important Meeting",
-        "body": "------------Forwarded Message--------------------\nFrom: john@forwarded.com\nTo: alice@example.com\nSubject: Important Meeting\n\nFwd: Please see the attached agenda for the meeting.",
-    }
-
-    headers = {"x-api-key": "validkey", "x-forwarded-for": "127.0.0.1"}
-    async_client.headers.update(headers)
-
-    resp = await async_client.post("/api/v1/email/incoming", json=payload)
-    assert resp.status_code == 200
-
-    tasks_resp = await async_client.get("/api/v1/tasks/")
-    assert tasks_resp.status_code == 200
-    tasks = tasks_resp.json()
-
-    task = next(
-        (t for t in tasks if t["email"]["subject"] == "Important Meeting"),
-        None,
-    )
-    assert task is not None, "Created task not found"
-    assert task["email"]["sender"] == "john@forwarded.com"
-    assert task["email"]["subject"] == "Important Meeting"
-
-    # Verify context-specific actions
-    assert "actions" in task
-    assert isinstance(task["actions"], list)
-    assert 2 <= len(task["actions"]) <= 3, "Should have 2-3 suggested actions"
-    action_labels = set(task["actions"])

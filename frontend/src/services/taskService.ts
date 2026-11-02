@@ -1,14 +1,12 @@
 // frontend/src/services/taskService.ts
 import { AssistantTask, RawMongoTask } from '@/types/api'
-import { ObjectId } from 'mongodb'
 import { showToast } from '@/utils/toast'
 import { getCurrentUserId } from './userService'
 
 // Helper to normalize MongoDB document ID
-function normalizeMongoId(doc: { _id?: string | ObjectId; id?: string }): string {
+function normalizeMongoId(doc: { _id?: string; id?: string }): string {
   if (doc._id) {
-    // make sure it's a plain string
-    return typeof doc._id === "string" ? doc._id : doc._id.toString();
+    return doc._id;
   }
   if (doc.id) {
     return doc.id;

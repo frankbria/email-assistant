@@ -108,64 +108,6 @@ async def test_user_specific_email_submission(async_client, db_transaction):
     assert task.user_id == test_user_id
 
 
-@pytest.mark.asyncio
-async def test_webhook_email_submission_creates_task(async_client, db_transaction):
-    """Test that submitting an email via the webhook endpoint results in a properly created task."""
-    # First, we need to set up the webhook security configuration
-    from app.models.webhook_security import WebhookSecurity
-
-    # Create webhook security configuration
-    test_api_key = "test_webhook_key_12345"
-    test_client_ip = "127.0.0.1"  # Test client IP
-
-    webhook_config = WebhookSecurity(
-        api_key=test_api_key, allowed_ips=[test_client_ip], active=True
-    )
-    await webhook_config.insert()
-
-    # Define test email data
-    test_email = {
-        "sender": "webhook_test@example.com",
-        "subject": "Test Webhook Email Submission",
-        "body": "This is a test email submitted through the webhook endpoint.",
-    }
-
-    # Set up webhook headers
-    headers = {"x-api-key": test_api_key, "x-forwarded-for": test_client_ip}
-
-    # Submit the email via webhook API
-    response = await async_client.post(
-        "/api/v1/email/incoming", json=test_email, headers=headers
-    )
-    assert response.status_code == 200
-    result = response.json()
-
-    # Verify response contains email_id and task_id
-    assert "email_id" in result
-    assert "task_id" in result
-
-    # Retrieve the created email and task from database
-    email_id = result["email_id"]
-    task_id = result["task_id"]
-
-    email = await EmailMessage.get(email_id)
-    task = await AssistantTask.get(task_id)
-
-    # Verify email was stored correctly
-    assert email.sender == test_email["sender"]
-    assert email.subject == test_email["subject"]
-    assert email.body == test_email["body"]
-
-    # Verify task was created with correct fields
-    assert task.sender == test_email["sender"]
-    assert task.subject == test_email["subject"]
-
-    # Instead of directly comparing IDs, fetch the linked email and then compare
-    await task.fetch_link(AssistantTask.email)
-    assert task.email.id == email.id
-    assert task.summary is not None
-    assert isinstance(task.actions, list)
-    assert len(task.actions) > 0
 
 
 @pytest.mark.asyncio

@@ -3,7 +3,6 @@
 import pytest
 from app.models.email_message import EmailMessage
 from app.models.assistant_task import AssistantTask
-from app.models.webhook_security import WebhookSecurity
 from app.models.user_settings import UserSettings
 
 @pytest.fixture
@@ -23,16 +22,8 @@ async def setup_test_data(db_transaction):
     )
     await task.insert()
 
-    webhook = WebhookSecurity(
-        api_key="test_key",
-        allowed_ips=["127.0.0.1"],
-        active=True,
-    )
-    await webhook.insert()
-
     yield
 
     # No need to clean up test data; each test runs in its own transaction
     # await EmailMessage.find_all().delete()
     # await AssistantTask.find_all().delete()
-    # await WebhookSecurity.find_all().delete()
