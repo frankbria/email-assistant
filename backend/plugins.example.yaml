@@ -12,6 +12,12 @@ plugins:
       type: http
       url: http://proton-plugin.example:8765/mcp
       bearer_token_env: PROTON_PLUGIN_TOKEN
+    # The Bridge machine's watchdog (plugins/proton README): lets the app tell
+    # "machine offline" / "waiting for login" / "plugin down → restarting" apart.
+    watchdog:
+      url: http://proton-plugin.example:8766/status
+      token_env: PROTON_WATCHDOG_TOKEN
+      machine: DESKTOP-BRIDGE
 
   # A plugin started by the app as a subprocess, over stdio.
   - id: gmail
