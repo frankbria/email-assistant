@@ -301,6 +301,34 @@ CORPUS = (
         removed=("Invoice 4471", "Begin forwarded message"),
     ),
     MinimizeCase(
+        name="outlook headers inside an explicit forward are its payload",
+        subject="Invoice",
+        text=(
+            "Please pay the forwarded invoice.\n"
+            "Begin forwarded message:\n"
+            "From: Vendor <vendor@example.com>\n"
+            "Sent: Monday, November 2, 2026\n"
+            "Invoice 4471 is due Friday.\n"
+        ),
+        kept=("Please pay the forwarded invoice.", "Invoice 4471 is due Friday."),
+        removed=(),
+    ),
+    MinimizeCase(
+        name="outlook reply history above a forward marker is still cut",
+        subject="RE: Invoice",
+        text=(
+            "Done.\n"
+            "________________________________\n"
+            "From: Ana <ana@example.com>\n"
+            "Sent: Monday, November 2, 2026\n"
+            "Can you pay this?\n"
+            "---------- Forwarded message ---------\n"
+            "Invoice 4471 is due Friday.\n"
+        ),
+        kept=("Done.",),
+        removed=("Can you pay this?", "Invoice 4471"),
+    ),
+    MinimizeCase(
         name="plain message is left alone",
         text="Hi Frank,\n\nCan you review the draft by Wednesday? https://docs.example/s?q=a%20b\n\nThanks,\nDana\n",
         kept=("Hi Frank,", "Can you review the draft by Wednesday?", "https://docs.example/s?q=a%20b", "Thanks,\nDana"),

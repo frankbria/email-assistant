@@ -38,6 +38,12 @@ def test_an_html_forward_keeps_its_quoted_payload():
     assert "Invoice 4471 is due Friday." in minimize(html_to_text(html), "Fwd: Invoice")
 
 
+def test_an_html_signature_is_still_recognized():
+    html = "<div>Please approve invoice 4471.</div><div>-- </div><div>Ana Smith</div><div>Sales Director | +1 555 0100</div>"
+
+    assert minimize(html_to_text(html)) == "Please approve invoice 4471."
+
+
 def test_many_inline_elements_on_one_line_stay_linear():
     """Untrusted HTML: a quadratic join here stalls message retrieval (200,000 spans took 17 s)."""
     started = time.perf_counter()

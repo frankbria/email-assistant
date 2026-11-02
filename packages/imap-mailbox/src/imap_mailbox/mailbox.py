@@ -94,7 +94,10 @@ class TextExtractor(HTMLParser):
             self.line.append(piece)
 
     def end_line(self) -> None:
-        line = "".join(self.line).strip()
+        raw = "".join(self.line)
+        line = raw.strip()
+        if line == "--" and raw.lstrip().startswith("-- "):
+            line = "-- "  # the RFC 3676 signature delimiter's trailing space is meaningful
         if line:
             self.lines.append("> " * min(self.quote_depth, self.MAX_QUOTE_MARKERS) + line)
         self.line = []

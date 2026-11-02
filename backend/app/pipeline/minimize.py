@@ -44,7 +44,7 @@ def minimize(text: str, subject: str = "") -> str:
     text = text.replace("\r\n", "\n").replace("\r", "\n")
     forwarded = bool(FORWARD_SUBJECT.match(subject))
     if not forwarded:
-        text = cut_at_first(text, (OUTLOOK_HISTORY, ORIGINAL_MESSAGE))
+        text = without_reply_history(text)
     text = without_signature(text, forwarded)
     # Quoted lines after an unquoted forward marker are the forwarded payload (HTML forwards quote it).
     marker = FORWARDED_BLOCK.search(text)
@@ -55,8 +55,12 @@ def minimize(text: str, subject: str = "") -> str:
     return capped(re.sub(r"\n{3,}", "\n\n", "\n".join(line.rstrip() for line in text.splitlines())).strip())
 
 
-def cut_at_first(text: str, patterns: tuple[re.Pattern[str], ...]) -> str:
-    starts = [match.start() for pattern in patterns if (match := pattern.search(text))]
+def without_reply_history(text: str) -> str:
+    """Cuts Outlook-style history that starts above any explicit forward marker; headers inside a
+    forwarded payload belong to it."""
+    marker = FORWARDED_BLOCK.search(text)
+    end = marker.start() if marker else len(text)
+    starts = [match.start() for pattern in (OUTLOOK_HISTORY, ORIGINAL_MESSAGE) if (match := pattern.search(text, 0, end))]
     return text[: min(starts)] if starts else text
 
 
