@@ -98,7 +98,8 @@ content leaves it:
 
 The modes only cover what is sent to AI providers. Mail stored in MongoDB Atlas leaves the
 owner's machines regardless (`docs/deployment.md`). New code that sends message
-content anywhere must go through the minimize (and redact) stages.
+content to an AI provider must go through the minimize (and redact) stages. Storage
+and mail delivery keep the original content.
 
 ## Testing (TDD)
 
