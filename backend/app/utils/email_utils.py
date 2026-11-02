@@ -67,6 +67,3 @@ def parse_forwarded_metadata(body: str):
         else None
     )
     return original_sender, original_subject
-
-
-
