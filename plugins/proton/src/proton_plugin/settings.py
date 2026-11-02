@@ -29,6 +29,8 @@ class ProtonSettings(ImapMailboxSettings):
         description='How to restart Bridge, as a JSON list (e.g. ["systemctl", "--user", "restart", "proton-bridge"]). Enables repair.',
     )
     repair_wait_seconds: int = Field(default=60, description="How long repair waits for Bridge to answer again.")
+    watchdog_port: int = Field(default=8766, description="Watchdog status endpoint port (on http_host).")
+    watchdog_token: str | None = Field(default=None, description="Bearer token for the watchdog status endpoint.")
 
     @field_validator("tls", "imap_tls", "smtp_tls")
     @classmethod
