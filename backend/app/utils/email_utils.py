@@ -45,8 +45,8 @@ def parse_forwarded_metadata(body: str):
     if not body:
         return None, None
     # Regex for common forwarded email headers (match up to end of line)
-    from_pattern = re.compile(r"^From:\s*(.*)$", re.MULTILINE)
-    subject_pattern = re.compile(r"^Subject:\s*(.*)$", re.MULTILINE)
+    from_pattern = re.compile(r"^[ \t]*From:\s*(.*)$", re.MULTILINE)
+    subject_pattern = re.compile(r"^[ \t]*Subject:\s*(.*)$", re.MULTILINE)
     # Find all matches
     from_matches = from_pattern.findall(body)
     subject_matches = subject_pattern.findall(body)

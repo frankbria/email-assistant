@@ -1,5 +1,5 @@
 import pytest
-from app.models.email_message import EmailMessage
+from app.models.email_message import EmailMessageBase
 from app.services.duplicate_detection import is_spam_email
 
 
@@ -13,7 +13,7 @@ from app.services.duplicate_detection import is_spam_email
     ],
 )
 def test_is_spam_email(email_subject, email_body, expected):
-    email = EmailMessage(
+    email = EmailMessageBase(
         subject=email_subject, body=email_body, sender="test@example.com"
     )
     assert is_spam_email(email) == expected

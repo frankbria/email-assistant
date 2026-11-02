@@ -48,6 +48,9 @@ async def test_email_to_task_with_missing_fields(db_transaction):
     """Test that an email with missing fields is converted to a task with appropriate defaults."""
     # Create a test email with minimal fields
     email = EmailMessage(
+        subject="",
+        sender="",
+        body="",
         user_id="test_user",
     )
     await email.insert()
