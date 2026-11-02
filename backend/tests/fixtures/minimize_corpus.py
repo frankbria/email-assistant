@@ -246,6 +246,16 @@ CORPUS = (
         removed=("wrote:", "Bob Smith", "Dinner Saturday?"),
     ),
     MinimizeCase(
+        name="new content starting with On right before an attribution",
+        text=(
+            "On Friday, please send the signed contract.\n"
+            "On Thu, Nov 1, 2026, Ana <ana@example.com> wrote:\n"
+            "> Old request\n"
+        ),
+        kept=("On Friday, please send the signed contract.",),
+        removed=("wrote:", "Old request"),
+    ),
+    MinimizeCase(
         name="plain message is left alone",
         text="Hi Frank,\n\nCan you review the draft by Wednesday? https://docs.example/s?q=a%20b\n\nThanks,\nDana\n",
         kept=("Hi Frank,", "Can you review the draft by Wednesday?", "https://docs.example/s?q=a%20b", "Thanks,\nDana"),

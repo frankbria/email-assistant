@@ -26,8 +26,9 @@ ANY_FORWARDED_BLOCK = re.compile(
     re.MULTILINE | re.IGNORECASE,
 )
 # An attribution names the sender's address or the year; prose that merely ends in "wrote:" does not.
+# A wrapped one continues onto a second line, which is never itself a new "On …" line.
 ATTRIBUTION = re.compile(
-    r"^On\b[^\n]*(?:\n[^\n]*)?@[^\n]*\bwrote:[ \t]*$\n?|^On\b[^\n]*\b(?:19|20)\d\d\b[^\n]*\bwrote:[ \t]*$\n?",
+    r"^On\b[^\n]*(?:\n(?!On\b)[^\n]*)?@[^\n]*\bwrote:[ \t]*$\n?|^On\b[^\n]*\b(?:19|20)\d\d\b[^\n]*\bwrote:[ \t]*$\n?",
     re.MULTILINE,
 )
 QUOTED_LINE = re.compile(r"^>(?!=?[ \t]*\d).*$\n?", re.MULTILINE)  # "> 50 units" is prose, not a quote
@@ -37,7 +38,8 @@ MOBILE_FOOTER = re.compile(
     r"|Sent from (?:Mail|Outlook) for \w.*|Get Outlook for \w.*)$\n?",
     re.MULTILINE | re.IGNORECASE,
 )
-URL = re.compile(r"https?://[^\s<>]+?(?=[.,;:!?)\]'\"]*(?:[\s<>]|$))")  # trailing prose punctuation is not the link's
+URL = re.compile(r"https?://[^\s<>]+")
+TRAILING_PUNCTUATION = ".,;:!?)]'\""  # prose around a link, not part of it
 TRACKING_PARAMETER = re.compile(r"^(?:utm_\w+|fbclid|gclid|mc_eid|mc_cid|_hsenc|_hsmi|mkt_tok)(?:=|$)", re.IGNORECASE)
 
 
@@ -71,12 +73,14 @@ def without_signature(text: str, forwarded: bool) -> str:
     return "".join(pieces) + text[position:]
 
 
-def without_tracking(url: str) -> str:
+def without_tracking(match: str) -> str:
     """Drops tracking parameters as raw segments, so every other byte of the link survives."""
+    url = match.rstrip(TRAILING_PUNCTUATION)
+    prose = match[len(url) :]
     address, separator, query = url.partition("?")
     query, hash_mark, fragment = query.partition("#")
     kept = [segment for segment in query.split("&") if not TRACKING_PARAMETER.match(segment)]
-    return address + (separator if any(kept) else "") + "&".join(kept) + hash_mark + fragment
+    return address + (separator if any(kept) else "") + "&".join(kept) + hash_mark + fragment + prose
 
 
 def capped(text: str) -> str:

@@ -1,4 +1,6 @@
 # Minimize stage (spec §8.1, AC-R.2): what reaches the AI is the new content only.
+import time
+
 import pytest
 
 from app.pipeline.minimize import MINIMIZED_MAX_CHARACTERS, TRUNCATED, minimize
@@ -40,3 +42,12 @@ def test_a_mail_with_thousands_of_signatures_and_forwards_neither_crashes_nor_ke
     nested = minimize("-- \nsignature\n---------- Forwarded message ---------\nbody\n" * 5000, "Fwd: chain")
 
     assert "signature" not in nested and nested.count("body") > 0
+
+
+def test_untrusted_punctuation_runs_after_a_link_stay_linear():
+    """A quadratic scan here lets one large mail tie up the pipeline (50,000 dots took minutes)."""
+    started = time.perf_counter()
+
+    minimize("https://example.com/" + "." * 50_000 + "a")
+
+    assert time.perf_counter() - started < 2
