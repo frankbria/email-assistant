@@ -46,9 +46,11 @@ def minimize(text: str, subject: str = "") -> str:
     if not forwarded:
         text = cut_at_first(text, (OUTLOOK_HISTORY, ORIGINAL_MESSAGE))
     text = without_signature(text, forwarded)
-    text = without_attributions(text)
-    for pattern in (QUOTED_LINE, MOBILE_FOOTER):
-        text = pattern.sub("", text)
+    # Quoted lines after an unquoted forward marker are the forwarded payload (HTML forwards quote it).
+    marker = FORWARDED_BLOCK.search(text)
+    payload_start = marker.start() if marker else len(text)
+    own = QUOTED_LINE.sub("", without_attributions(text[:payload_start]))
+    text = MOBILE_FOOTER.sub("", own + text[payload_start:])
     text = URL.sub(lambda match: without_tracking(match.group()), text)
     return capped(re.sub(r"\n{3,}", "\n\n", "\n".join(line.rstrip() for line in text.splitlines())).strip())
 

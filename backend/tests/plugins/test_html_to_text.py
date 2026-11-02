@@ -32,6 +32,12 @@ def test_quoted_history_in_an_html_only_reply_never_reaches_the_ai():
     assert minimize(html_to_text(html)) == "Approved."
 
 
+def test_an_html_forward_keeps_its_quoted_payload():
+    html = "<div>Please pay the forwarded invoice.</div><div>Begin forwarded message:</div><blockquote>Invoice 4471 is due Friday.</blockquote>"
+
+    assert "Invoice 4471 is due Friday." in minimize(html_to_text(html), "Fwd: Invoice")
+
+
 def test_many_inline_elements_on_one_line_stay_linear():
     """Untrusted HTML: a quadratic join here stalls message retrieval (200,000 spans took 17 s)."""
     started = time.perf_counter()

@@ -279,6 +279,28 @@ CORPUS = (
         removed=(),
     ),
     MinimizeCase(
+        name="quoted payload after a forward marker is the content",
+        subject="Fwd: Invoice",
+        text=(
+            "Please pay the forwarded invoice.\n"
+            "Begin forwarded message:\n"
+            "> Invoice 4471 is due Friday.\n"
+        ),
+        kept=("Please pay the forwarded invoice.", "Invoice 4471 is due Friday."),
+        removed=(),
+    ),
+    MinimizeCase(
+        name="a forward marker inside quoted history keeps nothing extra",
+        text=(
+            "Paid, thanks.\n"
+            "On Mon, Nov 2, 2026, Ana <ana@example.com> wrote:\n"
+            "> Begin forwarded message:\n"
+            "> Invoice 4471 is due Friday.\n"
+        ),
+        kept=("Paid, thanks.",),
+        removed=("Invoice 4471", "Begin forwarded message"),
+    ),
+    MinimizeCase(
         name="plain message is left alone",
         text="Hi Frank,\n\nCan you review the draft by Wednesday? https://docs.example/s?q=a%20b\n\nThanks,\nDana\n",
         kept=("Hi Frank,", "Can you review the draft by Wednesday?", "https://docs.example/s?q=a%20b", "Thanks,\nDana"),
