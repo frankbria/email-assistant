@@ -39,10 +39,12 @@ dev = [
 asyncio_mode = "auto"
 asyncio_default_fixture_loop_scope = "function"
 testpaths = ["tests"]
+# Live tests call paid APIs: opt in with `uv run pytest -m integration`.
+addopts = "-m 'not integration'"
 # Dump every thread's traceback when a test hangs.
 faulthandler_timeout = 60
 markers = [
-    "integration: marks tests as integration (deselect with '-m \"not integration\"')",
+    "integration: live tests against paid external APIs; skipped unless run with -m integration",
     "dependency: mark tests with dependencies",
     "per: mark tests for performance testing (deselect with '-m \"not per\"')",
     "e2e: marks tests as end-to-end tests (deselect with '-m \"not e2e\"')",
