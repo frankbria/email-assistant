@@ -2,6 +2,8 @@
 # MongoDB is Atlas by default (MONGODB_URI). `--profile local-mongo` adds a MongoDB
 # container instead; then set MONGODB_URI=mongodb://mongo:27017.
 # Ports are configurable because the host is shared; check for conflicts first.
+# Ports bind to BIND_ADDRESS only (default 127.0.0.1): Docker's published ports bypass
+# host firewalls such as UFW, so never bind to 0.0.0.0 on a host with a public interface.
 name: email-assistant
 
 services:
@@ -18,7 +20,7 @@ services:
       FRONTEND_ORIGIN: ${FRONTEND_ORIGIN:-http://localhost:3000}
       API_ENVIRONMENT: production
     ports:
-      - "${BACKEND_PORT:-8000}:8000"
+      - "${BIND_ADDRESS:-127.0.0.1}:${BACKEND_PORT:-8000}:8000"
 
   frontend:
     build:
@@ -30,7 +32,7 @@ services:
     depends_on:
       - backend
     ports:
-      - "${FRONTEND_PORT:-3000}:3000"
+      - "${BIND_ADDRESS:-127.0.0.1}:${FRONTEND_PORT:-3000}:3000"
 
   mongo:
     image: mongo:8

@@ -18,8 +18,11 @@ public SSH, and no host names or addresses in this repo (see the operator's loca
 1. Check the ports are free on the shared host: `ss -ltn | grep -E ':(3000|8000) '`.
    Pick other ports if they're taken.
 2. Copy `.env.example` to `.env` next to `docker-compose.yml` and fill it in:
-   `MONGODB_URI`, the ports, and the public URLs as the browser will see them
+   `MONGODB_URI`, the ports, `BIND_ADDRESS` (the host's Tailscale IP, from
+   `tailscale ip -4`), and the public URLs as the browser will see them
    (`PUBLIC_API_BASE`, `FRONTEND_ORIGIN`, i.e. the tailnet host name plus port).
+   Ports bind only to `BIND_ADDRESS` (default `127.0.0.1`). Never use `0.0.0.0`:
+   Docker's published ports bypass UFW, which would expose the API publicly.
 3. Start it:
    - with images from GHCR (built by `.github/workflows/images.yml` on every push to
      `main`): `docker compose pull && docker compose up -d`
