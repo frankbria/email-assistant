@@ -264,12 +264,18 @@ CORPUS = (
             "> Old request\n"
         ),
         kept=("Please ask legal@example.com to review what I wrote:",),
-        removed=("On Thu, Nov 1, 2026", "Old request"),
+        removed=("Old request",),  # the attribution itself may stay: it doesn't introduce the quote
     ),
     MinimizeCase(
         name="a fragment that looks like a query is the app's route, left alone",
         text="Open https://portal.example/#/settings?utm_source=email&tab=campaigns to update.\n",
         kept=("https://portal.example/#/settings?utm_source=email&tab=campaigns",),
+        removed=(),
+    ),
+    MinimizeCase(
+        name="an instruction shaped like an attribution is kept",
+        text="On Friday, email support@example.com the text I wrote:\nPlease cancel my subscription.\n",
+        kept=("On Friday, email support@example.com the text I wrote:", "Please cancel my subscription."),
         removed=(),
     ),
     MinimizeCase(

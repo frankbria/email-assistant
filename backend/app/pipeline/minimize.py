@@ -59,18 +59,24 @@ def cut_at_first(text: str, patterns: tuple[re.Pattern[str], ...]) -> str:
 
 
 def without_attributions(text: str) -> str:
-    """Drops "On <date>, <name> wrote:" lines, checked line by line so hostile input stays linear."""
+    """Drops "On <date>, <name> wrote:" lines that introduce a quote, line by line so hostile input stays linear."""
     lines, kept, index = text.split("\n"), [], 0
     while index < len(lines):
         following = lines[index + 1] if index + 1 < len(lines) else ""
-        if is_attribution(lines[index]):
-            index += 1
-        elif is_wrapped_attribution(lines[index], following):
-            index += 2
+        length = 1 if is_attribution(lines[index]) else 2 if is_wrapped_attribution(lines[index], following) else 0
+        if length and introduces_quote(lines, index + length):
+            index += length
         else:
             kept.append(lines[index])
             index += 1
     return "\n".join(kept)
+
+
+def introduces_quote(lines: list[str], index: int) -> bool:
+    """A real attribution is followed by the quoted history it introduces."""
+    while index < len(lines) and not lines[index].strip():
+        index += 1
+    return index < len(lines) and QUOTED_LINE.match(lines[index]) is not None
 
 
 def is_attribution(line: str) -> bool:
