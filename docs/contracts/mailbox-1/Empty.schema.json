@@ -1,0 +1,7 @@
+{
+  "additionalProperties": false,
+  "description": "Input of tools that take no arguments.",
+  "properties": {},
+  "title": "Empty",
+  "type": "object"
+}

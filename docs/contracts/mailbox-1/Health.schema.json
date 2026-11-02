@@ -1,0 +1,64 @@
+{
+  "$defs": {
+    "HealthCheck": {
+      "additionalProperties": false,
+      "properties": {
+        "layer": {
+          "description": "What was checked, e.g. 'imap_login'.",
+          "title": "Layer",
+          "type": "string"
+        },
+        "ok": {
+          "title": "Ok",
+          "type": "boolean"
+        },
+        "detail": {
+          "title": "Detail",
+          "type": "string"
+        }
+      },
+      "required": [
+        "layer",
+        "ok",
+        "detail"
+      ],
+      "title": "HealthCheck",
+      "type": "object"
+    }
+  },
+  "additionalProperties": false,
+  "properties": {
+    "status": {
+      "enum": [
+        "ok",
+        "degraded",
+        "down"
+      ],
+      "title": "Status",
+      "type": "string"
+    },
+    "checks": {
+      "description": "In order; the first failing one is shown.",
+      "items": {
+        "$ref": "#/$defs/HealthCheck"
+      },
+      "title": "Checks",
+      "type": "array"
+    },
+    "repair_actions": {
+      "description": "Actions accepted by `repair`.",
+      "items": {
+        "type": "string"
+      },
+      "title": "Repair Actions",
+      "type": "array"
+    }
+  },
+  "required": [
+    "status",
+    "checks",
+    "repair_actions"
+  ],
+  "title": "Health",
+  "type": "object"
+}

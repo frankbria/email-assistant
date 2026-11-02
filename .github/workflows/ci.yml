@@ -29,6 +29,16 @@ jobs:
           --health-cmd "mongosh --quiet --eval 'db.runCommand({ping: 1})'"
           --health-interval 5s
           --health-retries 12
+      greenmail:  # IMAP/SMTP test server, same as docker-compose.test.yml
+        image: greenmail/standalone:2.1.15
+        env:
+          GREENMAIL_OPTS: -Dgreenmail.setup.test.smtp -Dgreenmail.setup.test.imap -Dgreenmail.hostname=0.0.0.0 -Dgreenmail.auth.disabled
+        ports: ["3025:3025", "3143:3143"]
+      greenmail-auth:  # authentication on, for login-failure tests
+        image: greenmail/standalone:2.1.15
+        env:
+          GREENMAIL_OPTS: -Dgreenmail.setup.test.smtp -Dgreenmail.setup.test.imap -Dgreenmail.hostname=0.0.0.0 -Dgreenmail.users=bridge:test@test.example
+        ports: ["3026:3025", "3144:3143"]
     steps:
       - uses: actions/checkout@v7
       - uses: astral-sh/setup-uv@v10.3.3 # no floating major tag upstream
@@ -36,18 +46,27 @@ jobs:
           python-version: "3.14"
       - run: uv sync --locked
       - name: ruff
-        run: uv run ruff check .
+        run: uv run ruff check . ../packages ../plugins
       - name: mypy
-        run: uv run mypy app
+        run: uv run mypy app ../packages/mailbox-contract/src ../packages/imap-mailbox/src ../plugins/proton/src
       - name: pytest
         run: uv run pytest -q
 
   frontend:
-    runs-on: ubuntu-latest
+    # shortcut: same mongod kernel limit as the backend job (see #105).
+    runs-on: ubuntu-22.04
     timeout-minutes: 15
     defaults:
       run:
         working-directory: frontend
+    services:
+      mongodb:
+        image: mongo:8
+        ports: ["27017:27017"]
+        options: >-
+          --health-cmd "mongosh --quiet --eval 'db.runCommand({ping: 1})'"
+          --health-interval 5s
+          --health-retries 12
     steps:
       - uses: actions/checkout@v7
       - uses: actions/setup-node@v7

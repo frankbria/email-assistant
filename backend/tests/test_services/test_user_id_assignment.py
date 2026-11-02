@@ -5,7 +5,7 @@ import pytest
 from app.models.email_message import EmailMessage
 from app.models.assistant_task import AssistantTask
 from app.services.email_task_mapper import map_email_to_task
-from app.config import get_settings
+from tests.utils.auth import OWNER_ID
 
 
 @pytest.mark.asyncio
@@ -22,9 +22,8 @@ async def test_email_creation_assigns_user_id(db_transaction):
     # Retrieve the email from the database
     inserted_email = await EmailMessage.get(email.id)
 
-    # Verify user_id is assigned and matches the default
-    assert inserted_email.user_id is not None
-    assert inserted_email.user_id == get_settings().DEFAULT_USER_ID
+    # Verify user_id is assigned (the test fixture's owner)
+    assert inserted_email.user_id == OWNER_ID
 
 
 @pytest.mark.asyncio

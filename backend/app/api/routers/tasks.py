@@ -1,6 +1,6 @@
 # backend/app/api/routers/tasks.py
 
-from fastapi import APIRouter, HTTPException, Query, Request
+from fastapi import APIRouter, HTTPException, Query
 from collections.abc import Mapping
 from typing import List, Optional
 from app.models.assistant_task import AssistantTask
@@ -10,7 +10,7 @@ from beanie.operators import Eq
 from pydantic import BaseModel, Field
 import app.services.context_classifier as context_classifier
 import logging
-from app.utils.user_utils import get_current_user_id
+from app.auth import OwnerId
 
 logger = logging.getLogger(__name__)
 
@@ -30,12 +30,12 @@ class TaskUpdate(BaseModel):
 
 @router.get("/", response_model=List[AssistantTask])
 async def get_tasks(
-    request: Request, status: str = "active", spam: Optional[bool] = Query(None)
+    owner_id: OwnerId, status: str = "active", spam: Optional[bool] = Query(None)
 ):
     logger.debug("🔄 Fetching active tasks")
 
     # Get the current user ID
-    user_id = await get_current_user_id(request)
+    user_id = owner_id
 
     # Beanie field comparisons build query operators (Mappings), not bools.
     filters: list[Mapping[str, object] | bool] = [AssistantTask.user_id == user_id]
@@ -63,12 +63,12 @@ async def get_tasks(
 
 
 @router.patch("/{task_id}", response_model=AssistantTask)
-async def update_task(task_id: str, update: TaskUpdate, request: Request):
+async def update_task(task_id: str, update: TaskUpdate, owner_id: OwnerId):
     try:
         logger.debug(f"🔄 Updating task {task_id} to status: {update.status}")
 
         # Get the current user ID
-        user_id = await get_current_user_id(request)
+        user_id = owner_id
 
         # Convert string ID to ObjectId and find task, filtering by user_id
         task = await AssistantTask.find_one(

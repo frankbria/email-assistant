@@ -1,13 +1,10 @@
 // src/services/emailService.ts
 
-import { getCurrentUserId } from './userService';
-
-const API_BASE_URL = process.env.NEXT_PUBLIC_API_BASE;
+import { apiFetch } from './apiClient';
 
 export async function fetchSpamEmails() {
   try {
-    const userId = getCurrentUserId();
-    const response = await fetch(`${API_BASE_URL}/api/v1/email/spam?user_id=${userId}`);
+    const response = await apiFetch('/api/v1/email/spam');
     if (!response.ok) {
       console.error("Error fetching spam emails:", response.statusText);
       return [];
@@ -20,7 +17,7 @@ export async function fetchSpamEmails() {
           id: email.id ?? email._id, // <-- this ensures every email has a usable ID
           sender: email.sender,
           subject: email.subject,
-          user_id: email.user_id || userId,
+          user_id: email.user_id,
         }))
       : [];
   } catch (error) {
@@ -31,8 +28,7 @@ export async function fetchSpamEmails() {
 
 
 export async function markNotSpam(emailId: string) {
-  const userId = getCurrentUserId();
-  const response = await fetch(`${API_BASE_URL}/api/v1/email/${emailId}/not-spam?user_id=${userId}`, {
+  const response = await apiFetch(`/api/v1/email/${emailId}/not-spam`, {
     method: 'PATCH',
   })
   if (!response.ok) {
@@ -42,8 +38,7 @@ export async function markNotSpam(emailId: string) {
 }
 
 export async function archiveSpam(emailId: string) {
-  const userId = getCurrentUserId();
-  const response = await fetch(`${API_BASE_URL}/api/v1/email/${emailId}/archive?user_id=${userId}`, {
+  const response = await apiFetch(`/api/v1/email/${emailId}/archive`, {
     method: 'PATCH',
   })
   if (!response.ok) {
@@ -54,8 +49,7 @@ export async function archiveSpam(emailId: string) {
 
 // Add a function to create a new email (for testing or direct email creation)
 export async function createEmail(email: { subject: string; sender: string; body: string }) {
-  const userId = getCurrentUserId();
-  const response = await fetch(`${API_BASE_URL}/api/v1/email?user_id=${userId}`, {
+  const response = await apiFetch('/api/v1/email', {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',

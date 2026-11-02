@@ -1,7 +1,7 @@
 // frontend/src/services/taskService.ts
 import { AssistantTask, RawMongoTask } from '@/types/api'
 import { showToast } from '@/utils/toast'
-import { getCurrentUserId } from './userService'
+import { apiFetch } from './apiClient'
 
 // Helper to normalize MongoDB document ID
 function normalizeMongoId(doc: { _id?: string; id?: string }): string {
@@ -61,12 +61,10 @@ export function getActionType(action: string): string {
 }
 
 export async function fetchTasks(status: string = 'active', spamFilter: boolean = false): Promise<AssistantTask[]> {
-  const userId = getCurrentUserId();
   try {
-    const response = await fetch(
-      `${process.env.NEXT_PUBLIC_API_BASE}/api/v1/tasks/?status=${status}&spam=${spamFilter}&user_id=${userId}`,
-      {cache: 'no-store'}
-    );
+    const response = await apiFetch(`/api/v1/tasks/?status=${status}&spam=${spamFilter}`, {
+      cache: 'no-store',
+    });
 
     if (!response.ok) {
       throw new Error(`Failed to fetch tasks (${response.status})`);
@@ -102,7 +100,7 @@ export async function fetchTasks(status: string = 'active', spamFilter: boolean 
         ...task,
         id: taskId,
         _id: undefined, // Remove the MongoDB _id to avoid duplication
-        user_id: task.user_id || userId,
+        user_id: task.user_id,
         email: emailWithId
       };
     });
@@ -116,8 +114,7 @@ export async function fetchTasks(status: string = 'active', spamFilter: boolean 
 export async function updateTaskStatus(taskId: string, action: string): Promise<void> {
   try {
     const status = actionToComplete();
-    const userId = getCurrentUserId();
-    const response = await fetch(`${process.env.NEXT_PUBLIC_API_BASE}/api/v1/tasks/${taskId}?user_id=${userId}`, {
+    const response = await apiFetch(`/api/v1/tasks/${taskId}`, {
       method: 'PATCH',
       headers: {
         'Content-Type': 'application/json',

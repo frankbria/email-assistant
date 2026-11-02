@@ -1,0 +1,137 @@
+{
+  "$defs": {
+    "Address": {
+      "additionalProperties": false,
+      "properties": {
+        "name": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Name"
+        },
+        "email": {
+          "title": "Email",
+          "type": "string"
+        }
+      },
+      "required": [
+        "email"
+      ],
+      "title": "Address",
+      "type": "object"
+    },
+    "MessageSummary": {
+      "additionalProperties": false,
+      "properties": {
+        "ref": {
+          "description": "Opaque, stable plugin reference to the message.",
+          "title": "Ref",
+          "type": "string"
+        },
+        "message_id": {
+          "description": "The RFC 5322 Message-ID header.",
+          "title": "Message Id",
+          "type": "string"
+        },
+        "from": {
+          "$ref": "#/$defs/Address"
+        },
+        "to": {
+          "items": {
+            "$ref": "#/$defs/Address"
+          },
+          "title": "To",
+          "type": "array"
+        },
+        "cc": {
+          "items": {
+            "$ref": "#/$defs/Address"
+          },
+          "title": "Cc",
+          "type": "array"
+        },
+        "date": {
+          "format": "date-time",
+          "title": "Date",
+          "type": "string"
+        },
+        "subject": {
+          "title": "Subject",
+          "type": "string"
+        },
+        "snippet": {
+          "title": "Snippet",
+          "type": "string"
+        },
+        "list_id": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "List Id"
+        },
+        "in_reply_to": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "In Reply To"
+        }
+      },
+      "required": [
+        "ref",
+        "message_id",
+        "from",
+        "to",
+        "cc",
+        "date",
+        "subject",
+        "snippet"
+      ],
+      "title": "MessageSummary",
+      "type": "object"
+    }
+  },
+  "additionalProperties": false,
+  "properties": {
+    "messages": {
+      "items": {
+        "$ref": "#/$defs/MessageSummary"
+      },
+      "title": "Messages",
+      "type": "array"
+    },
+    "next_cursor": {
+      "description": "Opaque position after the last message. Persist it: it must stay valid across plugin and app restarts.",
+      "title": "Next Cursor",
+      "type": "string"
+    },
+    "has_more": {
+      "title": "Has More",
+      "type": "boolean"
+    }
+  },
+  "required": [
+    "messages",
+    "next_cursor",
+    "has_more"
+  ],
+  "title": "ListMessagesOutput",
+  "type": "object"
+}

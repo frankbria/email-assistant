@@ -2,13 +2,13 @@
 from app.services.email_task_mapper import map_email_to_task
 import logging
 
-from fastapi import APIRouter, Body, Request, HTTPException
+from fastapi import APIRouter, Body, HTTPException
 from typing import List, Optional
 from app.models.email_message import EmailMessage
 from app.models.assistant_task import AssistantTask
 
 from beanie import PydanticObjectId
-from app.utils.user_utils import get_current_user_id
+from app.auth import OwnerId
 
 
 router = APIRouter(prefix="/api/v1/email", tags=["email"])
@@ -18,7 +18,7 @@ logger = logging.getLogger(__name__)
 
 @router.post("/")
 async def create_email_task(
-    request: Request,
+    owner_id: OwnerId,
     sender: str = Body(..., embed=True),
     subject: str = Body("", embed=True),  # Default to empty string instead of required
     body: str = Body("", embed=True),  # Default to empty string instead of required
@@ -26,7 +26,7 @@ async def create_email_task(
 ):
     logger.debug("🔄 Creating email task in API")
     # Get the current user ID
-    user_id = await get_current_user_id(request)
+    user_id = owner_id
 
     # Create and save the email, then map to a task
     email = EmailMessage(subject=subject, sender=sender, body=body, user_id=user_id)
@@ -45,9 +45,9 @@ async def create_email_task(
 
 
 @router.get("/spam")
-async def get_spam_emails(request: Request):
+async def get_spam_emails(owner_id: OwnerId):
     """Fetch all emails flagged as spam."""
-    user_id = await get_current_user_id(request)
+    user_id = owner_id
 
     spam_emails = await EmailMessage.find(
         {"$and": [{"is_spam": True}, {"is_archived": False}, {"user_id": user_id}]}
@@ -57,9 +57,9 @@ async def get_spam_emails(request: Request):
 
 
 @router.patch("/{email_id}/not-spam")
-async def mark_email_as_not_spam(email_id: str, request: Request):
+async def mark_email_as_not_spam(email_id: str, owner_id: OwnerId):
     """Mark a specific email as not spam and ensure it gets full AI processing."""
-    user_id = await get_current_user_id(request)
+    user_id = owner_id
 
     email = await EmailMessage.find_one(
         {"_id": PydanticObjectId(email_id), "user_id": user_id}
@@ -110,9 +110,9 @@ async def mark_email_as_not_spam(email_id: str, request: Request):
 
 
 @router.patch("/{email_id}/archive")
-async def archive_email(email_id: str, request: Request):
+async def archive_email(email_id: str, owner_id: OwnerId):
     """Mark an email as archived (dismissed from spam view)."""
-    user_id = await get_current_user_id(request)
+    user_id = owner_id
 
     email = await EmailMessage.find_one(
         {"_id": PydanticObjectId(email_id), "user_id": user_id}

@@ -1,0 +1,19 @@
+{
+  "additionalProperties": false,
+  "properties": {
+    "ok": {
+      "title": "Ok",
+      "type": "boolean"
+    },
+    "detail": {
+      "title": "Detail",
+      "type": "string"
+    }
+  },
+  "required": [
+    "ok",
+    "detail"
+  ],
+  "title": "RepairResult",
+  "type": "object"
+}

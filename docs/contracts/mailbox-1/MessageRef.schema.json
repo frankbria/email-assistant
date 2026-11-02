@@ -1,0 +1,14 @@
+{
+  "additionalProperties": false,
+  "properties": {
+    "ref": {
+      "title": "Ref",
+      "type": "string"
+    }
+  },
+  "required": [
+    "ref"
+  ],
+  "title": "MessageRef",
+  "type": "object"
+}

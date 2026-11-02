@@ -5,12 +5,19 @@ from contextlib import asynccontextmanager
 from app.models.email_message import EmailMessage
 from app.models.assistant_task import AssistantTask
 from app.models.user_settings import UserSettings
+from app.models.job import Job
+from app.models.message import Message
+from app.models.sync_cursor import SyncCursor
 from beanie import init_beanie
-from app.api.routers import email, tasks, settings
+from app.api.routers import connections, email, tasks, settings
 from app.middleware import setup_cors
 from app.config import get_settings, Settings
 from pymongo import AsyncMongoClient
+from pathlib import Path
+from app.plugins.config import load_plugins_config
+from app.plugins.registry import PluginRegistry
 import logging
+import asyncio
 import os
 
 # Configure logging manually
@@ -25,6 +32,8 @@ logging.basicConfig(
 
 logger = logging.getLogger(__name__)
 logger.info("Logger initialized. Log level is %s", LOG_LEVEL)
+
+PLUGIN_SHUTDOWN_SECONDS = 30  # plugins close concurrently, each within 10 s; this bounds a stuck task
 
 
 async def init_db(settings: Settings | None = None):
@@ -45,7 +54,7 @@ async def init_db(settings: Settings | None = None):
     )
     await init_beanie(
         database=client[settings.current_mongodb_db],
-        document_models=[EmailMessage, AssistantTask, UserSettings],
+        document_models=[EmailMessage, AssistantTask, UserSettings, Message, Job, SyncCursor],
         allow_index_dropping=True,
     )
 
@@ -71,15 +80,32 @@ async def lifespan(app: FastAPI):
     app.state.settings = settings
     logger.debug("🌟 Lifespan: DB client assigned to app.state")
 
-    # Database setup only in lifespan
-    yield
-
-    logger.debug("🌟 Lifespan: Shutting down DB")
-    if client is not None:
-        try:
-            await client.close()
-        except Exception:
-            pass
+    # An invalid plugins.yaml (e.g. an inline secret) stops startup; a plugin that
+    # can't connect is only recorded as failed.
+    plugins = PluginRegistry()
+    ready = asyncio.Event()
+    plugin_task = asyncio.create_task(
+        plugins.run(load_plugins_config(Path(os.getenv("PLUGINS_CONFIG", "plugins.yaml"))), ready)
+    )
+    try:
+        await ready.wait()
+        if plugin_task.done():
+            raise RuntimeError("Plugins failed to start; the error is logged below")
+        app.state.plugins = plugins
+        yield
+    finally:
+        plugin_task.cancel()
+        await asyncio.wait({plugin_task}, timeout=PLUGIN_SHUTDOWN_SECONDS)
+        if not plugin_task.done():
+            logger.error("Plugins did not close within %s s", PLUGIN_SHUTDOWN_SECONDS)
+        elif not plugin_task.cancelled() and plugin_task.exception() is not None:
+            logger.error("Plugin task ended with an error", exc_info=plugin_task.exception())
+        logger.debug("🌟 Lifespan: Shutting down DB")
+        if client is not None:
+            try:
+                await client.close()
+            except Exception:
+                logger.exception("DB client did not close cleanly")
 
 
 app = FastAPI(title="Email Assistant API", lifespan=lifespan)
@@ -91,6 +117,7 @@ setup_cors(app)
 app.include_router(email.router)  # router already has prefix in its definition
 app.include_router(tasks.router)  # router already has prefix in its definition
 app.include_router(settings.router)  # router already has prefix in its definition
+app.include_router(connections.router)
 
 
 @app.get("/")

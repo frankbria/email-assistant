@@ -1,5 +1,6 @@
 # backend/app/config.py
 
+from pydantic import Field
 from pydantic_settings import BaseSettings
 from functools import lru_cache
 from typing import List
@@ -27,8 +28,10 @@ class Settings(BaseSettings):
         "API_ENVIRONMENT", "test" if "pytest" in sys.modules else "development"
     )
 
-    # User settings
-    DEFAULT_USER_ID: str = os.getenv("DEFAULT_USER_ID", "default")
+    # Better Auth (the Next.js app): JWT issuer/audience, and where its JWKS lives.
+    # BETTER_AUTH_JWKS_URL overrides the JWKS location, e.g. an internal Docker address.
+    better_auth_url: str = "http://localhost:3000"
+    better_auth_jwks_url_override: str | None = Field(default=None, alias="BETTER_AUTH_JWKS_URL")
 
     # AI provider (env AI_PROVIDER / AI_MODEL); the Anthropic key is ANTHROPIC_API_KEY.
     ai_provider: str = "anthropic"
@@ -51,6 +54,10 @@ class Settings(BaseSettings):
         ]
         if origin
     ]
+
+    @property
+    def better_auth_jwks_url(self) -> str:
+        return self.better_auth_jwks_url_override or f"{self.better_auth_url}/api/auth/jwks"
 
     @property
     def is_test(self) -> bool:

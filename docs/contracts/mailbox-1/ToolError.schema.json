@@ -1,0 +1,42 @@
+{
+  "$defs": {
+    "ErrorCode": {
+      "enum": [
+        "invalid_argument",
+        "not_found",
+        "invalid_cursor",
+        "unavailable",
+        "auth_failed",
+        "rate_limited",
+        "unsupported",
+        "internal"
+      ],
+      "title": "ErrorCode",
+      "type": "string"
+    }
+  },
+  "additionalProperties": false,
+  "description": "Structured content of an MCP tool result with isError=true.",
+  "properties": {
+    "code": {
+      "$ref": "#/$defs/ErrorCode"
+    },
+    "message": {
+      "description": "Plain words the app can show the owner.",
+      "title": "Message",
+      "type": "string"
+    },
+    "retryable": {
+      "description": "Fixed by code: true for unavailable, rate_limited, internal.",
+      "title": "Retryable",
+      "type": "boolean"
+    }
+  },
+  "required": [
+    "code",
+    "message",
+    "retryable"
+  ],
+  "title": "ToolError",
+  "type": "object"
+}

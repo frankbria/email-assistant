@@ -1,13 +1,10 @@
 // frontend/src/services/settingsService.ts
 
 import { UserSettings } from "../types/api";
-import { getCurrentUserId } from "./userService";
-
-const API_BASE = process.env.NEXT_PUBLIC_API_BASE;
+import { apiFetch } from "./apiClient";
 
 export async function fetchUserSettings(): Promise<UserSettings> {
-  const userId = getCurrentUserId();
-  const res = await fetch(`${API_BASE}/api/v1/settings/email?user_id=${userId}`);
+  const res = await apiFetch("/api/v1/settings/email");
   if (!res.ok) throw new Error("Failed to fetch user settings");
   return await res.json();
 }
@@ -15,8 +12,7 @@ export async function fetchUserSettings(): Promise<UserSettings> {
 export async function updateUserSettings(
   updates: Partial<Omit<UserSettings, "user_id">>
 ): Promise<UserSettings> {
-  const userId = getCurrentUserId();
-  const res = await fetch(`${API_BASE}/api/v1/settings/email?user_id=${userId}`, {
+  const res = await apiFetch("/api/v1/settings/email", {
     method: "PATCH",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(updates),

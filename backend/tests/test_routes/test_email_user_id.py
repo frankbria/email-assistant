@@ -4,7 +4,7 @@ import pytest
 
 from app.models.email_message import EmailMessage
 from app.models.assistant_task import AssistantTask
-from app.config import get_settings
+from tests.utils.auth import OWNER_ID, bearer_headers
 
 
 @pytest.mark.asyncio
@@ -17,7 +17,7 @@ async def test_email_creation_endpoint_sets_user_id(async_client, db_transaction
         "body": "This is a test email created via the API endpoint",
     }
 
-    # Test with no user_id in query params (should use default)
+    # Signed in as the default test owner
     response = await async_client.post("/api/v1/email", json=test_email)
     assert response.status_code == 200
     result = response.json()
@@ -26,13 +26,13 @@ async def test_email_creation_endpoint_sets_user_id(async_client, db_transaction
     email_id = result["email_id"]
     email = await EmailMessage.get(email_id)
 
-    # Verify default user_id is assigned
-    assert email.user_id == get_settings().DEFAULT_USER_ID
+    # The owner comes from the token
+    assert email.user_id == OWNER_ID
 
-    # Test with specific user_id in query params
+    # Signed in as another user
     test_user_id = "api_test_user"
     response = await async_client.post(
-        f"/api/v1/email?user_id={test_user_id}", json=test_email
+        "/api/v1/email", json=test_email, headers=bearer_headers(test_user_id)
     )
     assert response.status_code == 200
     result = response.json()

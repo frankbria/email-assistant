@@ -75,3 +75,40 @@ export interface UserSettings {
   enable_auto_categorization: boolean;
   skip_low_priority_emails: boolean;
 }
+
+export type DiagnosisKind =
+  | 'ok'
+  | 'bridge_restarted'
+  | 'bridge_restarting'
+  | 'plugin_restarting'
+  | 'plugin_failed'
+  | 'owner_action'
+  | 'machine_offline'
+  | 'waiting_for_login'
+
+export interface Connection {
+  plugin_id: string
+  status: 'connected' | 'refused' | 'failed' | 'disabled'
+  plugin_name: string | null
+  account: string | null
+  reason: string | null
+  diagnosis: {
+    kind: DiagnosisKind
+    message: string
+    first_failing_layer: string | null
+    checked_at: string
+  } | null
+  repairing: boolean
+  last_synced_at: string | null
+}
+
+export interface SetupStep {
+  title: string
+  status: 'done' | 'failing' | 'waiting'
+  detail: string | null
+}
+
+export interface Checklist {
+  plugin_id: string
+  steps: SetupStep[]
+}

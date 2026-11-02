@@ -9,21 +9,30 @@ dependencies = [
     "beanie>=2",
     "fastapi",
     "httpx",
+    "httpx2>=2.16.0",
+    "mailbox-contract",
+    "mcp>=2.3.0",
     "pydantic",
     "pydantic-settings",
+    "pyjwt[crypto]>=2.15.1",
     "pymongo>=4.19.0",
     "python-dotenv",
+    "pyyaml>=6.0.3",
     "uvicorn",
 ]
 
 [dependency-groups]
 dev = [
+    "imap-mailbox",
+    "jsonschema>=4.26.0",
     "mypy>=2.4.1",
+    "proton-mailbox-plugin",
     "pytest",
     "pytest-asyncio",
     "pytest-benchmark",
     "pytest-cov",
     "ruff>=0.17.3",
+    "types-pyyaml>=6.0.12.20261030",
 ]
 
 [tool.pytest.ini_options]
@@ -43,3 +52,11 @@ pythonpath = ["."]
 [tool.ruff.lint]
 # Pinned: ruff 0.17 widened its default rule set.
 select = ["E4", "E7", "E9", "F"]
+
+[tool.uv.sources]
+mailbox-contract = { path = "../packages/mailbox-contract", editable = true }
+imap-mailbox = { path = "../packages/imap-mailbox", editable = true }
+proton-mailbox-plugin = { path = "../plugins/proton", editable = true }
+
+[tool.mypy]
+plugins = ["pydantic.mypy"]
