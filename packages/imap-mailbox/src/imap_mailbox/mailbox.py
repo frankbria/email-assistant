@@ -29,6 +29,7 @@ from mailbox_contract import (
     MessageDetail,
     MessageSummary,
     MoveResult,
+    RepairResult,
     SendResult,
 )
 
@@ -347,6 +348,10 @@ class ImapMailbox:
                         ],
                     )
         raise MailboxError(ErrorCode.NOT_FOUND, "No message with that ref.")
+
+    def repair(self, action: str) -> RepairResult:
+        """Providers with a `repair` capability override this."""
+        raise MailboxError(ErrorCode.UNSUPPORTED, "This plugin has no repair actions.")
 
     def archive(self, ref: str) -> MoveResult:
         return self._move(ref, self.folders.inbox, self.folders.archive)

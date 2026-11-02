@@ -20,6 +20,20 @@ IMAP/SMTP plugin (`packages/imap-mailbox`). It runs on the machine where Bridge 
 | `MAILBOX_IMAP_PORT`, `MAILBOX_SMTP_PORT` | Bridge's ports if not 1143/1025 |
 | `MAILBOX_TLS` (or `MAILBOX_IMAP_TLS`/`MAILBOX_SMTP_TLS`) | `starttls` (default) or `ssl`, matching Bridge |
 | `MAILBOX_HTTP_HOST`, `MAILBOX_HTTP_PORT`, `MAILBOX_HTTP_TOKEN` | HTTP mode only: this machine's Tailscale IP, a port, and the bearer token the app sends |
+| `MAILBOX_BRIDGE_RESTART_COMMAND` | Optional JSON list that restarts Bridge, e.g. `["systemctl", "--user", "restart", "proton-bridge"]`. Turns on the `repair` tool |
+
+## Health and repair
+
+`health` checks these layers in order and stops at the first failure, which is the one
+the app shows: **plugin** answering → **imap_port** (Bridge listening) → **imap_login** →
+**smtp_auth** → **folders** (Archive and Sent exist).
+
+- A stopped Bridge or unreachable SMTP is **restartable**: with
+  `MAILBOX_BRIDGE_RESTART_COMMAND` set, `repair_actions` offers `restart_bridge`. `repair`
+  runs only that configured command, then waits for Bridge to answer again.
+- A rejected login is **owner-only**: no repair is offered. The detail tells the owner what
+  to do in Bridge (re-enter the mailbox password, sign in again, finish an update or
+  unlock the keychain).
 
 ## Running
 
