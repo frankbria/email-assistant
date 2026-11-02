@@ -9,7 +9,7 @@ from beanie import init_beanie
 from app.api.routers import email, tasks, settings
 from app.middleware import setup_cors
 from app.config import get_settings, Settings
-from motor.motor_asyncio import AsyncIOMotorClient
+from pymongo import AsyncMongoClient
 import logging
 import os
 
@@ -36,7 +36,7 @@ async def init_db(settings: Settings | None = None):
 
     # ponytail: TLS for Atlas (mongodb+srv) only; plain mongodb:// (local/test)
     # connects without it. Self-hosted TLS can opt in via ?tls=true in the URI.
-    client: AsyncIOMotorClient[dict[str, object]] = AsyncIOMotorClient(
+    client: AsyncMongoClient[dict[str, object]] = AsyncMongoClient(
         settings.current_mongodb_uri,
         serverSelectionTimeoutMS=5000,
         socketTimeoutMS=5000,
@@ -67,7 +67,7 @@ async def lifespan(app: FastAPI):
     client = await init_db(settings)
     logger.debug("✅ Successfully initialized DB")
 
-    app.state.motor_client = client
+    app.state.mongo_client = client
     app.state.settings = settings
     logger.debug("🌟 Lifespan: DB client assigned to app.state")
 
@@ -77,7 +77,7 @@ async def lifespan(app: FastAPI):
     logger.debug("🌟 Lifespan: Shutting down DB")
     if client is not None:
         try:
-            client.close()
+            await client.close()
         except Exception:
             pass
 

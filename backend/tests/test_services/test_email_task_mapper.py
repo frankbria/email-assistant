@@ -251,3 +251,15 @@ async def test_map_email_to_task_creates_task_for_non_spam():
     task = await map_email_to_task(email)
     assert task is not None
     assert email.is_spam is False
+
+
+async def test_map_email_to_task_skips_email_already_flagged_spam():
+    """An email flagged spam earlier (e.g. by the owner) gets no task, even if its
+    content doesn't match the spam keywords."""
+    email = EmailMessage(
+        subject="Lunch on Friday?",
+        body="Want to grab lunch?",
+        sender="friend@example.com",
+        is_spam=True,
+    )
+    assert await map_email_to_task(email) is None

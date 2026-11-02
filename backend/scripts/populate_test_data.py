@@ -11,7 +11,7 @@ from app.models.email_message import EmailMessage
 from app.models.assistant_task import AssistantTask
 from app.services.email_task_mapper import map_email_to_task
 from beanie import init_beanie
-from motor.motor_asyncio import AsyncIOMotorClient
+from pymongo import AsyncMongoClient
 import random
 
 load_dotenv(dotenv_path=os.path.join(os.path.dirname(__file__), "..", ".env"))
@@ -100,14 +100,12 @@ async def populate_default(num_emails: int = 10):
                 is_archived=False,
                 user_id=user_id,  # Assign user_id to each email
             )
-            for i, email in enumerate(base_emails)
+            for i, email in enumerate(base_emails[:num_emails])
         ]
 
-        # Insert into DB
-        await EmailMessage.insert_many(email_objects)
-
-        # Map each to a task and insert
+        # One insert per email: insert_many leaves ids unset, and tasks link by id.
         for email in email_objects:
+            await email.insert()
             task = await map_email_to_task(email)
             if task:  # Some emails might be marked as spam and return None
                 await task.insert()
@@ -117,8 +115,8 @@ async def populate_default(num_emails: int = 10):
 
 async def main():
     mongo_uri = os.getenv("MONGODB_URI", "mongodb://localhost:27017")
-    db_name = os.getenv("MONGODB_DB_URI", "email_assistant")
-    client = AsyncIOMotorClient(mongo_uri)
+    db_name = os.getenv("MONGODB_DB", "email_assistant")
+    client: AsyncMongoClient[dict[str, object]] = AsyncMongoClient(mongo_uri)
     await init_beanie(
         database=client[db_name], document_models=[EmailMessage, AssistantTask]
     )

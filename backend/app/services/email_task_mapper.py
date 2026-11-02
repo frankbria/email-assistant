@@ -41,6 +41,7 @@ async def map_email_to_task(
     if not skipSpamCheck and is_spam_email(email):
         return await handle_spam_email(email)
 
+    task: AssistantTask | None = None  # stays None for an email already flagged spam
     if forceFullProcessing or not email.is_spam:
 
         logger.debug("🔄 Mapping email to task in service")

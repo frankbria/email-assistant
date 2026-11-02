@@ -12,7 +12,7 @@ import pytest
 import httpx
 from dotenv import load_dotenv
 from beanie import init_beanie
-from motor.motor_asyncio import AsyncIOMotorClient
+from pymongo import AsyncMongoClient
 from fastapi.testclient import TestClient
 
 
@@ -54,36 +54,31 @@ async def test_db():
         raise ValueError("Test is attempting to use production database! Aborting.")
 
     # pytest-asyncio (auto mode) runs this fixture and the test in the same
-    # function-scoped loop; let motor bind to that running loop.
-    client = AsyncIOMotorClient(mongo_uri)
+    # function-scoped loop, so the client lives and dies with that loop.
+    client: AsyncMongoClient[dict[str, object]] = AsyncMongoClient(mongo_uri)
 
     db = client[test_db_name]
 
+    document_models = [EmailMessage, AssistantTask, UserSettings]
     await init_beanie(
-        database=db,
-        document_models=[EmailMessage, AssistantTask, UserSettings],
-        allow_index_dropping=True,
+        database=db, document_models=document_models, allow_index_dropping=True
     )
+    # Clear documents instead of dropping the database: re-creating indexes after
+    # a drop takes seconds per collection on slow disks. Clearing at setup also
+    # covers data left behind by an aborted run.
+    for model in document_models:
+        await model.find_all().delete()
 
     yield db
 
-    await client.drop_database(test_db_name)
-    client.close()
+    await client.close()
 
 
 @pytest.fixture(scope="function")
 async def db_transaction(test_db):
-    """Create a transaction for test isolation that's connected to the main event loop."""
-
-    # Start transaction
-    session = await test_db.client.start_session()
-    session.start_transaction()
-
-    yield session
-
-    # Rollback transaction to reset database state
-    await session.abort_transaction()
-    await session.end_session()
+    """Isolated test DB. Isolation comes from test_db clearing every collection
+    before each test; a real transaction would need a replica set."""
+    yield test_db
 
 
 @pytest.fixture
