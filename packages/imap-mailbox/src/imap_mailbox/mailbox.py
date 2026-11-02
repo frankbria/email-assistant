@@ -165,7 +165,7 @@ class ImapMailbox:
         return status == "OK" and listing != [None]
 
     def _find_uid(self, connection: imaplib.IMAP4, folder: str, ref: str) -> int | None:
-        if CONTROL_CHARACTERS.search(ref) or len(ref) > 998:
+        if not ref.isascii() or CONTROL_CHARACTERS.search(ref) or len(ref) > 998:
             raise MailboxError(ErrorCode.INVALID_ARGUMENT, "That ref isn't a valid message reference.")
         if not self._folder_exists(connection, folder):
             return None
@@ -226,8 +226,9 @@ class ImapMailbox:
                     if self._find_uid(connection, target, ref) is None:
                         return MoveResult(ok=False, verified=False)  # source untouched
                     self._select(connection, source, readonly=False)
-                    connection.uid("STORE", str(uid), "+FLAGS.SILENT", r"(\Deleted)")
-                    status, _ = connection.uid("EXPUNGE", str(uid))
+                    status, _ = connection.uid("STORE", str(uid), "+FLAGS.SILENT", r"(\Deleted)")
+                    if status == "OK":
+                        status, _ = connection.uid("EXPUNGE", str(uid))
             if status != "OK":
                 return MoveResult(ok=False, verified=False)
             # Re-read both folders: the move counts only if it is visible.
@@ -355,9 +356,12 @@ class ImapMailbox:
             except smtplib.SMTPException as error:
                 raise MailboxError(ErrorCode.UNAVAILABLE, f"The SMTP server refused the message: {error}") from error
         if self.settings.append_sent:
-            with self._imap() as connection:
-                status, detail = connection.append(f'"{self.folders.sent}"', r"(\Seen)", None, message.as_bytes())
-            if status != "OK":
-                # The mail went out; failing now would invite a duplicate send.
-                logger.warning("Sent, but saving a copy to %s failed: %s", self.folders.sent, detail)
+            # The mail went out; failing now would invite a duplicate send, so only log.
+            try:
+                with self._imap() as connection:
+                    status, detail = connection.append(f'"{self.folders.sent}"', r"(\Seen)", None, message.as_bytes())
+                if status != "OK":
+                    logger.warning("Sent, but saving a copy to %s failed: %s", self.folders.sent, detail)
+            except Exception:
+                logger.exception("Sent, but saving a copy to %s failed", self.folders.sent)
         return SendResult(ok=True, sent_message_id=str(message["Message-ID"]))

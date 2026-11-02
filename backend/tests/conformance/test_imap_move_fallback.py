@@ -69,8 +69,8 @@ def test_without_move_or_uidplus_archive_refuses_and_changes_nothing(mailbox: Ma
     assert ref not in {str(m["Message-ID"]) for m in mailbox.messages("Archive")}
 
 
-@pytest.mark.parametrize("ref", ["<a@example.com>\r\nA001 LOGOUT", "<a@example.com>\n", "<a\x00@example.com>"])
-def test_refs_with_control_characters_are_rejected(mailbox: Mailbox, ref: str):
+@pytest.mark.parametrize("ref", ["<a@example.com>\r\nA001 LOGOUT", "<a@example.com>\n", "<a\x00@example.com>", "<ä@example.com>"])
+def test_unsafe_refs_are_rejected(mailbox: Mailbox, ref: str):
     plugin = ImapMailbox(settings_for(mailbox))
 
     for action in (plugin.get_message, plugin.archive, plugin.restore):
