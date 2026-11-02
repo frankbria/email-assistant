@@ -135,7 +135,17 @@ def test_non_ascii_digits_are_not_a_supported_version():
 
 @pytest.mark.parametrize(
     ("code", "retryable"),
-    [("unavailable", True), ("rate_limited", True), ("internal", True), ("not_found", False), ("auth_failed", False)],
+    # Mirrors the error table in docs/contracts/mailbox-1.md, one row per code.
+    [
+        ("invalid_argument", False),
+        ("not_found", False),
+        ("invalid_cursor", False),
+        ("unavailable", True),
+        ("auth_failed", False),
+        ("rate_limited", True),
+        ("unsupported", False),
+        ("internal", True),
+    ],
 )
 def test_retryable_follows_the_error_table(code, retryable):
     contract.ToolError(code=code, message="m", retryable=retryable)
