@@ -1,6 +1,7 @@
 """mailbox/1 over IMAP and SMTP. Never deletes: archive and restore are verified moves."""
 
 import imaplib
+import logging
 import re
 import smtplib
 import ssl
@@ -33,7 +34,11 @@ from mailbox_contract import (
 
 from imap_mailbox.settings import ImapMailboxSettings
 
+logger = logging.getLogger(__name__)
+
 SNIPPET_LENGTH = 200
+# Refs travel into IMAP SEARCH; a CR/LF would end the command and start another.
+CONTROL_CHARACTERS = re.compile(r"[\x00-\x1f\x7f]")
 
 
 class MailboxError(Exception):
@@ -160,6 +165,8 @@ class ImapMailbox:
         return status == "OK" and listing != [None]
 
     def _find_uid(self, connection: imaplib.IMAP4, folder: str, ref: str) -> int | None:
+        if CONTROL_CHARACTERS.search(ref) or len(ref) > 998:
+            raise MailboxError(ErrorCode.INVALID_ARGUMENT, "That ref isn't a valid message reference.")
         if not self._folder_exists(connection, folder):
             return None
         self._select(connection, folder)
@@ -174,7 +181,8 @@ class ImapMailbox:
         status, data = connection.uid("FETCH", str(uid), "(BODY.PEEK[])")
         raw = data[0][1] if status == "OK" and data and isinstance(data[0], tuple) else None
         if not isinstance(raw, bytes):
-            raise MailboxError(ErrorCode.NOT_FOUND, "The message disappeared while reading it.")
+            # Not "not found": the message was just located; this is a server or link failure.
+            raise MailboxError(ErrorCode.UNAVAILABLE, "The IMAP server didn't return the message.")
         message = message_from_bytes(raw, policy=policy.default)
         assert isinstance(message, EmailMessage)
         return message
@@ -203,13 +211,21 @@ class ImapMailbox:
                 if self._find_uid(connection, target, ref) is not None:
                     return MoveResult(ok=True, verified=True)  # already there
                 raise MailboxError(ErrorCode.NOT_FOUND, "No message with that ref.")
+            if "MOVE" not in connection.capabilities and "UIDPLUS" not in connection.capabilities:
+                # Without UID EXPUNGE, removing the source could expunge other messages too.
+                raise MailboxError(
+                    ErrorCode.UNSUPPORTED, "This IMAP server supports neither MOVE nor UIDPLUS, so it can't move mail safely."
+                )
             self._select(connection, source, readonly=False)
             if "MOVE" in connection.capabilities:
                 status, _ = connection.uid("MOVE", str(uid), f'"{target}"')
             else:
-                # COPY, then expunge only that UID (UIDPLUS); never an unscoped EXPUNGE.
+                # COPY, confirm the copy exists, then expunge only that UID (UIDPLUS).
                 status, _ = connection.uid("COPY", str(uid), f'"{target}"')
                 if status == "OK":
+                    if self._find_uid(connection, target, ref) is None:
+                        return MoveResult(ok=False, verified=False)  # source untouched
+                    self._select(connection, source, readonly=False)
                     connection.uid("STORE", str(uid), "+FLAGS.SILENT", r"(\Deleted)")
                     status, _ = connection.uid("EXPUNGE", str(uid))
             if status != "OK":
@@ -340,5 +356,8 @@ class ImapMailbox:
                 raise MailboxError(ErrorCode.UNAVAILABLE, f"The SMTP server refused the message: {error}") from error
         if self.settings.append_sent:
             with self._imap() as connection:
-                connection.append(f'"{self.folders.sent}"', r"(\Seen)", None, message.as_bytes())
+                status, detail = connection.append(f'"{self.folders.sent}"', r"(\Seen)", None, message.as_bytes())
+            if status != "OK":
+                # The mail went out; failing now would invite a duplicate send.
+                logger.warning("Sent, but saving a copy to %s failed: %s", self.folders.sent, detail)
         return SendResult(ok=True, sent_message_id=str(message["Message-ID"]))
