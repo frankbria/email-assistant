@@ -33,6 +33,10 @@ class Settings(BaseSettings):
     better_auth_url: str = "http://localhost:3000"
     better_auth_jwks_url_override: str | None = Field(default=None, alias="BETTER_AUTH_JWKS_URL")
 
+    # AI provider (env AI_PROVIDER / AI_MODEL); the Anthropic key is ANTHROPIC_API_KEY.
+    ai_provider: str = "anthropic"
+    ai_model: str = "claude-opus-5-5"
+
     # new flag for AI summarization
     use_ai_summary: bool = False
 

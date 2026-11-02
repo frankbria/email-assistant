@@ -8,7 +8,7 @@ The backend API for an executive-style AI assistant that processes emails, class
 - **Beanie 2**: MongoDB ODM based on PyMongo and Pydantic
 - **PyMongo** (`AsyncMongoClient`): asynchronous MongoDB driver
 - **uv**: Fast Python package and project manager
-- **OpenAI**: AI-powered classification and summary generation (optional)
+- **Anthropic Claude** (via `app/services/ai_provider.py`): AI classification, summaries and action suggestions (optional)
 
 ## 🧪 Setup & Installation
 
@@ -39,8 +39,8 @@ The backend API for an executive-style AI assistant that processes emails, class
 
 4. Configure your environment variables:
    ```
-   OPENAI_API_KEY=your_api_key_here
-   OPENAI_API_MODEL=gpt-3.5-turbo
+   ANTHROPIC_API_KEY=your_api_key_here
+   AI_MODEL=claude-opus-5-5
    USE_AI_CONTEXT=true
    USE_AI_SUMMARY=true
    USE_AI_ACTIONS=true

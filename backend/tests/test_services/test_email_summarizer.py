@@ -1,7 +1,7 @@
 # backend/tests/test_services/test_email_summarizer.py
 import importlib
 import pytest
-from types import SimpleNamespace
+from tests.utils.fakes import FakeAIProvider
 from app.models.email_message import EmailMessageBase
 import app.services.email_summarizer as es_module
 
@@ -68,19 +68,11 @@ async def test_generate_summary_ai(monkeypatch):
     importlib.reload(config_module)
     importlib.reload(es_module)
 
-    # Stub OpenAI client call
-    dummy = SimpleNamespace(
-        choices=[SimpleNamespace(message=SimpleNamespace(content="AI result"))]
+    monkeypatch.setattr(
+        es_module,
+        "get_ai_provider",
+        lambda: FakeAIProvider(es_module.TaskSummary(summary="AI result")),
     )
-
-    async def fake_create(*args, **kwargs):
-        return dummy
-
-    # No OPENAI_API_KEY in tests, so the module-level client is None; supply a fake one.
-    fake_client = SimpleNamespace(
-        chat=SimpleNamespace(completions=SimpleNamespace(create=fake_create))
-    )
-    monkeypatch.setattr(es_module, "openai_client", fake_client)
 
     email = EmailMessageBase(
         subject="Subj", body="Body text", sender="user@example.com"

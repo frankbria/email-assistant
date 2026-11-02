@@ -1,7 +1,6 @@
 # backend/tests/test_services/test_action_suggester.py
 
 import pytest
-import json
 from app.models.email_message import EmailMessageBase
 from app.services.action_suggester import (
     suggest_actions,
@@ -11,7 +10,8 @@ from app.services.action_suggester import (
 )
 from app.strategies.action_registry import ActionRegistry
 from app.config import Settings
-from tests.utils.fakes import mock_openai_response
+from app.services.action_suggester import ActionSuggestions
+from tests.utils.fakes import FakeAIProvider
 
 pytestmark = pytest.mark.asyncio
 
@@ -160,8 +160,8 @@ async def test_suggest_actions_for_unknown_context(monkeypatch):
 
 async def test_suggest_actions_ai_success(monkeypatch):
     monkeypatch.setattr(
-        "app.services.action_suggester.openai_client",
-        mock_openai_response(json.dumps(MOCK_AI_ACTIONS)),
+        "app.services.action_suggester.get_ai_provider",
+        lambda: FakeAIProvider(ActionSuggestions.model_validate(MOCK_AI_ACTIONS)),
     )
     monkeypatch.setattr(
         "app.config.get_settings",
@@ -179,8 +179,8 @@ async def test_suggest_actions_ai_success(monkeypatch):
 
 async def test_suggest_actions_ai_failure(monkeypatch):
     monkeypatch.setattr(
-        "app.services.action_suggester.openai_client",
-        mock_openai_response(exception=Exception("API Error")),
+        "app.services.action_suggester.get_ai_provider",
+        lambda: FakeAIProvider(error=Exception("API Error")),
     )
     actions = await suggest_actions_ai(TEST_EMAIL)
     assert actions is None
@@ -198,8 +198,8 @@ async def test_suggest_actions_with_ai_enabled(monkeypatch):
     )
 
     monkeypatch.setattr(
-        "app.services.action_suggester.openai_client",
-        mock_openai_response(json.dumps(MOCK_AI_ACTIONS)),
+        "app.services.action_suggester.get_ai_provider",
+        lambda: FakeAIProvider(ActionSuggestions.model_validate(MOCK_AI_ACTIONS)),
     )
 
     actions = await suggest_actions(TEST_EMAIL)
@@ -235,8 +235,8 @@ async def test_suggest_actions_ensures_minimum_actions(monkeypatch):
     )
     monkeypatch.setattr("app.config.get_settings", lambda: MockSettings())
     monkeypatch.setattr(
-        "app.services.action_suggester.openai_client",
-        mock_openai_response(json.dumps(MOCK_AI_ACTIONS)),
+        "app.services.action_suggester.get_ai_provider",
+        lambda: FakeAIProvider(ActionSuggestions.model_validate(MOCK_AI_ACTIONS)),
     )
 
     class MockStrategy:
