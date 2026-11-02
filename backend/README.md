@@ -113,6 +113,12 @@ backend/
 uv run pytest
 ```
 
+Live tests that call the paid Anthropic API are skipped by default. To run them (requires `ANTHROPIC_API_KEY`):
+
+```bash
+uv run pytest -m integration
+```
+
 Run with coverage report:
 
 ```bash
