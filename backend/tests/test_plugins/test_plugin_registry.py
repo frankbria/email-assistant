@@ -208,7 +208,11 @@ async def test_plugin_that_stops_answering_is_dropped_until_reconnected(tmp_path
         await registry.refresh(timeout=1)
 
         assert registry.states["remote"].status == "failed"
-        assert "remote" not in registry.clients
+        assert "remote" not in registry.clients and "remote" not in registry._connections
+
+        await registry.refresh(timeout=1)  # tries to reconnect; still down, still no error
+
+        assert registry.states["remote"].status == "failed"
     finally:
         await registry.close()
 
@@ -220,12 +224,15 @@ async def test_shutdown_during_a_slow_health_check_still_cancels(tmp_path, monke
     entry = stdio_entry("slow", env_from="{FAKE_HEALTH_DELAY: SLOW_HEALTH}")
     registry = PluginRegistry()
     running = asyncio.create_task(registry.run(load_plugins_config(write_config(tmp_path, "plugins:" + entry)), asyncio.Event()))
-    await asyncio.sleep(3)  # connected; the first health check is now stuck
+    async with asyncio.timeout(15):
+        while "slow" not in registry.clients:
+            await asyncio.sleep(0.1)
+    await asyncio.sleep(0.5)  # connected; the first health check (30 s) is now in flight
 
     running.cancel()
     done, _ = await asyncio.wait([running], timeout=15)
 
-    assert done and running.cancelled()
+    assert done and running.cancelled() and not registry.diagnoses  # stopped inside the health call
     assert registry.clients == {}
 
 

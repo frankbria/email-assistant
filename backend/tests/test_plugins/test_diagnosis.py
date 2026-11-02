@@ -151,9 +151,11 @@ async def test_bridge_restarted_is_shown_once_per_restart(running_watchdog):
     healthy = Health(status="ok", checks=[HealthCheck(layer="plugin", ok=True, detail="ok")], repair_actions=[])
     connected = PluginState(id="proton", status="connected")
 
+    first_read = await diagnose(connected, healthy, watchdog_config("127.0.0.1", port), seen_restarts=None)
     first = await diagnose(connected, healthy, watchdog_config("127.0.0.1", port), seen_restarts=1)
-    again = await diagnose(connected, healthy, watchdog_config("127.0.0.1", port), seen_restarts=first.bridge_restarts or 0)
+    again = await diagnose(connected, healthy, watchdog_config("127.0.0.1", port), seen_restarts=first.bridge_restarts)
 
+    assert first_read.kind == "ok" and first_read.bridge_restarts == 2  # older restarts aren't news
     assert first.kind == "bridge_restarted" and again.kind == "ok"
 
 

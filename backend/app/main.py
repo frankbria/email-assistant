@@ -30,6 +30,8 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)
 logger.info("Logger initialized. Log level is %s", LOG_LEVEL)
 
+PLUGIN_SHUTDOWN_SECONDS = 30  # each plugin closes within 5 s; this bounds a stuck task
+
 
 async def init_db(settings: Settings | None = None):
     """Initialize database connection"""
@@ -85,14 +87,16 @@ async def lifespan(app: FastAPI):
     try:
         await ready.wait()
         if plugin_task.done():
-            plugin_task.result()  # the plugin task died during startup: fail startup with its error
+            raise RuntimeError("Plugins failed to start; the error is logged below")
         app.state.plugins = plugins
         yield
     finally:
         plugin_task.cancel()
-        (outcome,) = await asyncio.gather(plugin_task, return_exceptions=True)
-        if isinstance(outcome, Exception):
-            logger.error("Plugin task ended with an error", exc_info=outcome)
+        await asyncio.wait({plugin_task}, timeout=PLUGIN_SHUTDOWN_SECONDS)
+        if not plugin_task.done():
+            logger.error("Plugins did not close within %s s", PLUGIN_SHUTDOWN_SECONDS)
+        elif not plugin_task.cancelled() and plugin_task.exception() is not None:
+            logger.error("Plugin task ended with an error", exc_info=plugin_task.exception())
         logger.debug("🌟 Lifespan: Shutting down DB")
         if client is not None:
             try:

@@ -74,10 +74,11 @@ async def diagnose(
     health: Health | None,
     watchdog: WatchdogConfig | None,
     timeout: float = 5,
-    seen_restarts: int = 0,
+    seen_restarts: int | None = 0,
 ) -> ConnectionState:
-    """`seen_restarts` is the watchdog's restart count at the last diagnosis, so a restart
-    is reported once rather than for as long as the watchdog runs."""
+    """`seen_restarts` is the watchdog's restart count at the last read, so a restart is
+    reported once rather than for as long as the watchdog runs; None (never read) only
+    records the count, so restarts from before the app started aren't news."""
     report: WatchdogReport | str | None = None
 
     def result(kind: Kind, message: str, layer: str | None = None) -> ConnectionState:
@@ -95,7 +96,7 @@ async def diagnose(
             return result("owner_action", failing.detail, failing.layer)
         if watchdog is not None:
             report = await read_watchdog(watchdog, timeout)
-            if isinstance(report, WatchdogReport) and report.bridge_restarts > seen_restarts:
+            if isinstance(report, WatchdogReport) and seen_restarts is not None and report.bridge_restarts > seen_restarts:
                 return result("bridge_restarted", "Bridge restarted. Mail is flowing again.")
         return result("ok", "Connected.")
     if state.status == "disabled":

@@ -5,6 +5,7 @@ import asyncio
 import logging
 import os
 from contextlib import AsyncExitStack
+from dataclasses import dataclass
 
 import httpx2
 from mcp import Client, StdioServerParameters
@@ -35,24 +36,35 @@ def read_env(name: str) -> str:
     return value
 
 
-async def close_quietly(plugin_id: str, connection: AsyncExitStack) -> None:
+@dataclass
+class HeldConnection:
+    """One plugin's MCP client, opened and closed by its own task: the client's anyio
+    scopes must be exited by the task that entered them, and a dead transport then
+    cancels only that task, never the app's."""
+
+    task: asyncio.Task[None]
+    closing: asyncio.Event
+
+
+async def close_quietly(plugin_id: str, held: HeldConnection) -> None:
     """Close one plugin's connection without letting it hang or break the others."""
-    try:
-        async with asyncio.timeout(CLOSE_TIMEOUT_SECONDS):
-            await connection.aclose()
-    except Exception:
-        logger.exception("Plugin %s did not close cleanly", plugin_id)
+    held.closing.set()
+    await asyncio.wait({held.task}, timeout=CLOSE_TIMEOUT_SECONDS)
+    if not held.task.done():
+        held.task.cancel()
+        logger.error("Plugin %s did not close within %s s", plugin_id, CLOSE_TIMEOUT_SECONDS)
+    elif not held.task.cancelled() and (error := held.task.exception()) is not None:
+        logger.error("Plugin %s connection ended with an error", plugin_id, exc_info=error)
 
 
-# Plugins connect one after another on purpose: each MCP client's anyio scopes must be
-# exited by the task that entered them, which is the app's lifespan task.
 class PluginRegistry:
     def __init__(self) -> None:
         self.configs: dict[str, PluginConfig] = {}
         self.states: dict[str, PluginState] = {}
         self.diagnoses: dict[str, ConnectionState] = {}
         self.clients: dict[str, Client] = {}
-        self._connections: dict[str, AsyncExitStack] = {}
+        self._seen_restarts: dict[str, int] = {}
+        self._connections: dict[str, HeldConnection] = {}
 
     async def connect_all(self, configs: list[PluginConfig]) -> None:
         for config in configs:
@@ -61,8 +73,7 @@ class PluginRegistry:
             logger.info("Plugin %s: %s", config.id, self.states[config.id].status)
 
     async def run(self, configs: list[PluginConfig], ready: asyncio.Event, interval_seconds: float = REFRESH_SECONDS) -> None:
-        """Connect, then refresh every interval until cancelled, all in this one task:
-        MCP clients must be closed by the task that opened them."""
+        """Connect, then refresh every interval until cancelled."""
         try:
             await self.connect_all(configs)
             await self.refresh()
@@ -85,11 +96,12 @@ class PluginRegistry:
                 await self._drop(plugin_id)
                 self.states[plugin_id] = await self._connect(config)
             health = await self._health(plugin_id)
-            previous = self.diagnoses.get(plugin_id)
-            seen_restarts = previous.bridge_restarts or 0 if previous else 0
-            self.diagnoses[plugin_id] = await diagnose(
-                self.states[plugin_id], health, config.watchdog, timeout, seen_restarts
+            diagnosis = await diagnose(
+                self.states[plugin_id], health, config.watchdog, timeout, self._seen_restarts.get(plugin_id)
             )
+            if diagnosis.bridge_restarts is not None:
+                self._seen_restarts[plugin_id] = diagnosis.bridge_restarts
+            self.diagnoses[plugin_id] = diagnosis
 
     async def _health(self, plugin_id: str) -> Health | None:
         client = self.clients.get(plugin_id)
@@ -101,21 +113,11 @@ class PluginRegistry:
             if result.is_error or result.structured_content is None:
                 raise PluginConnectError("health failed")
             return Health.model_validate(result.structured_content)
-        except asyncio.CancelledError:
-            # A dead transport fails the client's task group, which cancels this task through
-            # the client's scope; closing the connection ends that scope. Any other cancel
-            # (shutdown) is still pending afterwards and must propagate.
+        except Exception as error:
+            # The plugin stopped answering: drop the connection; the next refresh reconnects.
             await self._drop(plugin_id)
-            current = asyncio.current_task()
-            if current is not None and current.cancelling():
-                raise
-            error: BaseException = PluginConnectError("connection lost")
-        except Exception as caught:
-            await self._drop(plugin_id)
-            error = caught
-        # The plugin stopped answering: the next refresh reconnects.
-        self.states[plugin_id] = PluginState(id=plugin_id, status="failed", reason=f"Not answering: {error}")
-        return None
+            self.states[plugin_id] = PluginState(id=plugin_id, status="failed", reason=f"Not answering: {error}")
+            return None
 
     async def _drop(self, plugin_id: str) -> None:
         self.clients.pop(plugin_id, None)
@@ -132,12 +134,12 @@ class PluginRegistry:
     async def _connect(self, config: PluginConfig) -> PluginState:
         if not config.enabled:
             return PluginState(id=config.id, status="disabled")
-        connection = AsyncExitStack()
+        opened: asyncio.Future[Client] = asyncio.get_running_loop().create_future()
+        closing = asyncio.Event()
+        connection = HeldConnection(asyncio.create_task(self._hold(config, opened, closing)), closing)
         try:
             async with asyncio.timeout(CONNECT_TIMEOUT_SECONDS):
-                client = await connection.enter_async_context(
-                    Client(await self._target(config.transport, connection))
-                )
+                client = await asyncio.shield(opened)
                 info = await self._mailbox_info(client)
         except Exception as error:
             await close_quietly(config.id, connection)
@@ -155,6 +157,24 @@ class PluginRegistry:
         self._connections[config.id] = connection
         self.clients[config.id] = client
         return PluginState(id=config.id, status="connected", info=info)
+
+    @classmethod
+    async def _hold(cls, config: PluginConfig, opened: "asyncio.Future[Client]", closing: asyncio.Event) -> None:
+        try:
+            async with AsyncExitStack() as connection:
+                client = await connection.enter_async_context(
+                    Client(await cls._target(config.transport, connection))
+                )
+                opened.set_result(client)
+                await closing.wait()
+        except Exception as error:
+            if not opened.done():
+                opened.set_exception(error)
+                return  # reported through `opened`
+            raise
+        finally:
+            if not opened.done():
+                opened.cancel()
 
     @staticmethod
     async def _target(
