@@ -1,6 +1,6 @@
 // frontend/src/services/connectionsService.ts
 
-import { Connection } from '../types/api'
+import type { Connection } from '../types/api'
 import { apiFetch } from './apiClient'
 
 export async function fetchConnections(): Promise<Connection[]> {
