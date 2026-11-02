@@ -1,0 +1,43 @@
+# Production stack: FastAPI backend + Next.js frontend.
+# MongoDB is Atlas by default (MONGODB_URI). `--profile local-mongo` adds a MongoDB
+# container instead; then set MONGODB_URI=mongodb://mongo:27017.
+# Ports are configurable because the host is shared; check for conflicts first.
+name: email-assistant
+
+services:
+  backend:
+    build: ./backend
+    image: ghcr.io/frankbria/email-assistant-backend:${IMAGE_TAG:-latest}
+    restart: unless-stopped
+    env_file:
+      - path: .env
+        required: false
+    environment:
+      MONGODB_URI: ${MONGODB_URI:?set MONGODB_URI (Atlas, or mongodb://mongo:27017 with --profile local-mongo)}
+      MONGODB_DB: ${MONGODB_DB:-email_assistant}
+      FRONTEND_ORIGIN: ${FRONTEND_ORIGIN:-http://localhost:3000}
+      API_ENVIRONMENT: production
+    ports:
+      - "${BACKEND_PORT:-8000}:8000"
+
+  frontend:
+    build:
+      context: ./frontend
+      args:
+        NEXT_PUBLIC_API_BASE: ${PUBLIC_API_BASE:-http://localhost:8000}
+    image: ghcr.io/frankbria/email-assistant-frontend:${IMAGE_TAG:-latest}
+    restart: unless-stopped
+    depends_on:
+      - backend
+    ports:
+      - "${FRONTEND_PORT:-3000}:3000"
+
+  mongo:
+    image: mongo:8
+    profiles: [local-mongo]
+    restart: unless-stopped
+    volumes:
+      - mongo-data:/data/db
+
+volumes:
+  mongo-data:
