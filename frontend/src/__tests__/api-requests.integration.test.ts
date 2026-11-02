@@ -9,6 +9,7 @@ type RecordedRequest = { method: string; url: string; authorization: string | un
 
 const requests: RecordedRequest[] = []
 let signedIn = true
+let tokenEndpointBroken = false
 let server: Server
 
 function readBody(request: IncomingMessage): Promise<string> {
@@ -25,6 +26,11 @@ beforeAll(async () => {
     const url = request.url ?? ''
     response.setHeader('content-type', 'application/json')
     if (url.startsWith('/api/auth/token')) {
+      if (tokenEndpointBroken) {
+        response.statusCode = 500
+        response.end(JSON.stringify({ message: 'database unavailable' }))
+        return
+      }
       response.statusCode = signedIn ? 200 : 401
       response.end(JSON.stringify(signedIn ? { token: 'test-jwt' } : { message: 'Unauthorized' }))
       return
@@ -44,6 +50,7 @@ afterAll(() => server.close())
 beforeEach(() => {
   requests.length = 0
   signedIn = true
+  tokenEndpointBroken = false
 })
 
 async function callEveryService() {
@@ -77,6 +84,18 @@ describe('frontend → FastAPI requests', () => {
     const settings = await import('@/services/settingsService')
 
     await expect(settings.fetchUserSettings()).rejects.toThrow(/not signed in/i)
+    expect(requests).toHaveLength(0)
+  })
+
+  it('report an auth outage as an outage, not as signed out', async () => {
+    tokenEndpointBroken = true
+    const { apiFetch, NotSignedInError } = await import('@/services/apiClient')
+
+    const failure = await apiFetch('/api/v1/settings/email').catch((error: unknown) => error)
+
+    expect(failure).toBeInstanceOf(Error)
+    expect(failure).not.toBeInstanceOf(NotSignedInError)
+    expect(String(failure)).toMatch(/500/)
     expect(requests).toHaveLength(0)
   })
 })
