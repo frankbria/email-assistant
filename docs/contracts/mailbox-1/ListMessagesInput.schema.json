@@ -1,0 +1,52 @@
+{
+  "additionalProperties": false,
+  "properties": {
+    "folder": {
+      "enum": [
+        "inbox",
+        "sent"
+      ],
+      "title": "Folder",
+      "type": "string"
+    },
+    "cursor": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "description": "A next_cursor from an earlier call; omit to start.",
+      "title": "Cursor"
+    },
+    "since": {
+      "anyOf": [
+        {
+          "format": "date-time",
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "description": "Without a cursor: only messages on or after this time.",
+      "title": "Since"
+    },
+    "limit": {
+      "default": 100,
+      "maximum": 500,
+      "minimum": 1,
+      "title": "Limit",
+      "type": "integer"
+    }
+  },
+  "required": [
+    "folder"
+  ],
+  "title": "ListMessagesInput",
+  "type": "object"
+}

@@ -1,0 +1,14 @@
+[project]
+name = "mailbox-contract"
+version = "1.0.0"
+description = "The mailbox/1 MCP plugin contract: tool schemas, error codes, version rules."
+requires-python = ">=3.13"
+dependencies = ["pydantic>=2"]
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.ruff.lint]
+# Same pinned rules as backend/ (ruff 0.17 widened its defaults).
+select = ["E4", "E7", "E9", "F"]

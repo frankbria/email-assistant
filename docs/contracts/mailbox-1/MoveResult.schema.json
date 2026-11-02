@@ -1,0 +1,20 @@
+{
+  "additionalProperties": false,
+  "properties": {
+    "ok": {
+      "title": "Ok",
+      "type": "boolean"
+    },
+    "verified": {
+      "description": "True only after re-reading confirms the move; false counts as failure.",
+      "title": "Verified",
+      "type": "boolean"
+    }
+  },
+  "required": [
+    "ok",
+    "verified"
+  ],
+  "title": "MoveResult",
+  "type": "object"
+}

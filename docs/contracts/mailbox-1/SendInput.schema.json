@@ -1,0 +1,76 @@
+{
+  "$defs": {
+    "Address": {
+      "additionalProperties": false,
+      "properties": {
+        "name": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Name"
+        },
+        "email": {
+          "title": "Email",
+          "type": "string"
+        }
+      },
+      "required": [
+        "email"
+      ],
+      "title": "Address",
+      "type": "object"
+    }
+  },
+  "additionalProperties": false,
+  "properties": {
+    "to": {
+      "items": {
+        "$ref": "#/$defs/Address"
+      },
+      "minItems": 1,
+      "title": "To",
+      "type": "array"
+    },
+    "cc": {
+      "items": {
+        "$ref": "#/$defs/Address"
+      },
+      "title": "Cc",
+      "type": "array"
+    },
+    "subject": {
+      "title": "Subject",
+      "type": "string"
+    },
+    "body_text": {
+      "title": "Body Text",
+      "type": "string"
+    },
+    "in_reply_to_ref": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "description": "Reply to this message: sets In-Reply-To and References.",
+      "title": "In Reply To Ref"
+    }
+  },
+  "required": [
+    "to",
+    "subject",
+    "body_text"
+  ],
+  "title": "SendInput",
+  "type": "object"
+}
