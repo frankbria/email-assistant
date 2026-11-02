@@ -4,7 +4,7 @@ once when a `push` plugin says new mail arrived."""
 import asyncio
 import contextlib
 import logging
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 
 from mcp import Client
 from mcp.types import CallToolResult
@@ -18,6 +18,7 @@ from mailbox_contract import INBOX_URI, Capability, ErrorCode, ListMessagesOutpu
 logger = logging.getLogger(__name__)
 
 PAGE_SIZE = 100
+FIRST_CONNECT_DAYS = 14
 LIST_TIMEOUT_SECONDS = 60  # one hung plugin must not stop every other plugin's sync
 
 
@@ -29,10 +30,13 @@ class InvalidCursor(Exception):
     """The plugin no longer accepts the stored cursor (e.g. the folder was rebuilt)."""
 
 
-async def list_inbox(plugin_id: str, client: Client, cursor: str | None, page_size: int) -> ListMessagesOutput:
-    """One page of the inbox after `cursor`."""
+async def list_inbox(
+    plugin_id: str, client: Client, cursor: str | None, since: datetime, page_size: int
+) -> ListMessagesOutput:
+    """One page of the inbox after `cursor`; without a cursor, from `since`."""
+    arguments = {"folder": "inbox", "cursor": cursor, "since": since.isoformat(), "limit": page_size}
     async with asyncio.timeout(LIST_TIMEOUT_SECONDS):
-        result = await client.call_tool("list_messages", {"folder": "inbox", "cursor": cursor, "limit": page_size})
+        result = await client.call_tool("list_messages", arguments)
     if result.is_error or result.structured_content is None:
         raise list_failure(plugin_id, result)
     return ListMessagesOutput.model_validate(result.structured_content)
@@ -66,37 +70,45 @@ async def inbox_cursor(owner_id: str, plugin_id: str) -> SyncCursor:
     stored = await SyncCursor.find_one(
         SyncCursor.owner_id == owner_id, SyncCursor.plugin_id == plugin_id, SyncCursor.folder == "inbox"
     )
-    return stored or SyncCursor(owner_id=owner_id, plugin_id=plugin_id, folder="inbox")
+    return stored or SyncCursor(owner_id=owner_id, plugin_id=plugin_id, folder="inbox", first_pass_complete=False)
 
 
-async def store_page(owner_id: str, plugin_id: str, page: ListMessagesOutput) -> list[Message]:
+async def store_page(
+    owner_id: str, plugin_id: str, page: ListMessagesOutput, first_pass: bool = False
+) -> list[Message]:
     """The page's messages that weren't stored yet, now stored."""
     stored = []
     for summary in page.messages:
-        message = Message(owner_id=owner_id, plugin_id=plugin_id, **summary.model_dump())
+        message = Message(owner_id=owner_id, plugin_id=plugin_id, first_pass=first_pass, **summary.model_dump())
         if await store_if_new(message):
             stored.append(message)
     return stored
 
 
-async def sync_inbox(owner_id: str, plugin_id: str, client: Client, page_size: int = PAGE_SIZE) -> list[Message]:
+async def sync_inbox(
+    owner_id: str, plugin_id: str, client: Client, page_size: int = PAGE_SIZE, window_days: int = FIRST_CONNECT_DAYS
+) -> list[Message]:
     """Store the inbox mail that arrived since the stored cursor and return it, oldest first.
+    Without a cursor only the last `window_days` are listed; older mail is left alone.
+    Mail stored before the first listing completes is marked `first_pass` (spec §5.3).
 
     The cursor is saved after each page is stored: a crash in between re-lists that page,
     and dedupe drops what was already stored, so nothing is missed or duplicated."""
     cursor = await inbox_cursor(owner_id, plugin_id)
+    since = datetime.now(UTC) - timedelta(days=window_days)
     new_messages: list[Message] = []
     while True:
         try:
-            page = await list_inbox(plugin_id, client, cursor.cursor, page_size)
+            page = await list_inbox(plugin_id, client, cursor.cursor, since, page_size)
         except InvalidCursor as error:
             if cursor.cursor is None:
                 raise SyncError(f"{plugin_id}: list_messages rejected a fresh start: {error}") from error
             logger.warning("Plugin %s no longer accepts its cursor (%s); listing the inbox from the start", plugin_id, error)
             cursor.cursor = None
             continue
-        new_messages += await store_page(owner_id, plugin_id, page)
+        new_messages += await store_page(owner_id, plugin_id, page, first_pass=not cursor.first_pass_complete)
         cursor.cursor = page.next_cursor
+        cursor.first_pass_complete = cursor.first_pass_complete or not page.has_more
         cursor.updated_at = datetime.now(UTC)
         await cursor.save()
         if not page.has_more:
@@ -106,10 +118,17 @@ async def sync_inbox(owner_id: str, plugin_id: str, client: Client, page_size: i
 class SyncEngine:
     """Polls every connected plugin each interval; a push from any plugin starts a pass early."""
 
-    def __init__(self, plugins: PluginRegistry, users: AsyncCollection[dict[str, object]], poll_seconds: float) -> None:
+    def __init__(
+        self,
+        plugins: PluginRegistry,
+        users: AsyncCollection[dict[str, object]],
+        poll_seconds: float,
+        first_connect_days: int = FIRST_CONNECT_DAYS,
+    ) -> None:
         self.plugins = plugins
         self.users = users
         self.poll_seconds = poll_seconds
+        self.first_connect_days = first_connect_days
         self.wake = asyncio.Event()
         self._listeners: dict[str, tuple[Client, asyncio.Task[None]]] = {}
 
@@ -135,7 +154,9 @@ class SyncEngine:
             return  # nobody has signed up yet, so there is no one to sync for
         for plugin_id, client in list(self.plugins.clients.items()):
             try:
-                new_messages = await sync_inbox(str(owner["_id"]), plugin_id, client)
+                new_messages = await sync_inbox(
+                    str(owner["_id"]), plugin_id, client, window_days=self.first_connect_days
+                )
             except Exception:
                 logger.exception("Sync of plugin %s failed; retrying next pass", plugin_id)
                 continue

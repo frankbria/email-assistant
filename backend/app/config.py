@@ -40,6 +40,9 @@ class Settings(BaseSettings):
     # How often each plugin's inbox is polled (env SYNC_POLL_SECONDS); a push polls sooner.
     sync_poll_seconds: float = Field(default=120, gt=0)
 
+    # On first connect only mail from this many recent days is synced (env FIRST_CONNECT_DAYS).
+    first_connect_days: int = Field(default=14, gt=0)
+
     # new flag for AI summarization
     use_ai_summary: bool = False
 

@@ -94,7 +94,9 @@ async def lifespan(app: FastAPI):
         if plugin_task.done():
             raise RuntimeError("Plugins failed to start; the error is logged below")
         app.state.plugins = plugins
-        sync = SyncEngine(plugins, client[settings.current_mongodb_db]["user"], settings.sync_poll_seconds)
+        sync = SyncEngine(
+            plugins, client[settings.current_mongodb_db]["user"], settings.sync_poll_seconds, settings.first_connect_days
+        )
         sync_task = asyncio.create_task(sync.run())
         yield
     finally:

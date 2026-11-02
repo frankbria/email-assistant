@@ -23,6 +23,7 @@ class Message(Document):
     snippet: str
     list_id: str | None = None
     in_reply_to: str | None = None
+    first_pass: bool = False  # arrived in the first-connect pass: every decision on it is `ask` (spec §5.3)
 
     class Settings:
         name = "messages"

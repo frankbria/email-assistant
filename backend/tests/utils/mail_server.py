@@ -13,9 +13,10 @@ import uuid
 from collections.abc import Iterator
 from contextlib import contextmanager
 from dataclasses import dataclass
+from datetime import datetime
 from email import message_from_bytes, policy
 from email.message import EmailMessage
-from email.utils import make_msgid
+from email.utils import format_datetime, make_msgid
 
 MAIL_HOST = os.environ.get("MAIL_TEST_HOST", "127.0.0.1")
 SMTP_PORT = int(os.environ.get("MAIL_TEST_SMTP_PORT", "3025"))
@@ -76,12 +77,17 @@ class Mailbox:
         self._wait_for(message["Message-ID"], "INBOX")
         return message["Message-ID"]
 
-    def append(self, folder: str, *, sender: str, subject: str, body: str, to: str | None = None) -> str:
-        """Put a message straight into a folder (Sent, Archive, …) over IMAP; returns its Message-ID."""
+    def append(
+        self, folder: str, *, sender: str, subject: str, body: str, to: str | None = None, received: datetime | None = None
+    ) -> str:
+        """Put a message straight into a folder (Sent, Archive, …) over IMAP; returns its Message-ID.
+        `received` backdates both its Date header and the server's arrival (IMAP internal) date."""
         message = build_message(sender=sender, to=to or self.address, subject=subject, body=body)
+        if received is not None:
+            message["Date"] = format_datetime(received)
         with self.imap() as connection:
             connection.create(folder)  # "already exists" is fine
-            status, _ = connection.append(folder, None, None, message.as_bytes())
+            status, _ = connection.append(folder, None, received, message.as_bytes())
             assert status == "OK", f"APPEND to {folder} failed"
         return message["Message-ID"]
 
