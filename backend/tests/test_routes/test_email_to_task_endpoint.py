@@ -4,6 +4,7 @@ import pytest
 
 from app.models.email_message import EmailMessage
 from app.models.assistant_task import AssistantTask
+from tests.utils.auth import bearer_headers
 
 
 @pytest.mark.asyncio
@@ -87,9 +88,9 @@ async def test_user_specific_email_submission(async_client, db_transaction):
     # Use a specific test user ID
     test_user_id = "user_specific_test"
 
-    # Submit the email via API with user_id parameter
+    # Submit the email signed in as that user
     response = await async_client.post(
-        f"/api/v1/email?user_id={test_user_id}", json=test_email
+        "/api/v1/email", json=test_email, headers=bearer_headers(test_user_id)
     )
     assert response.status_code == 200
     result = response.json()

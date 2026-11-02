@@ -4,6 +4,7 @@ import pytest
 
 from app.models.email_message import EmailMessage
 from app.models.assistant_task import AssistantTask
+from tests.utils.auth import bearer_headers
 
 
 @pytest.mark.asyncio
@@ -116,10 +117,10 @@ async def test_api_endpoints_filter_by_user_id(async_client, db_transaction):
                 )
                 await task.insert()
 
-    # Test tasks endpoint with different user_ids
+    # Each user, signed in, sees only their own data
     for user_id in user_ids:
         # Request tasks for specific user
-        response = await async_client.get(f"/api/v1/tasks/?user_id={user_id}")
+        response = await async_client.get("/api/v1/tasks/", headers=bearer_headers(user_id))
         assert response.status_code == 200
 
         # Parse the response data
@@ -133,7 +134,7 @@ async def test_api_endpoints_filter_by_user_id(async_client, db_transaction):
     # Test spam endpoint with different user_ids
     for user_id in user_ids:
         # Request spam emails for specific user
-        response = await async_client.get(f"/api/v1/email/spam?user_id={user_id}")
+        response = await async_client.get("/api/v1/email/spam", headers=bearer_headers(user_id))
         assert response.status_code == 200
 
         # Parse the response data

@@ -1,10 +1,10 @@
 # backend/app/api/routers/settings.py
 
-from fastapi import APIRouter, HTTPException, Body, Request
+from fastapi import APIRouter, HTTPException, Body
 from typing import Optional
 from app.models.user_settings import UserSettings
 from pydantic import BaseModel, Field, ValidationError
-from app.utils.user_utils import get_current_user_id
+from app.auth import OwnerId
 
 router = APIRouter(prefix="/api/v1/settings", tags=["settings"])
 
@@ -17,8 +17,8 @@ class UpdateEmailSettings(BaseModel):
 
 
 @router.get("/email", response_model=UserSettings)
-async def get_email_settings(request: Request):
-    user_id = await get_current_user_id(request)
+async def get_email_settings(owner_id: OwnerId):
+    user_id = owner_id
     settings = await UserSettings.find_one(UserSettings.user_id == user_id)
     if not settings:
         # Sensible defaults for first-time users
@@ -29,10 +29,10 @@ async def get_email_settings(request: Request):
 
 @router.patch("/email", response_model=UserSettings)
 async def update_email_settings(
-    request: Request, payload: UpdateEmailSettings = Body(...)
+    owner_id: OwnerId, payload: UpdateEmailSettings = Body(...)
 ):
     try:
-        user_id = await get_current_user_id(request)
+        user_id = owner_id
         update_data = payload.model_dump(exclude_unset=True)
         if not update_data:
             raise HTTPException(

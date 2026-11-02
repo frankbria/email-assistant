@@ -21,10 +21,11 @@ from app.main import app
 from app.models.email_message import EmailMessage
 from app.models.assistant_task import AssistantTask
 from app.models.user_settings import UserSettings
-from app.config import get_settings, Settings
+from app.config import Settings
 from app.strategies.action_registry import ActionRegistry
 import json
 from tests.utils.fakes import mock_openai_response
+from tests.utils.auth import AUTH_BASE_URL, OWNER_ID, bearer_headers
 
 # Load environment variables
 load_dotenv()
@@ -36,6 +37,9 @@ os.environ["USE_AI_CONTEXT"] = "false"
 os.environ["USE_AI_SUMMARY"] = "false"
 os.environ["OPENAI_API_KEY"] = "test_key"
 os.environ["OPENAI_API_MODEL"] = "gpt-3-5-turbo"
+
+# Better Auth stand-in: a real local JWKS endpoint for test-minted tokens.
+os.environ["BETTER_AUTH_URL"] = AUTH_BASE_URL
 
 # ---------------------
 # Core Fixtures
@@ -83,8 +87,8 @@ async def db_transaction(test_db):
 
 @pytest.fixture
 def client():
-    """Create a test client for route tests."""
-    with TestClient(app) as c:
+    """Test client signed in as OWNER_ID."""
+    with TestClient(app, headers=bearer_headers()) as c:
         yield c
 
 
@@ -95,6 +99,7 @@ async def async_client():
         transport=httpx.ASGITransport(app=app),
         base_url="http://test",
         follow_redirects=True,
+        headers=bearer_headers(),
     ) as client:
 
         yield client
@@ -207,7 +212,7 @@ def auto_inject_user_id(monkeypatch):
         def _init(self, *args, **kwargs):
             # Inject user_id into the constructor
             if "user_id" not in kwargs or kwargs["user_id"] is None:
-                kwargs["user_id"] = get_settings().DEFAULT_USER_ID
+                kwargs["user_id"] = OWNER_ID
             return orig_init(self, *args, **kwargs)
 
         return _init
