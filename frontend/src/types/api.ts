@@ -89,6 +89,7 @@ export type DiagnosisKind =
 export interface Connection {
   plugin_id: string
   status: 'connected' | 'refused' | 'failed' | 'disabled'
+  plugin_name: string | null
   account: string | null
   reason: string | null
   diagnosis: {
@@ -99,4 +100,15 @@ export interface Connection {
   } | null
   repairing: boolean
   last_synced_at: string | null
+}
+
+export interface SetupStep {
+  title: string
+  status: 'done' | 'failing' | 'waiting'
+  detail: string | null
+}
+
+export interface Checklist {
+  plugin_id: string
+  steps: SetupStep[]
 }
