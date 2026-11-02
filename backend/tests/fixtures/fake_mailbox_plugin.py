@@ -2,7 +2,7 @@
 
 FAKE_CONTRACT_VERSION, FAKE_ACCOUNT, FAKE_CAPABILITIES (comma-separated), FAKE_INFO_DELAY and
 FAKE_HEALTH_DELAY (seconds) in its environment control what it reports. `list_messages` returns no
-mail and counts its calls in `next_cursor`; FAKE_LIST_FAILS makes it fail. The `fake_new_mail` tool
+mail and counts its calls in `next_cursor`; FAKE_LIST_FAILS makes it fail and FAKE_LIST_DELAY slow. The `fake_new_mail` tool
 publishes the push event a `push` plugin sends when mail arrives.
 """
 
@@ -45,6 +45,7 @@ async def list_messages(folder: str, cursor: str | None = None, limit: int = 100
     global list_calls
     if os.environ.get("FAKE_LIST_FAILS"):
         raise RuntimeError("the fake mailbox is unavailable")
+    await anyio.sleep(float(os.environ.get("FAKE_LIST_DELAY", "0")))
     list_calls += 1
     return ListMessagesOutput(messages=[], next_cursor=str(list_calls), has_more=False)
 

@@ -18,6 +18,7 @@ from mailbox_contract import INBOX_URI, Capability, ErrorCode, ListMessagesOutpu
 logger = logging.getLogger(__name__)
 
 PAGE_SIZE = 100
+LIST_TIMEOUT_SECONDS = 60  # one hung plugin must not stop every other plugin's sync
 
 
 class SyncError(Exception):
@@ -30,7 +31,8 @@ class InvalidCursor(Exception):
 
 async def list_inbox(plugin_id: str, client: Client, cursor: str | None, page_size: int) -> ListMessagesOutput:
     """One page of the inbox after `cursor`."""
-    result = await client.call_tool("list_messages", {"folder": "inbox", "cursor": cursor, "limit": page_size})
+    async with asyncio.timeout(LIST_TIMEOUT_SECONDS):
+        result = await client.call_tool("list_messages", {"folder": "inbox", "cursor": cursor, "limit": page_size})
     if result.is_error or result.structured_content is None:
         raise list_failure(plugin_id, result)
     return ListMessagesOutput.model_validate(result.structured_content)
@@ -46,11 +48,13 @@ def list_failure(plugin_id: str, result: CallToolResult) -> InvalidCursor | Sync
 
 
 async def store_if_new(message: Message) -> bool:
-    """Dedupe within one account by ref and by Message-ID (one delivery can land twice)."""
+    """Dedupe within one account by ref and by Message-ID (one delivery can land twice).
+    A blank Message-ID (the header is missing) identifies nothing, so only the ref counts then."""
+    same_mail: list[dict[str, str]] = [{"ref": message.ref}]
+    if message.message_id:
+        same_mail.append({"message_id": message.message_id})
     duplicate = await Message.find_one(
-        Message.owner_id == message.owner_id,
-        Message.plugin_id == message.plugin_id,
-        {"$or": [{"ref": message.ref}, {"message_id": message.message_id}]},
+        Message.owner_id == message.owner_id, Message.plugin_id == message.plugin_id, {"$or": same_mail}
     )
     if duplicate is not None:
         return False
@@ -114,7 +118,10 @@ class SyncEngine:
             while True:
                 self.wake.clear()
                 self._listen_for_push()
-                await self.sync_all()
+                try:
+                    await self.sync_all()
+                except Exception:  # e.g. MongoDB briefly unreachable: the next pass retries
+                    logger.exception("Sync pass failed; retrying next pass")
                 with contextlib.suppress(TimeoutError):
                     async with asyncio.timeout(self.poll_seconds):
                         await self.wake.wait()

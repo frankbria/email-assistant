@@ -8,7 +8,10 @@ from pathlib import Path
 
 import pytest
 from pydantic import ValidationError
+from pymongo import AsyncMongoClient
 from pymongo.asynchronous.database import AsyncDatabase
+
+from app import sync
 
 from app.config import Settings
 from app.models.message import Message
@@ -90,15 +93,19 @@ async def test_one_mail_under_two_refs_or_listed_twice_is_stored_once(test_db):
         })
 
     page = ListMessagesOutput(
-        messages=[summary("uid-1", "<one@x>"), summary("uid-2", "<one@x>"), summary("uid-3", "<two@x>")],
-        next_cursor="3", has_more=False,
+        messages=[
+            summary("uid-1", "<one@x>"), summary("uid-2", "<one@x>"), summary("uid-3", "<two@x>"),
+            # Mail without a Message-ID header: a blank id says nothing about being the same mail.
+            summary("uid-4", ""), summary("uid-5", ""),
+        ],
+        next_cursor="5", has_more=False,
     )
     first = await store_page(OWNER, PLUGIN, page)
     relisted = await store_page(OWNER, PLUGIN, page)
 
-    assert [message.ref for message in first] == ["uid-1", "uid-3"]
+    assert [message.ref for message in first] == ["uid-1", "uid-3", "uid-4", "uid-5"]
     assert relisted == []
-    assert sorted(await stored_message_ids()) == ["<one@x>", "<two@x>"]
+    assert sorted(await stored_message_ids()) == ["", "", "<one@x>", "<two@x>"]
 
 
 async def test_a_cursor_the_plugin_no_longer_accepts_restarts_without_duplicates(test_db, mailbox: Mailbox):
@@ -140,6 +147,36 @@ async def test_engine_polls_on_its_interval_and_one_failing_plugin_does_not_stop
         finally:
             running.cancel()
             await asyncio.wait({running})
+
+
+async def test_a_plugin_that_never_answers_does_not_hold_up_the_others(test_db, mailbox: Mailbox, monkeypatch):
+    monkeypatch.setenv("FAKE_HANGS", "3600")
+    monkeypatch.setattr(sync, "LIST_TIMEOUT_SECONDS", 0.5)
+    await add_owner(test_db)
+    arrived = mailbox.deliver(sender="a@example.com", subject="New", body="x")
+    hung = fake_plugin("hung", {"FAKE_LIST_DELAY": "FAKE_HANGS"})
+    async with connected(hung, reference_imap_plugin(mailbox)) as registry:
+        async with asyncio.timeout(10):
+            await SyncEngine(registry, test_db["user"], poll_seconds=60).sync_all()
+
+    assert await stored_message_ids() == [arrived]
+
+
+async def test_a_failing_pass_is_logged_and_the_engine_keeps_polling(caplog):
+    unreachable: AsyncMongoClient[dict[str, object]] = AsyncMongoClient("mongodb://127.0.0.1:9", serverSelectionTimeoutMS=50)
+    engine = SyncEngine(PluginRegistry(), unreachable["nowhere"]["user"], poll_seconds=0.05)
+    running = asyncio.create_task(engine.run())
+
+    async def failed_twice() -> bool:
+        return sum("Sync pass failed" in record.message for record in caplog.records) >= 2
+
+    try:
+        await eventually(failed_twice)
+        assert not running.done()
+    finally:
+        running.cancel()
+        await asyncio.wait({running})
+        await unreachable.close()
 
 
 async def test_engine_waits_for_an_owner_before_syncing(test_db, mailbox: Mailbox):
