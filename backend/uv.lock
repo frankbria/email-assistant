@@ -405,6 +405,7 @@ dev = [
     { name = "imap-mailbox" },
     { name = "jsonschema" },
     { name = "mypy" },
+    { name = "proton-mailbox-plugin" },
     { name = "pytest" },
     { name = "pytest-asyncio" },
     { name = "pytest-benchmark" },
@@ -436,6 +437,7 @@ dev = [
     { name = "imap-mailbox", editable = "../packages/imap-mailbox" },
     { name = "jsonschema", specifier = ">=4.26.0" },
     { name = "mypy", specifier = ">=2.4.1" },
+    { name = "proton-mailbox-plugin", editable = "../plugins/proton" },
     { name = "pytest" },
     { name = "pytest-asyncio" },
     { name = "pytest-benchmark" },
@@ -910,6 +912,27 @@ source = { registry = "https://pypi.org/simple" }
 sdist = { url = "https://files.pythonhosted.org/packages/f9/e2/3e91f31a7d2b083fe6ef3fa267035b518369d9511ffab804f839851d2779/pluggy-1.6.0.tar.gz", hash = "sha256:7dcc130b76258d33b90f61b658791dede3486c3e6bfb003ee5c9bfb396dd22f3", size = 69412, upload-time = "2025-05-15T12:30:07.975Z" }
 wheels = [
     { url = "https://files.pythonhosted.org/packages/54/20/4d324d65cc6d9205fabedc306948156824eb9f0ee1633355a8f7ec5c66bf/pluggy-1.6.0-py3-none-any.whl", hash = "sha256:e920276dd6813095e9377c0bc5566d94c932c33b27a3e3945d8389c374dd4746", size = 20538, upload-time = "2025-05-15T12:30:06.134Z" },
+]
+
+[[package]]
+name = "proton-mailbox-plugin"
+version = "0.1.0"
+source = { editable = "../plugins/proton" }
+dependencies = [
+    { name = "imap-mailbox" },
+    { name = "mailbox-contract" },
+    { name = "mcp" },
+    { name = "pydantic-settings" },
+    { name = "uvicorn" },
+]
+
+[package.metadata]
+requires-dist = [
+    { name = "imap-mailbox", editable = "../packages/imap-mailbox" },
+    { name = "mailbox-contract", editable = "../packages/mailbox-contract" },
+    { name = "mcp", specifier = ">=2.3" },
+    { name = "pydantic-settings", specifier = ">=2" },
+    { name = "uvicorn" },
 ]
 
 [[package]]

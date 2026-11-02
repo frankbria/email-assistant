@@ -90,6 +90,23 @@ class ImapMailbox:
             inbox=settings.folder_inbox, archive=settings.folder_archive, sent=settings.folder_sent
         )
 
+    # --- plain-language failures (providers override these) ---------------------------
+
+    def unreachable_message(self, protocol: str, host: str, port: int) -> str:
+        return f"Can't reach the {protocol} server at {host}:{port}."
+
+    def untrusted_certificate_message(self, protocol: str, error: ssl.SSLError) -> str:
+        return f"The {protocol} server's certificate wasn't trusted ({error.reason})."
+
+    def login_rejected_message(self, protocol: str) -> str:
+        return f"The {protocol} server rejected the login."
+
+    def handshake_failed_message(self, protocol: str, host: str, port: int) -> str:
+        return (
+            f"The {protocol} server at {host}:{port} didn't respond as expected. "
+            "Check the port and the security setting (STARTTLS or SSL)."
+        )
+
     # --- connections -----------------------------------------------------------------
 
     def _tls_context(self) -> ssl.SSLContext:
@@ -99,23 +116,27 @@ class ImapMailbox:
     @contextmanager
     def _imap(self) -> Iterator[imaplib.IMAP4]:
         host, port = self.settings.imap_host, self.settings.imap_port
+        tls = self.settings.imap_tls or self.settings.tls
         try:
-            if self.settings.tls == "ssl":
+            if tls == "ssl":
                 connection: imaplib.IMAP4 = imaplib.IMAP4_SSL(host, port, ssl_context=self._tls_context(), timeout=15)
             else:
                 connection = imaplib.IMAP4(host, port, timeout=15)
-                if self.settings.tls == "starttls":
+                if tls == "starttls":
                     connection.starttls(ssl_context=self._tls_context())
-        except ssl.SSLError as error:
-            raise MailboxError(ErrorCode.UNAVAILABLE, f"The IMAP server's certificate wasn't trusted ({error.reason}).") from error
+        except ssl.SSLCertVerificationError as error:
+            raise MailboxError(ErrorCode.UNAVAILABLE, self.untrusted_certificate_message("IMAP", error)) from error
+        except (ssl.SSLError, TimeoutError, imaplib.IMAP4.error) as error:
+            # A TLS/plaintext mismatch shows up as a stall or a garbled greeting.
+            raise MailboxError(ErrorCode.UNAVAILABLE, self.handshake_failed_message("IMAP", host, port)) from error
         except OSError as error:
-            raise MailboxError(ErrorCode.UNAVAILABLE, f"Can't reach the IMAP server at {host}:{port}.") from error
+            raise MailboxError(ErrorCode.UNAVAILABLE, self.unreachable_message("IMAP", host, port)) from error
         try:
             connection.login(self.settings.username, self.settings.password)
         except imaplib.IMAP4.error as error:
             with suppress(Exception):
                 connection.logout()
-            raise MailboxError(ErrorCode.AUTH_FAILED, "The IMAP server rejected the login.") from error
+            raise MailboxError(ErrorCode.AUTH_FAILED, self.login_rejected_message("IMAP")) from error
         try:
             yield connection
         finally:
@@ -125,19 +146,24 @@ class ImapMailbox:
     @contextmanager
     def _smtp(self) -> Iterator[smtplib.SMTP]:
         host, port = self.settings.smtp_host, self.settings.smtp_port
+        tls = self.settings.smtp_tls or self.settings.tls
         try:
-            if self.settings.tls == "ssl":
+            if tls == "ssl":
                 connection: smtplib.SMTP = smtplib.SMTP_SSL(host, port, context=self._tls_context(), timeout=15)
             else:
                 connection = smtplib.SMTP(host, port, timeout=15)
-                if self.settings.tls == "starttls":
+                if tls == "starttls":
                     connection.starttls(context=self._tls_context())
             if self.settings.smtp_login:
                 connection.login(self.settings.username, self.settings.password)
         except smtplib.SMTPAuthenticationError as error:
-            raise MailboxError(ErrorCode.AUTH_FAILED, "The SMTP server rejected the login.") from error
+            raise MailboxError(ErrorCode.AUTH_FAILED, self.login_rejected_message("SMTP")) from error
+        except ssl.SSLCertVerificationError as error:
+            raise MailboxError(ErrorCode.UNAVAILABLE, self.untrusted_certificate_message("SMTP", error)) from error
+        except (ssl.SSLError, TimeoutError, smtplib.SMTPServerDisconnected) as error:
+            raise MailboxError(ErrorCode.UNAVAILABLE, self.handshake_failed_message("SMTP", host, port)) from error
         except (OSError, smtplib.SMTPException) as error:
-            raise MailboxError(ErrorCode.UNAVAILABLE, f"Can't reach the SMTP server at {host}:{port}.") from error
+            raise MailboxError(ErrorCode.UNAVAILABLE, self.unreachable_message("SMTP", host, port)) from error
         try:
             yield connection
         finally:
