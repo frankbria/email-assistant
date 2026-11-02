@@ -69,7 +69,10 @@ class PluginRegistry:
             ready.set()
             while True:
                 await asyncio.sleep(interval_seconds)
-                await self.refresh()
+                try:
+                    await self.refresh()
+                except Exception:
+                    logger.exception("Plugin refresh failed; retrying next cycle")
         finally:
             ready.set()
             await self.close()
@@ -79,13 +82,14 @@ class PluginRegistry:
         owner's fix shows up within one refresh."""
         for plugin_id, config in self.configs.items():
             if config.enabled and self.states[plugin_id].status != "connected":
-                connection = self._connections.pop(plugin_id, None)
-                if connection is not None:
-                    await close_quietly(plugin_id, connection)
-                self.clients.pop(plugin_id, None)
+                await self._drop(plugin_id)
                 self.states[plugin_id] = await self._connect(config)
             health = await self._health(plugin_id)
-            self.diagnoses[plugin_id] = await diagnose(self.states[plugin_id], health, config.watchdog, timeout)
+            previous = self.diagnoses.get(plugin_id)
+            seen_restarts = previous.bridge_restarts or 0 if previous else 0
+            self.diagnoses[plugin_id] = await diagnose(
+                self.states[plugin_id], health, config.watchdog, timeout, seen_restarts
+            )
 
     async def _health(self, plugin_id: str) -> Health | None:
         client = self.clients.get(plugin_id)
@@ -97,10 +101,27 @@ class PluginRegistry:
             if result.is_error or result.structured_content is None:
                 raise PluginConnectError("health failed")
             return Health.model_validate(result.structured_content)
-        except Exception as error:
-            # The plugin stopped answering: drop the connection; the next refresh reconnects.
-            self.states[plugin_id] = PluginState(id=plugin_id, status="failed", reason=f"Not answering: {error}")
-            return None
+        except asyncio.CancelledError:
+            # A dead transport fails the client's task group, which cancels this task through
+            # the client's scope; closing the connection ends that scope. Any other cancel
+            # (shutdown) is still pending afterwards and must propagate.
+            await self._drop(plugin_id)
+            current = asyncio.current_task()
+            if current is not None and current.cancelling():
+                raise
+            error: BaseException = PluginConnectError("connection lost")
+        except Exception as caught:
+            await self._drop(plugin_id)
+            error = caught
+        # The plugin stopped answering: the next refresh reconnects.
+        self.states[plugin_id] = PluginState(id=plugin_id, status="failed", reason=f"Not answering: {error}")
+        return None
+
+    async def _drop(self, plugin_id: str) -> None:
+        self.clients.pop(plugin_id, None)
+        connection = self._connections.pop(plugin_id, None)
+        if connection is not None:
+            await close_quietly(plugin_id, connection)
 
     async def close(self) -> None:
         for plugin_id, connection in self._connections.items():

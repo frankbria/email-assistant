@@ -1,10 +1,13 @@
 """A minimal real mailbox/1 MCP server for tests (stdio by default, `http <port>` for HTTP).
 
-FAKE_CONTRACT_VERSION and FAKE_ACCOUNT in its environment control what it reports.
+FAKE_CONTRACT_VERSION, FAKE_ACCOUNT and FAKE_HEALTH_DELAY (seconds) in its environment
+control what it reports.
 """
 
 import os
 import sys
+
+import anyio
 
 from mcp.server.mcpserver import MCPServer
 
@@ -26,7 +29,8 @@ def mailbox_info() -> MailboxInfo:
 
 
 @server.tool()
-def health() -> Health:
+async def health() -> Health:
+    await anyio.sleep(float(os.environ.get("FAKE_HEALTH_DELAY", "0")))
     return Health(status="ok", checks=[HealthCheck(layer="plugin", ok=True, detail="ok")], repair_actions=[])
 
 

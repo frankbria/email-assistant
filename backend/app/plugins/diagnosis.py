@@ -24,6 +24,7 @@ class ConnectionState(BaseModel):
     kind: Kind
     message: str
     first_failing_layer: str | None = None
+    bridge_restarts: int | None = None  # the watchdog's running count, when it was read
     checked_at: datetime
 
 
@@ -44,7 +45,9 @@ def refused(error: BaseException) -> bool:
     return False
 
 
-async def read_watchdog(config: WatchdogConfig, timeout: float) -> WatchdogReport | Literal["refused", "offline"]:
+async def read_watchdog(
+    config: WatchdogConfig, timeout: float
+) -> WatchdogReport | Literal["refused", "offline", "unreadable"]:
     headers = {"Authorization": f"Bearer {os.environ.get(config.token_env, '')}"}
     try:
         async with httpx.AsyncClient(timeout=timeout) as client:
@@ -55,17 +58,34 @@ async def read_watchdog(config: WatchdogConfig, timeout: float) -> WatchdogRepor
         return "refused" if refused(error) else "offline"
     except (httpx.TimeoutException, httpx.NetworkError):
         return "offline"
-    return WatchdogReport(
-        bridge_state=body["bridge"]["state"], bridge_detail=body["bridge"]["detail"],
-        bridge_restarts=body["bridge"]["restarts"], plugin_state=body["plugin"]["state"],
-    )
+    except (httpx.HTTPError, ValueError):  # wrong token, server error, or not JSON
+        return "unreadable"
+    try:
+        return WatchdogReport(
+            bridge_state=body["bridge"]["state"], bridge_detail=body["bridge"]["detail"],
+            bridge_restarts=body["bridge"]["restarts"], plugin_state=body["plugin"]["state"],
+        )
+    except (KeyError, TypeError, ValueError):
+        return "unreadable"
 
 
 async def diagnose(
-    state: PluginState, health: Health | None, watchdog: WatchdogConfig | None, timeout: float = 5
+    state: PluginState,
+    health: Health | None,
+    watchdog: WatchdogConfig | None,
+    timeout: float = 5,
+    seen_restarts: int = 0,
 ) -> ConnectionState:
+    """`seen_restarts` is the watchdog's restart count at the last diagnosis, so a restart
+    is reported once rather than for as long as the watchdog runs."""
+    report: WatchdogReport | str | None = None
+
     def result(kind: Kind, message: str, layer: str | None = None) -> ConnectionState:
-        return ConnectionState(plugin_id=state.id, kind=kind, message=message, first_failing_layer=layer, checked_at=datetime.now(UTC))
+        restarts = report.bridge_restarts if isinstance(report, WatchdogReport) else None
+        return ConnectionState(
+            plugin_id=state.id, kind=kind, message=message, first_failing_layer=layer,
+            bridge_restarts=restarts, checked_at=datetime.now(UTC),
+        )
 
     if state.status == "connected" and health is not None:
         failing = next((check for check in health.checks if not check.ok), None)
@@ -75,7 +95,7 @@ async def diagnose(
             return result("owner_action", failing.detail, failing.layer)
         if watchdog is not None:
             report = await read_watchdog(watchdog, timeout)
-            if isinstance(report, WatchdogReport) and report.bridge_restarts > 0:
+            if isinstance(report, WatchdogReport) and report.bridge_restarts > seen_restarts:
                 return result("bridge_restarted", "Bridge restarted. Mail is flowing again.")
         return result("ok", "Connected.")
     if state.status == "disabled":
@@ -90,6 +110,8 @@ async def diagnose(
         return result("machine_offline", f"{watchdog.machine} is offline.")
     if report == "refused":
         return result("waiting_for_login", f"Waiting for login on {watchdog.machine}.")
+    if not isinstance(report, WatchdogReport):
+        return result("plugin_failed", f"The {state.id} plugin isn't answering and the watchdog on {watchdog.machine} can't be read; check its token.")
     if report.bridge_state == "needs_owner":
         return result("owner_action", report.bridge_detail)
     if report.plugin_state == "needs_owner":

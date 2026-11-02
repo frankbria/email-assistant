@@ -16,7 +16,6 @@ from app.plugins.registry import PluginRegistry
 import logging
 import asyncio
 import os
-from contextlib import suppress
 
 # Configure logging manually
 LOG_LEVEL = os.getenv("LOG_LEVEL", "INFO").upper()
@@ -83,22 +82,23 @@ async def lifespan(app: FastAPI):
     plugin_task = asyncio.create_task(
         plugins.run(load_plugins_config(Path(os.getenv("PLUGINS_CONFIG", "plugins.yaml"))), ready)
     )
-    await ready.wait()
-    app.state.plugins = plugins
-
     try:
+        await ready.wait()
+        if plugin_task.done():
+            plugin_task.result()  # the plugin task died during startup: fail startup with its error
+        app.state.plugins = plugins
         yield
     finally:
         plugin_task.cancel()
-        with suppress(asyncio.CancelledError):
-            await plugin_task
-
-    logger.debug("🌟 Lifespan: Shutting down DB")
-    if client is not None:
-        try:
-            await client.close()
-        except Exception:
-            pass
+        (outcome,) = await asyncio.gather(plugin_task, return_exceptions=True)
+        if isinstance(outcome, Exception):
+            logger.error("Plugin task ended with an error", exc_info=outcome)
+        logger.debug("🌟 Lifespan: Shutting down DB")
+        if client is not None:
+            try:
+                await client.close()
+            except Exception:
+                logger.exception("DB client did not close cleanly")
 
 
 app = FastAPI(title="Email Assistant API", lifespan=lifespan)

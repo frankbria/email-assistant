@@ -140,3 +140,27 @@ async def test_refresh_reconnects_a_failed_plugin_within_one_cycle(monkeypatch: 
         assert registry.diagnoses["proton"].kind == "ok"
     finally:
         await registry.close()
+
+
+async def test_bridge_restarted_is_shown_once_per_restart(running_watchdog):
+    from mailbox_contract import Health, HealthCheck
+
+    watchdog, port = running_watchdog
+    watchdog.bridge.restarts = 2
+    watchdog.bridge.state = "ok"
+    healthy = Health(status="ok", checks=[HealthCheck(layer="plugin", ok=True, detail="ok")], repair_actions=[])
+    connected = PluginState(id="proton", status="connected")
+
+    first = await diagnose(connected, healthy, watchdog_config("127.0.0.1", port), seen_restarts=1)
+    again = await diagnose(connected, healthy, watchdog_config("127.0.0.1", port), seen_restarts=first.bridge_restarts or 0)
+
+    assert first.kind == "bridge_restarted" and again.kind == "ok"
+
+
+async def test_unreadable_watchdog_is_reported_not_raised(running_watchdog, monkeypatch: pytest.MonkeyPatch):
+    _, port = running_watchdog
+    monkeypatch.setenv(TOKEN_ENV, "wrong-token")  # the watchdog answers 401
+
+    state = await diagnose(failed_plugin(), None, watchdog_config("127.0.0.1", port))
+
+    assert state.kind == "plugin_failed" and "watchdog" in state.message

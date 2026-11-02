@@ -175,22 +175,58 @@ def http_plugin():
         process.kill()
         process.wait(timeout=10)
         pytest.fail("fake HTTP plugin did not start listening")
-    yield f"http://127.0.0.1:{port}/mcp"
+    yield f"http://127.0.0.1:{port}/mcp", process
     process.terminate()
     process.wait(timeout=10)
 
 
 async def test_http_plugin_connects(tmp_path, monkeypatch, http_plugin):
+    url, _ = http_plugin
     monkeypatch.setenv("HTTP_PLUGIN_TOKEN", "test-token")
     entry = f"""
   - id: remote
-    transport: {{type: http, url: "{http_plugin}", bearer_token_env: HTTP_PLUGIN_TOKEN}}
+    transport: {{type: http, url: "{url}", bearer_token_env: HTTP_PLUGIN_TOKEN}}
 """
     registry = await connect(write_config(tmp_path, "plugins:" + entry))
     try:
         assert registry.states["remote"].status == "connected"
     finally:
         await registry.close()
+
+
+async def test_plugin_that_stops_answering_is_dropped_until_reconnected(tmp_path, http_plugin):
+    url, process = http_plugin
+    entry = f"""
+  - id: remote
+    transport: {{type: http, url: "{url}"}}
+"""
+    registry = await connect(write_config(tmp_path, "plugins:" + entry))
+    try:
+        process.terminate()
+        process.wait(timeout=10)
+
+        await registry.refresh(timeout=1)
+
+        assert registry.states["remote"].status == "failed"
+        assert "remote" not in registry.clients
+    finally:
+        await registry.close()
+
+
+async def test_shutdown_during_a_slow_health_check_still_cancels(tmp_path, monkeypatch):
+    import asyncio
+
+    monkeypatch.setenv("SLOW_HEALTH", "30")
+    entry = stdio_entry("slow", env_from="{FAKE_HEALTH_DELAY: SLOW_HEALTH}")
+    registry = PluginRegistry()
+    running = asyncio.create_task(registry.run(load_plugins_config(write_config(tmp_path, "plugins:" + entry)), asyncio.Event()))
+    await asyncio.sleep(3)  # connected; the first health check is now stuck
+
+    running.cancel()
+    done, _ = await asyncio.wait([running], timeout=15)
+
+    assert done and running.cancelled()
+    assert registry.clients == {}
 
 
 def test_app_connects_configured_plugins_on_startup(tmp_path, monkeypatch):
