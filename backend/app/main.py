@@ -1,19 +1,15 @@
 # backend/app/main.py
 
-from fastapi import FastAPI, Body, Depends
+from fastapi import FastAPI
 from contextlib import asynccontextmanager
 from app.models.email_message import EmailMessage
 from app.models.assistant_task import AssistantTask
 from app.models.user_settings import UserSettings
 from beanie import init_beanie
-import motor.motor_asyncio
 from app.api.routers import email, tasks, settings
 from app.middleware import setup_cors
 from app.config import get_settings, Settings
-from motor.motor_asyncio import AsyncIOMotorClient, AsyncIOMotorDatabase
-import uuid
-from beanie.exceptions import CollectionWasNotInitialized
-from typing import Optional
+from motor.motor_asyncio import AsyncIOMotorClient
 import logging
 import os
 
@@ -31,7 +27,7 @@ logger = logging.getLogger(__name__)
 logger.info("Logger initialized. Log level is %s", LOG_LEVEL)
 
 
-async def init_db(settings: Settings = None):
+async def init_db(settings: Settings | None = None):
     """Initialize database connection"""
     if settings is None:
         settings = get_settings()
@@ -40,7 +36,7 @@ async def init_db(settings: Settings = None):
 
     # ponytail: TLS for Atlas (mongodb+srv) only; plain mongodb:// (local/test)
     # connects without it. Self-hosted TLS can opt in via ?tls=true in the URI.
-    client = AsyncIOMotorClient(
+    client: AsyncIOMotorClient[dict[str, object]] = AsyncIOMotorClient(
         settings.current_mongodb_uri,
         serverSelectionTimeoutMS=5000,
         socketTimeoutMS=5000,

@@ -8,13 +8,10 @@ import sys
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
 
 
-import asyncio
 import pytest
 import httpx
 from dotenv import load_dotenv
-from unittest.mock import patch
 from beanie import init_beanie
-from motor import motor_asyncio
 from motor.motor_asyncio import AsyncIOMotorClient
 from fastapi.testclient import TestClient
 
@@ -27,11 +24,7 @@ from app.models.user_settings import UserSettings
 from app.config import get_settings, Settings
 from app.strategies.action_registry import ActionRegistry
 import json
-from tests.utils.fakes import mock_openai_response, async_return
-from tests.utils.openai_mocks import (
-    make_mock_openai_response,
-    always_raise_openai_error,
-)
+from tests.utils.fakes import mock_openai_response
 
 # Load environment variables
 load_dotenv()
@@ -151,7 +144,6 @@ async def setup_test_data(db_transaction):
 @pytest.fixture
 def mock_openai_success_scenario(monkeypatch):
     """Mock OpenAI client to always return a successful response."""
-    import json
 
     result = {
         "actions": [

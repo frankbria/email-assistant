@@ -1,11 +1,9 @@
 # backend/tests/test_services/test_user_data_isolation.py
 
 import pytest
-from beanie import PydanticObjectId
 
 from app.models.email_message import EmailMessage
 from app.models.assistant_task import AssistantTask
-from app.config import get_settings
 
 
 @pytest.mark.asyncio

@@ -1,9 +1,6 @@
 # backend/tests/test_routes/test_email_user_id.py
 
 import pytest
-import json
-from httpx import AsyncClient
-from fastapi import FastAPI
 
 from app.models.email_message import EmailMessage
 from app.models.assistant_task import AssistantTask

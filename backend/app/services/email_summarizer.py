@@ -1,58 +1,12 @@
 # backend/app/services/email_summarizer.py
 
 import os
-import re
-from typing import Optional
-from app.models.email_message import EmailMessageBase
-from app.config import get_settings
-from app.services.ai_client import openai_client, OPENAI_MODEL, logger as ai_logger
-import openai
 import logging
-
-logger = logging.getLogger(__name__)
-
-
-def is_generic_subject(subject: str) -> bool:
-    """Determines if a subject line is too generic to be used as a summary."""
-    generic_patterns = [
-        r"^re:",
-        r"^fw:",
-        r"^fwd:",
-        r"^follow up$",
-        r"^quick question$",
-        r"^hi$",
-        r"^hello$",
-        r"^thanks$",
-        r"^thank you$",
-        r"^update$",
-    ]
-    subject = subject.lower().strip()
-    return any(re.match(pattern, subject) for pattern in generic_patterns)
-
-
-def extract_first_sentence(text: str) -> Optional[str]:
-    """Extracts the first complete sentence from a text block."""
-    if not text:
-        return None
-
-    # Remove greeting prefixes
-    text = re.sub(
-        r"^(hi|hello|dear|thanks|thank you)[,\s]+", "", text, flags=re.IGNORECASE
-    )
-
-    # Find first full sentence
-    sentence_match = re.search(r"^(.+?[.!?])(?:\s|$)", text)
-    if sentence_match:
-        return sentence_match.group(1).strip()
-
-    # Fallback: first line
-    first_line = text.split("\n")[0].strip()
-    return first_line if first_line else None
-
-
-import os
+from app.models.email_message import EmailMessageBase
 from app.services.ai_client import openai_client, OPENAI_MODEL, ai_logger
 from app.utils.email_utils import is_generic_subject, extract_first_sentence
+
+logger = logging.getLogger(__name__)
 
 
 async def generate_summary(email: EmailMessageBase) -> str:
@@ -85,7 +39,7 @@ async def generate_summary(email: EmailMessageBase) -> str:
                 ],
                 temperature=0,
             )
-            summary = response.choices[0].message.content.strip()
+            summary = (response.choices[0].message.content or "").strip()
             if summary:
                 logger.debug("✅ Received AI-generated task summary: ", summary)
                 return summary

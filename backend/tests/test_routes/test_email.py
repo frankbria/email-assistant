@@ -1,5 +1,4 @@
 # backend/tests/test_routes/test_email.py
-import pytest
 from app.strategies.action_registry import ActionRegistry
 from app.strategies.default import DefaultEmailStrategy
 
@@ -139,3 +138,19 @@ def test_email_task_actions_fallback(client, monkeypatch):
 # @pytest.mark.skip
 
 
+
+
+def test_create_spam_email_creates_no_task(client):
+    """A spam email is stored and flagged, but no task is created (no 500)."""
+    payload = {
+        "sender": "promo@example.com",
+        "subject": "Win a prize",
+        "body": "Click here to claim your free money",
+    }
+    response = client.post("/api/v1/email", json=payload)
+    assert response.status_code == 200
+    data = response.json()
+    assert data["task_id"] is None
+
+    spam = client.get("/api/v1/email/spam").json()
+    assert any(email["subject"] == payload["subject"] for email in spam)

@@ -1,7 +1,6 @@
 # backend/tests/test_services/test_user_id_assignment.py
 
 import pytest
-from beanie import PydanticObjectId
 
 from app.models.email_message import EmailMessage
 from app.models.assistant_task import AssistantTask

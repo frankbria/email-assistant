@@ -39,10 +39,10 @@ class AssistantTask(Document):
         After validation, ensure sender and subject default from the linked email if unset.
         """
         # Default sender from email if not provided
-        if not self.sender and hasattr(self, "email"):
+        if not self.sender and isinstance(self.email, EmailMessage):
             self.sender = self.email.sender
         # Default subject from email if not provided
-        if not self.subject and hasattr(self, "email"):
+        if not self.subject and isinstance(self.email, EmailMessage):
             self.subject = self.email.subject
         return self
 

@@ -18,6 +18,7 @@ OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
 OPENAI_MODEL = os.getenv("OPENAI_API_MODEL", "gpt-3.5-turbo")
 
 # Initialize OpenAI client
+openai_client: openai.AsyncOpenAI | None
 if OPENAI_API_KEY:
     openai_client = openai.AsyncOpenAI(api_key=OPENAI_API_KEY)
 else:
@@ -72,7 +73,7 @@ async def classify_context_ai(subject: str, body: str) -> str:
             ],
             temperature=0,
         )
-        category = response.choices[0].message.content.strip().lower()
+        category = (response.choices[0].message.content or "").strip().lower()
         logger.debug("🔄 AI classification response: ", category)
     except Exception as e:
         logger.error(f"AI classification failed: {e}")

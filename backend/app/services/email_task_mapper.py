@@ -2,8 +2,6 @@
 
 from typing import List, Optional
 import logging
-
-logger = logging.getLogger(__name__)
 from app.models.email_message import EmailMessage, EmailMessageBase
 from app.models.assistant_task import AssistantTask
 import app.services.context_classifier as context_classifier
@@ -11,6 +9,8 @@ from app.services.email_summarizer import generate_summary
 from app.services.action_suggester import suggest_actions
 from app.utils.email_utils import parse_forwarded_metadata
 from .duplicate_detection import is_spam_email
+
+logger = logging.getLogger(__name__)
 
 
 async def handle_spam_email(email: EmailMessage):

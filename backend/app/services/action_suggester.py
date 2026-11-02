@@ -1,5 +1,6 @@
 # backend/app/services/action_suggester.py
 
+import json
 from typing import List, Protocol
 import logging
 from pydantic import BaseModel
@@ -26,7 +27,7 @@ class ActionStrategy(Protocol):
         ...
 
 
-async def suggest_actions_ai(email: EmailMessageBase) -> List[SuggestedAction]:
+async def suggest_actions_ai(email: EmailMessageBase) -> List[SuggestedAction] | None:
     """
     Use OpenAI to suggest actions based on email content and context.
     Returns AI-generated actions or None if AI fails.
@@ -64,11 +65,7 @@ Suggest 3 relevant actions for handling this email."""
         )
 
         # Parse response and convert to SuggestedAction objects
-        actions_data = response.choices[0].message.content
-        if isinstance(actions_data, str):
-            import json
-
-            actions_data = json.loads(actions_data)
+        actions_data = json.loads(response.choices[0].message.content or "{}")
 
         actions = []
         for action in actions_data.get("actions", []):
@@ -110,7 +107,7 @@ async def suggest_actions(email: EmailMessageBase) -> List[SuggestedAction]:
 
         # Try context-specific strategies first
         strategies = (
-            ActionRegistry.get_strategies(email.context)
+            (email.context and ActionRegistry.get_strategies(email.context))
             or ActionRegistry.get_default_strategies()
         )
 

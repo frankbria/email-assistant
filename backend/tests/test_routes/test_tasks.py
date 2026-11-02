@@ -1,7 +1,4 @@
 # backend/tests/test_routes/test_tasks.py
-import pytest
-from app.models.email_message import EmailMessage
-from app.models.assistant_task import AssistantTask
 
 
 def test_get_tasks(client):
