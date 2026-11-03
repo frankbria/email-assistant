@@ -6,7 +6,6 @@ import asyncio
 import contextlib
 import logging
 from datetime import UTC, datetime, timedelta
-from itertools import batched
 from typing import Literal
 
 from beanie.operators import In
@@ -17,10 +16,10 @@ from app.models.job import Job
 from app.models.message import Message
 from app.models.sync_cursor import SyncCursor
 from app.pipeline.run import process_pending
-from app.plugins.calls import InvalidCursor, SyncError, call_plugin
+from app.plugins.calls import InvalidCursor, SyncError, call_plugin, refs_in_inbox
 from app.plugins.registry import PluginRegistry
 from app.services.ai_provider import AIProvider
-from mailbox_contract import INBOX_URI, Capability, InboxContainsOutput, ListMessagesOutput
+from mailbox_contract import INBOX_URI, Capability, ListMessagesOutput
 
 logger = logging.getLogger(__name__)
 
@@ -28,7 +27,6 @@ Folder = Literal["inbox", "sent"]
 
 PAGE_SIZE = 100
 FIRST_CONNECT_DAYS = 14
-INBOX_CONTAINS_BATCH = 500  # the contract's cap on refs per call
 
 
 async def list_folder(
@@ -117,13 +115,8 @@ async def close_handled_elsewhere(owner_id: str, plugin_id: str, client: Client)
     open_jobs = await Job.find(Job.owner_id == owner_id, Job.state == "open").to_list()
     referenced = list({message_id for job in open_jobs for message_id in job.message_ids})
     messages = await Message.find(In(Message.id, referenced), Message.plugin_id == plugin_id).to_list()
-    gone = set()
-    for batch in batched(messages, INBOX_CONTAINS_BATCH):
-        answer = await call_plugin(plugin_id, client, "inbox_contains", {"refs": [message.ref for message in batch]})
-        in_inbox = InboxContainsOutput.model_validate(answer).root
-        if in_inbox.keys() != {message.ref for message in batch}:  # the contract's exact-keys rule
-            raise SyncError(f"{plugin_id}: inbox_contains answered for other refs than it was asked about")
-        gone |= {message.id for message in batch if not in_inbox[message.ref]}
+    present = await refs_in_inbox(plugin_id, client, [message.ref for message in messages])
+    gone = {message.id for message in messages if message.ref not in present}
     closing = [job.id for job in open_jobs if gone.intersection(job.message_ids)]
     if not closing:
         return 0

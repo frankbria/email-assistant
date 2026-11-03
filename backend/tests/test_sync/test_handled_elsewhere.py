@@ -4,7 +4,7 @@ import logging
 
 import pytest
 
-from app import sync
+from app.plugins import calls
 from app.models.job import Artifacts, Job, JobState
 from app.models.message import Message
 from app.sync import SyncEngine, SyncError, close_handled_elsewhere
@@ -28,11 +28,11 @@ async def state_of(job: Job) -> JobState:
     return stored.state
 
 
-@pytest.mark.parametrize("batch", [sync.INBOX_CONTAINS_BATCH, 1])
+@pytest.mark.parametrize("batch", [calls.INBOX_CONTAINS_BATCH, 1])
 async def test_a_message_archived_outside_the_app_closes_its_job_on_the_next_poll(
     test_db, mailbox: Mailbox, monkeypatch, batch
 ):
-    monkeypatch.setattr(sync, "INBOX_CONTAINS_BATCH", batch)
+    monkeypatch.setattr(calls, "INBOX_CONTAINS_BATCH", batch)
     await add_owner(test_db)
     on_phone = [mailbox.deliver(sender="a@example.com", subject=f"Archived on phone {n}", body="x") for n in range(2)]
     still_there = mailbox.deliver(sender="a@example.com", subject="Still in inbox", body="x")

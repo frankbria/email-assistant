@@ -194,3 +194,18 @@ async def test_sent_mail_is_synced_before_proposals_so_they_have_the_owners_voic
     await run_pass(test_db, mailbox, provider)
 
     assert "Hey Ana! Works for me. Cheers, F" in provider.prompts[0]
+
+
+async def test_pending_mail_handled_elsewhere_in_the_meantime_costs_nothing(test_db, mailbox: Mailbox):
+    """Archived on a phone while it waited (e.g. through an AI outage): no AI call, no job."""
+    await add_owner(test_db)
+    ref = mailbox.deliver(sender="ana@example.com", subject="Q4 budget", body=BODY)
+    async with connected(reference_imap_plugin(mailbox)) as registry:
+        await SyncEngine(registry, test_db["user"], poll_seconds=60).sync_all()  # stored, not yet processed
+    mailbox.move(ref, "Archive")
+    provider = FakeAIProvider(result=meeting())
+
+    await run_pass(test_db, mailbox, provider)
+
+    assert await jobs() == [] and provider.prompts == []
+    assert [message.pipeline_done for message in await Message.find_all().to_list()] == [True]

@@ -15,7 +15,7 @@ from app.pipeline.minimize import minimize
 from app.pipeline.propose import forward_candidates, propose
 from app.pipeline.rules import apply_rule, matching_rule
 from app.pipeline.validate import ask_owner_job, to_job
-from app.plugins.calls import MessageNotFound, call_plugin
+from app.plugins.calls import call_plugin, refs_in_inbox
 from app.services.ai_provider import AIProposalError, AIProvider
 from mailbox_contract import MessageDetail
 
@@ -29,8 +29,15 @@ async def process_pending(owner_id: str, plugin_id: str, client: Client, provide
         Message.owner_id == owner_id, Message.plugin_id == plugin_id, Message.folder == "inbox",
         {"pipeline_done": {"$ne": True}},  # also documents stored before the field existed
     )
+    messages = await pending.sort("date").to_list()
+    # Mail handled elsewhere while it waited (e.g. through an AI outage) needs no job and no AI call.
+    present = await refs_in_inbox(plugin_id, client, [message.ref for message in messages]) if messages else set()
     processed = 0
-    for message in await pending.sort("date").to_list():
+    for message in messages:
+        if message.ref not in present:
+            message.pipeline_done = True
+            await message.save()
+            continue
         try:
             await process(message, client, provider, cap)
             processed += 1
@@ -39,26 +46,21 @@ async def process_pending(owner_id: str, plugin_id: str, client: Client, provide
     return processed
 
 
-async def process(message: Message, client: Client, provider: AIProvider, cap: int | None) -> Job | None:
+async def process(message: Message, client: Client, provider: AIProvider, cap: int | None) -> Job:
     """The message's job, made once. Transient failures (plugin or AI down) raise and leave it pending."""
     assert message.id is not None, "only stored messages are processed"
     job = await Job.find_one(Job.owner_id == message.owner_id, Job.message_ids == message.id)
     if job is None:
         job = await decide(message, client, provider, cap)
-        if job is not None:
-            job.requires_approval = message.first_pass
-            await job.insert()
+        job.requires_approval = message.first_pass
+        await job.insert()
     message.pipeline_done = True
     await message.save()
     return job
 
 
-async def decide(message: Message, client: Client, provider: AIProvider, cap: int | None) -> Job | None:
-    """None when the message left the mailbox before its turn: nothing to do."""
-    try:
-        answer = await call_plugin(message.plugin_id, client, "get_message", {"ref": message.ref})
-    except MessageNotFound:
-        return None
+async def decide(message: Message, client: Client, provider: AIProvider, cap: int | None) -> Job:
+    answer = await call_plugin(message.plugin_id, client, "get_message", {"ref": message.ref})
     try:
         text = MessageDetail.model_validate(answer).text
     except ValidationError as error:

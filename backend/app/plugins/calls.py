@@ -2,22 +2,20 @@
 which tool and why."""
 
 import asyncio
+from itertools import batched
 
 from mcp import Client
 from mcp.types import CallToolResult
 
 from app.plugins.registry import result_text
-from mailbox_contract import ErrorCode, ToolError
+from mailbox_contract import ErrorCode, InboxContainsOutput, ToolError
 
 PLUGIN_CALL_TIMEOUT_SECONDS = 60  # one hung plugin must not stop every other plugin's sync
+INBOX_CONTAINS_BATCH = 500  # the contract's cap on refs per call
 
 
 class SyncError(Exception):
     """A plugin call failed; the message says which plugin, which tool and why."""
-
-
-class MessageNotFound(SyncError):
-    """The plugin has no such message any more (it left the mailbox)."""
 
 
 class InvalidCursor(Exception):
@@ -38,6 +36,15 @@ def tool_failure(plugin_id: str, tool: str, result: CallToolResult) -> InvalidCu
     error = ToolError.model_validate(result.structured_content)
     if error.code == ErrorCode.INVALID_CURSOR:
         return InvalidCursor(error.message)
-    if error.code == ErrorCode.NOT_FOUND:
-        return MessageNotFound(f"{plugin_id}: {tool}: {error.message}")
     return SyncError(f"{plugin_id}: {tool} failed: {error.message}")
+
+
+async def refs_in_inbox(plugin_id: str, client: Client, refs: list[str]) -> set[str]:
+    """Which of these refs are still in the plugin's inbox."""
+    present: set[str] = set()
+    for batch in batched(refs, INBOX_CONTAINS_BATCH):
+        answer = InboxContainsOutput.model_validate(await call_plugin(plugin_id, client, "inbox_contains", {"refs": list(batch)})).root
+        if answer.keys() != set(batch):  # the contract's exact-keys rule
+            raise SyncError(f"{plugin_id}: inbox_contains answered for other refs than it was asked about")
+        present |= {ref for ref, in_inbox in answer.items() if in_inbox}
+    return present
