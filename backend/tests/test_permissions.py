@@ -2,6 +2,7 @@
 # stored settings; ceilings can't be exceeded; autonomous verbs act without a tap, `ask` waits for one.
 # Real MongoDB; GreenMail + the reference IMAP plugin for the end-to-end checks; the AI is FakeAIProvider.
 import os
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
 import pytest
@@ -253,3 +254,29 @@ async def test_an_autonomous_action_interrupted_by_a_crash_runs_on_the_next_pass
 
     [job] = await Job.find(Job.owner_id == OWNER).to_list()
     assert (job.state, job.permission_level) == ("done", "autonomous") and mailbox.messages("INBOX") == []
+
+
+@pytest.mark.usefixtures("mail_server")
+async def test_an_autonomous_send_interrupted_by_a_crash_is_recovered_once_its_claim_is_stale(test_db, mailbox: Mailbox, tmp_path: Path):
+    await add_owner(test_db)
+    mailbox.create_folder("Archive")
+    mailbox.create_folder("Sent")
+    ana = new_mailbox()
+    path = tmp_path / "permissions.yaml"
+    path.write_text("reply: ask\n")
+    await pipeline_pass(test_db, mailbox, path, proposal())
+    ana.deliver_to(mailbox, subject="Lunch?", body="Lunch on Friday?")
+    reply = proposal(verb="reply", title="Ana asks about lunch Friday", evidence=["Lunch on Friday?"], noise_rationale=None, draft="Friday works!")
+    await pipeline_pass(test_db, mailbox, path, reply)
+    path.write_text("reply: autonomous\n")
+    await Message.find_all().update({"$set": {"pipeline_done": False}})
+    await Job.find_all().update({"$set": {"state": "sending", "sending_since": datetime.now(UTC) - timedelta(minutes=1)}})
+
+    await pipeline_pass(test_db, mailbox, path, reply)  # claim still fresh: wait
+    fresh = [(job.state, m.pipeline_done) for job in await Job.find_all().to_list() for m in await Message.find(Message.folder == "inbox").to_list()]
+    await Job.find_all().update({"$set": {"sending_since": datetime.now(UTC) - timedelta(minutes=30)}})
+    await pipeline_pass(test_db, mailbox, path, reply)  # stale: recovered
+
+    [job] = await Job.find_all().to_list()
+    assert fresh == [("sending", False)]
+    assert (job.state, job.permission_level) == ("done", "autonomous") and len(ana.messages("INBOX")) == 1

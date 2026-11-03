@@ -13,7 +13,7 @@ from pydantic import ValidationError
 from beanie.operators import In, NotIn
 from pymongo import ReturnDocument
 
-from app.executor import JobNotOpen, archive, defer, execute, finish, reopen
+from app.executor import STALE_SENDING, JobNotOpen, archive, defer, execute, finish, reopen
 from app.models.ai_usage import AiUsage
 from app.models.job import Job
 from app.models.message import Message
@@ -71,6 +71,10 @@ async def process(message: Message, client: Client, provider: AIProvider, cap: i
         await act_if_autonomous(job, plugins)
     elif job.state == "open" and job.permission_level is None:
         await act_if_autonomous(job, plugins)  # stored, then a crash before acting: act now
+    elif job.state == "sending":  # an autonomous send a crash interrupted: retry once its claim is stale
+        if job.sending_since and job.sending_since.replace(tzinfo=UTC) > datetime.now(UTC) - STALE_SENDING:
+            return job  # still claimed: the message stays pending for a later pass
+        await act_if_autonomous(job, plugins)
     elif job.state in ("done", "dismissed"):
         await archive_late_copy(job, message, client)
     message.pipeline_done = True
