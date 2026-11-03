@@ -187,6 +187,19 @@ describe('Job queue actions', () => {
     })
   })
 
+  it('clearing a to-do deadline removes it', async () => {
+    const todo = cardWith({ verb: 'todo', due: '2026-11-01T09:00:00.000Z' })
+    const card = await renderQueue(todo)
+    mockFetch.mockResolvedValueOnce(Response.json({ ...todo.job, due: null, edited: true }))
+
+    await userEvent.click(within(card).getByRole('button', { name: 'Edit' }))
+    await userEvent.clear(within(card).getByLabelText('Due'))
+    await userEvent.click(within(card).getByRole('button', { name: 'Save' }))
+
+    await waitFor(() => expect(mockFetch).toHaveBeenCalledTimes(2))
+    expect(requestTo(1).body).toEqual({ due: null })
+  })
+
   it('only makes web links clickable, since the link comes from inbound mail', async () => {
     const card = await renderQueue(
       cardWith({ title: 'Pay the invoice', artifacts: { ...jobCard.job.artifacts, link: 'https://pay.example/invoice' } }),

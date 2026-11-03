@@ -27,6 +27,8 @@ const ACTIONS: { verb: Verb; label: string }[] = [
   { verb: 'unsubscribe', label: 'Unsubscribe' },
 ]
 
+// snooze and follow-up wake on their due date, so they cannot lose it
+const DATED_VERBS: Verb[] = ['snooze', 'follow_up']
 const STILL_QUEUED: Job['state'][] = ['open', 'failed']
 const TOUCH_TARGET = 'min-h-11' // 44 px
 const TEXT_AREA =
@@ -89,7 +91,7 @@ function EditForm({ job, onSaved, onCancel }: { job: Job; onSaved: (job: Job) =>
       ...(fields.includes('forward_to') && { forward_to: forwardTo }),
       ...(fields.includes('link') && { link }),
       ...(fields.includes('options') && { options: options.split('\n').map((option) => option.trim()).filter(Boolean) }),
-      ...(fields.includes('due') && due !== '' && { due: new Date(due).toISOString() }),
+      ...(fields.includes('due') && { due: due === '' ? null : new Date(due).toISOString() }),
     }
     setSaving(true)
     try {
@@ -129,7 +131,7 @@ function EditForm({ job, onSaved, onCancel }: { job: Job; onSaved: (job: Job) =>
       {fields.includes('due') && (
         <label className="flex flex-col gap-1 font-medium">
           Due
-          <Input type="datetime-local" className={TOUCH_TARGET} value={due} onChange={(event) => setDue(event.target.value)} />
+          <Input type="datetime-local" required={DATED_VERBS.includes(job.verb)} className={TOUCH_TARGET} value={due} onChange={(event) => setDue(event.target.value)} />
         </label>
       )}
       <div className="flex flex-wrap gap-2">
