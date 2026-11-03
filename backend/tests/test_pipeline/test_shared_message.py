@@ -11,7 +11,7 @@ from app.models.job import Artifacts, Job
 from app.models.message import Message
 from app.pipeline.proposal import Proposal
 from app.pipeline.run import sibling_job
-from app.sync import SyncEngine
+from app.sync import SyncEngine, close_handled_elsewhere
 from tests.conformance.test_mailbox_conformance import reference_imap_plugin
 from tests.test_sync.test_inbox_sync import OWNER, add_owner, connected
 from tests.utils.fakes import FakeAIProvider
@@ -104,3 +104,38 @@ async def test_a_copy_handled_elsewhere_doesnt_absorb_a_new_copy(test_db):
     await Job(owner_id=OWNER, verb="todo", title="t", artifacts=Artifacts(), message_ids=[copies[0].id], state="handled_elsewhere").insert()
 
     assert await sibling_job(copies[1]) is None
+
+
+async def test_one_copy_handled_elsewhere_keeps_the_job_open_for_the_other(test_db):
+    """Archived on a phone in one account only: the copy still in the other inbox keeps its job."""
+    await add_owner(test_db)
+    home, work = new_mailbox(), new_mailbox()
+    message_id = deliver_to_both(home, work, "Invoice 4471")
+    async with connected(reference_imap_plugin(home, HOME), reference_imap_plugin(work, WORK)) as registry:
+        await SyncEngine(registry, test_db["user"], poll_seconds=60, provider=FakeAIProvider(result=todo())).sync_all()
+        work_copy = await Message.find_one(Message.plugin_id == WORK)
+        home.move(message_id, "Archive")
+        await close_handled_elsewhere(OWNER, HOME, registry.clients[HOME])
+        [after_home] = await Job.find(Job.owner_id == OWNER).to_list()
+        work.move(message_id, "Archive")
+        await close_handled_elsewhere(OWNER, WORK, registry.clients[WORK])
+        [after_both] = await Job.find(Job.owner_id == OWNER).to_list()
+
+    assert work_copy is not None
+    assert (after_home.state, after_home.message_ids) == ("open", [work_copy.id])
+    assert after_both.state == "handled_elsewhere"
+
+
+async def test_a_copy_attached_to_a_finished_job_is_archived_even_after_a_crash(test_db):
+    """Attached, then crashed before archiving: the next pass archives the copy."""
+    await add_owner(test_db)
+    home, work = new_mailbox(), new_mailbox()
+    message_id = deliver_to_both(home, work, "Invoice 4471")
+    async with connected(reference_imap_plugin(home, HOME), reference_imap_plugin(work, WORK)) as registry:
+        await SyncEngine(registry, test_db["user"], poll_seconds=60, provider=FakeAIProvider(result=todo())).sync_all()
+        [job] = await Job.find(Job.owner_id == OWNER).to_list()
+        await Job.find(Job.id == job.id).update({"$set": {"state": "done"}})  # finished, but the work copy wasn't archived
+        await Message.find(Message.plugin_id == WORK).update({"$set": {"pipeline_done": False}})
+        await SyncEngine(registry, test_db["user"], poll_seconds=60, provider=FakeAIProvider(result=todo())).sync_all()
+
+    assert work.messages("INBOX") == [] and [m["Message-ID"] for m in work.messages("Archive")] == [message_id]

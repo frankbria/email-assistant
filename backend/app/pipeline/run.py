@@ -9,6 +9,7 @@ from mcp import Client
 from pydantic import ValidationError
 
 from beanie.operators import In
+from pymongo import ReturnDocument
 
 from app.executor import archive, reopen
 from app.models.ai_usage import AiUsage
@@ -53,12 +54,14 @@ async def process(message: Message, client: Client, provider: AIProvider, cap: i
     """The message's job, made once. Transient failures (plugin or AI down) raise and leave it pending."""
     assert message.id is not None, "only stored messages are processed"
     job = await Job.find_one(Job.owner_id == message.owner_id, Job.message_ids == message.id)
-    if job is None and (job := await sibling_job(message)) is not None:
-        await attach_copy(job, message, client)
-    elif job is None:
+    if job is None and (sibling := await sibling_job(message)) is not None:
+        job = await attach_copy(sibling, message)
+    if job is None:
         job = await decide(message, client, provider, cap)
         job.requires_approval = message.first_pass
         await job.insert()
+    elif job.state in ("done", "dismissed"):
+        await archive_late_copy(job, message, client)
     message.pipeline_done = True
     await message.save()
     return job
@@ -79,16 +82,22 @@ async def sibling_job(message: Message) -> Job | None:
     )
 
 
-async def attach_copy(job: Job, message: Message, client: Client) -> None:
-    """One job for every copy (spec §5.3). A copy arriving after its job was finished is archived at
-    once, like the rest were; if that fails, the job reopens with the error (as in finish)."""
-    assert message.id is not None
-    await Job.find(Job.id == job.id).update({"$addToSet": {"message_ids": message.id}})
-    if job.state in ("done", "dismissed"):
-        problem = await archive(message, client)
-        if problem:
-            assert job.id is not None
-            await reopen(job.id, job.state, [problem])
+async def attach_copy(job: Job, message: Message) -> Job:
+    """One job for every copy (spec §5.3). Returns the job as stored right after attaching, so a
+    finish that landed meanwhile is seen (its archive may have missed this copy)."""
+    stored = await Job.get_pymongo_collection().find_one_and_update(
+        {"_id": job.id}, {"$addToSet": {"message_ids": message.id}}, return_document=ReturnDocument.AFTER
+    )
+    assert stored is not None
+    return Job.model_validate(stored)
+
+
+async def archive_late_copy(job: Job, message: Message, client: Client) -> None:
+    """A copy that joined a finished job is archived like the rest were (a no-op once it's out of the
+    inbox, so a crash here is retried safely); if that fails, the job reopens with the error."""
+    problem = await archive(message, client)
+    if problem and job.id is not None and job.state in ("done", "dismissed"):
+        await reopen(job.id, "done" if job.state == "done" else "dismissed", [problem])
 
 
 async def decide(message: Message, client: Client, provider: AIProvider, cap: int | None) -> Job:
