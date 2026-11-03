@@ -1,6 +1,7 @@
 // frontend/src/app/settings/page.tsx
 
 import Link from "next/link";
+import PermissionsSection from "../../components/PermissionsSection";
 import SettingsForm from "../../components/SettingsForm";
 
 export default function SettingsPage() {
@@ -13,6 +14,9 @@ export default function SettingsPage() {
       >
         Mailbox connections
       </Link>
+      <div className="mt-8">
+        <PermissionsSection />
+      </div>
       <div className="mt-8">
         <SettingsForm />
       </div>

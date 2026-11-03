@@ -13,7 +13,7 @@ from typing import TypeGuard, get_args
 import yaml
 from beanie import Document
 from pydantic import Field
-from pymongo import ASCENDING, IndexModel
+from pymongo import ASCENDING, IndexModel, ReturnDocument
 
 from app.models.job import PermissionLevel, Verb
 
@@ -33,6 +33,9 @@ CEILINGS: dict[str, tuple[PermissionLevel, str]] = {
     "archive_noise": ("autonomous", "archived mail can be restored"),
     "unsubscribe": ("never_auto", "links in email are untrusted"),
 }
+
+
+PROMOTION_AFTER = 10  # spec §9 [Call]: approvals in a row, with no edits, before promotion is offered
 
 
 class PermissionsRejected(ValueError):
@@ -142,3 +145,60 @@ async def sync_permissions_file(owner_id: str, path: Path) -> None:
         logger.error("permissions.yaml was rejected, keeping the current settings: %s", error)
     settings.file_hash, settings.updated_at = digest(text), datetime.now(UTC)
     await settings.save()
+
+
+class ApprovalStreak(Document):
+    """Approvals in a row of one verb with no edits (spec §9 promotion). Offered once, never applied alone."""
+
+    owner_id: str
+    verb: str
+    in_a_row: int = 0  # not `count`: that's Document.count()
+    offered: bool = False  # the one offer was made (accepted or not, it isn't made again)
+    offer_pending: bool = False  # waiting for the owner's answer
+
+    class Settings:
+        name = "approval_streaks"
+        indexes = [IndexModel([("owner_id", ASCENDING), ("verb", ASCENDING)], unique=True)]
+
+
+async def record_approval(owner_id: str, verb: str, edited: bool) -> None:
+    """Called when the owner approves a job (#74). An edit starts the streak over; the PROMOTION_AFTER-th
+    unedited approval in a row offers promotion once, if the verb may be autonomous and isn't yet."""
+    streaks = ApprovalStreak.get_pymongo_collection()
+    key = {"owner_id": owner_id, "verb": verb}
+    if edited:
+        await streaks.update_one(key, {"$set": {"in_a_row": 0}}, upsert=True)
+        return
+    streak = await streaks.find_one_and_update(key, {"$inc": {"in_a_row": 1}}, upsert=True, return_document=ReturnDocument.AFTER)
+    assert streak is not None  # an upsert returning the document after it always has one
+    if streak["in_a_row"] >= PROMOTION_AFTER and not streak.get("offered") and await promotable(owner_id, verb):
+        await streaks.update_one({**key, "offered": {"$ne": True}}, {"$set": {"offered": True, "offer_pending": True}})
+
+
+async def promotable(owner_id: str, verb: str) -> bool:
+    return CEILINGS.get(verb, ("ask", ""))[0] == "autonomous" and await level_for(owner_id, verb) != "autonomous"
+
+
+async def promotion_offers(owner_id: str) -> list[str]:
+    """Verbs whose promotion offer waits for the owner. An offer no longer worth making (the verb went
+    autonomous another way) closes for good, so a later downgrade doesn't bring it back."""
+    pending = await ApprovalStreak.find(ApprovalStreak.owner_id == owner_id, {"offer_pending": True}).to_list()
+    offers = []
+    for streak in pending:
+        if await promotable(owner_id, streak.verb):
+            offers.append(streak.verb)
+        else:
+            await streak.set({"offer_pending": False})
+    return sorted(offers)
+
+
+async def answer_promotion(owner_id: str, verb: str, accept: bool, path: Path) -> bool:
+    """The owner's answer to the one offer: accept makes the verb autonomous. False if nothing was offered."""
+    streaks = ApprovalStreak.get_pymongo_collection()
+    pending = {"owner_id": owner_id, "verb": verb, "offer_pending": True}
+    if not await streaks.find_one(pending):
+        return False
+    if accept:  # promoted before the offer closes: a crash between them leaves an offer no longer shown, not a lost yes
+        await set_levels(owner_id, {verb: "autonomous"}, path)
+    await streaks.update_one(pending, {"$set": {"offer_pending": False}})
+    return True
