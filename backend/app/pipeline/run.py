@@ -8,7 +8,7 @@ from datetime import UTC, datetime
 from mcp import Client
 from pydantic import ValidationError
 
-from beanie.operators import In
+from beanie.operators import In, NotIn
 from pymongo import ReturnDocument
 
 from app.executor import archive, reopen
@@ -79,9 +79,10 @@ async def sibling_job(message: Message) -> Job | None:
     ).to_list()
     if not copies:
         return None
-    return await Job.find_one(
-        Job.owner_id == message.owner_id, In(Job.message_ids, [copy.id for copy in copies]), Job.state != "handled_elsewhere"
-    )
+    over_copies = (Job.owner_id == message.owner_id, In(Job.message_ids, [copy.id for copy in copies]))
+    # An unfinished job first: the copy belongs with the work still outstanding, not a decision already made.
+    unfinished = await Job.find_one(*over_copies, NotIn(Job.state, ["done", "dismissed", "handled_elsewhere"]))
+    return unfinished or await Job.find_one(*over_copies, In(Job.state, ["done", "dismissed"]))
 
 
 async def attach_copy(job: Job, message: Message) -> Job:

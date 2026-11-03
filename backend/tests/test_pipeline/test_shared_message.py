@@ -174,3 +174,24 @@ async def test_a_copy_attached_to_a_finished_job_is_archived_even_after_a_crash(
         await SyncEngine(registry, test_db["user"], poll_seconds=60, provider=FakeAIProvider(result=todo())).sync_all()
 
     assert work.messages("INBOX") == [] and [m["Message-ID"] for m in work.messages("Archive")] == [message_id]
+
+
+async def test_a_new_copy_joins_the_unfinished_job_over_finished_ones(test_db):
+    """E.g. home's job is done and work's first-connect copy has its own open job: a third copy joins work's."""
+    copies = []
+    for plugin_id in (HOME, WORK, "third-imap"):
+        copy = Message.model_validate({
+            "owner_id": OWNER, "plugin_id": plugin_id, "ref": "<same@x>", "message_id": "<same@x>",
+            "sender": {"email": "a@example.com"}, "to": [], "cc": [], "date": "2026-11-02T12:00:00Z", "subject": "s", "snippet": "",
+        })
+        await copy.insert()
+        copies.append(copy)
+    home_copy, work_copy, third_copy = copies
+    assert home_copy.id is not None and work_copy.id is not None
+    await Job(owner_id=OWNER, verb="todo", title="t", artifacts=Artifacts(), message_ids=[home_copy.id], state="done").insert()
+    open_job = Job(owner_id=OWNER, verb="todo", title="t", artifacts=Artifacts(), message_ids=[work_copy.id])
+    await open_job.insert()
+
+    chosen = await sibling_job(third_copy)
+
+    assert chosen is not None and chosen.id == open_job.id
