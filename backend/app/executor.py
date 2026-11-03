@@ -178,3 +178,79 @@ async def send(job: Job, plugins: PluginRegistry, body: str | None, forward_to: 
         arguments = {"to": [{"email": forward_to}], "subject": forward_subject(message.subject), "body_text": f"{text}\n\n{quoted}"}
     result = SendResult.model_validate(await call_plugin(message.plugin_id, client, "send", arguments))
     return None if result.ok else f"{message.plugin_id} didn't send it"
+
+
+async def defer(job_id: PydanticObjectId, until: datetime | None = None) -> Job:
+    """Hides a snooze or an approved follow-up until its date (`until`, else the date the AI extracted)."""
+    job = await Job.get(job_id)
+    if job is None or job.verb not in ("snooze", "follow_up"):
+        raise ValueError(f"only snooze and follow-up jobs wait for a date; job {job_id} isn't one")
+    when = until or job.due
+    if when is None:
+        raise ValueError(f"job {job_id} needs a date to wait for")
+    claimed = await Job.find(Job.id == job_id, Job.state == "open").update({"$set": {"state": "snoozed", "due": when, "reminder": None}})
+    if not claimed.modified_count:
+        raise JobNotOpen(f"job {job_id} isn't open")
+    deferred = await Job.get(job_id)
+    assert deferred is not None
+    return deferred
+
+
+async def wake_due(owner_id: str, plugins: PluginRegistry, now: datetime, check_follow_ups: bool = True) -> int:
+    """Brings back every snoozed job whose date has come: a snooze reopens; a follow-up that got its answer
+    is done (archive-on-done), one that didn't reopens with a reminder. Open reminders are re-checked each
+    pass, so an answer arriving late (or missed by a sync that failed that pass) resolves them. One broken
+    job never stops the rest. `check_follow_ups` is False on a pass whose sent folders didn't sync: the
+    owner's latest reply may be missing, so follow-ups wait. Returns how many woke."""
+    woken = 0
+    due = await Job.find(Job.owner_id == owner_id, Job.state == "snoozed", {"due": {"$lte": now}}).to_list()
+    reminded = await Job.find(Job.owner_id == owner_id, Job.state == "open", Job.verb == "follow_up", {"reminder": {"$ne": None}}).to_list()
+    if not check_follow_ups:
+        due, reminded = [job for job in due if job.verb != "follow_up"], []
+    for job in [*due, *reminded]:
+        try:
+            woken += await wake(job, plugins)
+        except JobNotOpen:
+            pass  # the owner acted on it meanwhile
+        except Exception:  # e.g. its message is gone: log it and keep waking the others
+            logger.exception("Waking job %s failed; retrying next pass", job.id)
+    return woken
+
+
+async def wake(job: Job, plugins: PluginRegistry) -> int:
+    assert job.id is not None
+    reminder = await missing_answer(job) if job.verb == "follow_up" else None
+    if job.verb == "follow_up" and reminder is None:  # answered: done, straight from where it waits
+        await finish(job.id, "done", plugins, claim_from=(job.state,))
+        return 1
+    if job.state == "open":
+        return 0  # a reminder still without an answer: it stays as it is
+    claimed = await Job.find(Job.id == job.id, Job.state == "snoozed").update({"$set": {"state": "open", "reminder": reminder}})
+    return claimed.modified_count
+
+
+async def missing_answer(job: Job) -> str | None:
+    """The reminder to show when nobody answered; None when the correspondent answered the owner's reply
+    (threaded, or any newer mail from them). The owner's reply is found in the synced sent folder, so replies sent
+    outside the app count."""
+    original = await Message.get(job.message_ids[0])
+    assert original is not None
+    correspondent = original.sender.email
+    to_them = {"$regex": f"^{re.escape(correspondent)}$", "$options": "i"}
+    # The owner's turns: threaded to the original, or later mail to the correspondent (a reply to their answer
+    # threads to the answer, not the original).
+    replies = await Message.find(
+        Message.owner_id == job.owner_id, Message.folder == "sent",
+        {"$or": [{"in_reply_to": original.message_id}, {"to.email": to_them, "date": {"$gte": original.date}}]},
+    ).to_list()
+    since = max([original.date, *(reply.date for reply in replies)])
+    answered = await Message.find(
+        Message.owner_id == job.owner_id, Message.folder == "inbox", Message.id != original.id,
+        {"date": {"$gt": since}},  # after the owner's latest reply: an earlier exchange doesn't count
+        {"$or": [
+            {"in_reply_to": {"$in": [reply.message_id for reply in replies if reply.message_id]}},
+            {"sender.email": to_them},
+        ]},
+    ).exists()
+    return None if answered else f"No answer from {correspondent} to “{original.subject}” since {since:%Y-%m-%d}"
+
