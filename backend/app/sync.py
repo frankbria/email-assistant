@@ -112,7 +112,8 @@ async def sync_folder(
 async def close_handled_elsewhere(owner_id: str, plugin_id: str, client: Client) -> int:
     """Close the open jobs over this plugin's messages that left the inbox outside the app
     (archived on a phone, moved by a filter), so the app never archives them again. Returns how many."""
-    open_jobs = await Job.find(Job.owner_id == owner_id, Job.state == "open").to_list()
+    # A job reopened with an error (a finish that failed partway) stays for the owner to retry.
+    open_jobs = await Job.find(Job.owner_id == owner_id, Job.state == "open", {"error": None}).to_list()
     referenced = list({message_id for job in open_jobs for message_id in job.message_ids})
     messages = await Message.find(In(Message.id, referenced), Message.plugin_id == plugin_id).to_list()
     present = await refs_in_inbox(plugin_id, client, [message.ref for message in messages])
@@ -120,8 +121,8 @@ async def close_handled_elsewhere(owner_id: str, plugin_id: str, client: Client)
     closing = [job.id for job in open_jobs if gone.intersection(job.message_ids)]
     if not closing:
         return 0
-    # Only jobs still open: an owner action that landed meanwhile wins.
-    result = await Job.find(In(Job.id, closing), Job.state == "open").update({"$set": {"state": "handled_elsewhere"}})
+    # Still open and still error-free: an owner action or a failed finish that landed meanwhile wins.
+    result = await Job.find(In(Job.id, closing), Job.state == "open", {"error": None}).update({"$set": {"state": "handled_elsewhere"}})
     return result.modified_count
 
 
