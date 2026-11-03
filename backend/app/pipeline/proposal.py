@@ -13,7 +13,15 @@ class Proposal(BaseModel):
     verb: Verb
     title: str  # specific to the message, never a bare verb
     evidence: list[str] = Field(default_factory=list)  # verbatim quotes from the minimized message
-    draft: str | None = None
-    options: list[str] = Field(default_factory=list)
-    due: datetime | None = None
+    draft: str | None = None  # reply / forward text in the owner's voice
+    options: list[str] = Field(default_factory=list)  # 2-3 drafted replies: yes / no / later
+    due: datetime | None = None  # snooze until, follow-up by, or the todo's deadline
+    forward_to: str | None = None  # chosen only from the owner's forwarding history
+    link: str | None = None  # the todo's link, copied exactly from the mail
+    noise_rationale: str | None = None  # why archive_noise / digest / unsubscribe needs no owner
+    digest: str | None = None  # the digest's summary of this message
     confidence: float = Field(ge=0, le=1)
+
+
+# What a proposal saves the owner for its verb; written for one verb, meaningless for another.
+ARTIFACTS = ("draft", "options", "due", "forward_to", "link", "noise_rationale", "digest")

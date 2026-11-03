@@ -7,7 +7,7 @@ from pymongo.errors import DuplicateKeyError
 
 from app.models.message import Message
 from app.models.rule import Rule
-from app.pipeline.proposal import Proposal
+from app.pipeline.proposal import ARTIFACTS, Proposal
 from app.pipeline.rules import apply_rule, matching_rule
 from tests.utils.fakes import FakeAIProvider
 
@@ -101,9 +101,11 @@ async def test_a_blank_sender_or_list_matches_no_rule(test_db):
 async def test_details_written_for_another_verb_are_dropped_when_the_rule_changes_it(test_db):
     rule = Rule(owner_id=OWNER, match="sender", value="a@example.com", verb="archive_noise")
 
-    decided = apply_rule(ai_reply().model_copy(update={"options": ["Yes", "No"]}), rule)
+    written_for_reply = {"options": ["Yes", "No"], "forward_to": "a@x.example", "link": "https://x.example",
+                         "noise_rationale": "n", "digest": "d", "due": datetime(2026, 12, 1, tzinfo=UTC)}
+    decided = apply_rule(ai_reply().model_copy(update=written_for_reply), rule)
 
-    assert (decided.draft, decided.options, decided.due) == (None, [], None)
+    assert {field: getattr(decided, field) for field in ARTIFACTS} == {field: Proposal.model_fields[field].get_default(call_default_factory=True) for field in ARTIFACTS}
     assert decided.title == ai_reply().title and decided.evidence == ai_reply().evidence
 
 

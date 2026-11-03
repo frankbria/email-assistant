@@ -2,7 +2,7 @@
 
 from app.models.message import Message
 from app.models.rule import Rule, RuleMatch, rule_key
-from app.pipeline.proposal import Proposal
+from app.pipeline.proposal import ARTIFACTS, Proposal
 
 
 async def matching_rule(owner_id: str, message: Message) -> Rule | None:
@@ -26,4 +26,5 @@ def apply_rule(proposal: Proposal, rule: Rule | None) -> Proposal:
         return proposal
     if rule.verb == proposal.verb:
         return proposal.model_copy(update={"needs_owner": False})
-    return proposal.model_copy(update={"verb": rule.verb, "needs_owner": False, "draft": None, "options": [], "due": None})
+    cleared = {field: Proposal.model_fields[field].get_default(call_default_factory=True) for field in ARTIFACTS}
+    return proposal.model_copy(update={"verb": rule.verb, "needs_owner": False, **cleared})

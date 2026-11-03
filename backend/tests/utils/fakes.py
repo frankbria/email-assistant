@@ -21,5 +21,6 @@ class FakeAIProvider:
         self.prompts.append(prompt)
         if self.error is not None:
             raise self.error
-        assert isinstance(self.result, schema), f"canned result is not a {schema.__name__}"
-        return self.result
+        assert self.result is not None, "no canned result"
+        # Like structured output, the result must fit the schema it was asked for (e.g. a fixed verb).
+        return schema.model_validate(self.result.model_dump())
