@@ -121,8 +121,8 @@ async def close_handled_elsewhere(owner_id: str, plugin_id: str, client: Client)
     closing = [job.id for job in open_jobs if gone.intersection(job.message_ids)]
     if not closing:
         return 0
-    # Only jobs still open: an owner action that landed meanwhile wins.
-    result = await Job.find(In(Job.id, closing), Job.state == "open").update({"$set": {"state": "handled_elsewhere"}})
+    # Still open and still error-free: an owner action or a failed finish that landed meanwhile wins.
+    result = await Job.find(In(Job.id, closing), Job.state == "open", {"error": None}).update({"$set": {"state": "handled_elsewhere"}})
     return result.modified_count
 
 
