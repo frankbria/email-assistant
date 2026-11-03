@@ -54,7 +54,9 @@ async def process(message: Message, client: Client, provider: AIProvider, cap: i
     """The message's job, made once. Transient failures (plugin or AI down) raise and leave it pending."""
     assert message.id is not None, "only stored messages are processed"
     job = await Job.find_one(Job.owner_id == message.owner_id, Job.message_ids == message.id)
-    if job is None and (sibling := await sibling_job(message)) is not None:
+    sibling = await sibling_job(message) if job is None else None
+    if sibling is not None and not (message.first_pass and sibling.state in ("done", "dismissed")):
+        # A first-connect copy never rides on a decision already carried out elsewhere (§5.3: it's `ask`).
         job = await attach_copy(sibling, message)
     if job is None:
         job = await decide(message, client, provider, cap)
@@ -85,8 +87,11 @@ async def sibling_job(message: Message) -> Job | None:
 async def attach_copy(job: Job, message: Message) -> Job:
     """One job for every copy (spec §5.3). Returns the job as stored right after attaching, so a
     finish that landed meanwhile is seen (its archive may have missed this copy)."""
+    attach: dict[str, object] = {"$addToSet": {"message_ids": message.id}}
+    if message.first_pass:  # a first-connect copy makes the shared job need the owner's approval (§5.3)
+        attach["$set"] = {"requires_approval": True}
     stored = await Job.get_pymongo_collection().find_one_and_update(
-        {"_id": job.id}, {"$addToSet": {"message_ids": message.id}}, return_document=ReturnDocument.AFTER
+        {"_id": job.id}, attach, return_document=ReturnDocument.AFTER
     )
     assert stored is not None
     return Job.model_validate(stored)

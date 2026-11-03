@@ -57,10 +57,13 @@ async def test_the_same_mail_in_two_accounts_is_one_job_archived_in_both_when_do
 
 
 async def test_a_copy_arriving_after_its_job_was_done_is_archived_at_once(test_db):
+    """Both accounts were connected before (past their first pass); the work copy is synced late."""
     await add_owner(test_db)
     home, work = new_mailbox(), new_mailbox()
-    message_id = deliver_to_both(home, work, "Invoice 4471")
     provider = FakeAIProvider(result=todo())
+    async with connected(reference_imap_plugin(home, HOME), reference_imap_plugin(work, WORK)) as registry:
+        await SyncEngine(registry, test_db["user"], poll_seconds=60, provider=provider).sync_all()  # first passes, empty
+    message_id = deliver_to_both(home, work, "Invoice 4471")
     async with connected(reference_imap_plugin(home, HOME)) as registry:
         await SyncEngine(registry, test_db["user"], poll_seconds=60, provider=provider).sync_all()
         [job] = await Job.find(Job.owner_id == OWNER).to_list()
@@ -72,6 +75,38 @@ async def test_a_copy_arriving_after_its_job_was_done_is_archived_at_once(test_d
     assert len(shared.message_ids) == 2 and (shared.state, shared.error) == ("done", None)
     assert work.messages("INBOX") == [] and [m["Message-ID"] for m in work.messages("Archive")] == [message_id]
     assert len(provider.prompts) == 1
+
+
+async def test_a_first_connect_copy_is_never_archived_on_another_accounts_decision(test_db):
+    """Spec §5.3: every first-pass decision is `ask`. A newly connected account's copy of mail already
+    finished elsewhere gets its own job needing approval instead of being archived."""
+    await add_owner(test_db)
+    home, work = new_mailbox(), new_mailbox()
+    message_id = deliver_to_both(home, work, "Invoice 4471")
+    provider = FakeAIProvider(result=todo())
+    async with connected(reference_imap_plugin(home, HOME)) as registry:
+        await SyncEngine(registry, test_db["user"], poll_seconds=60, provider=provider).sync_all()
+        [done] = await Job.find(Job.owner_id == OWNER).to_list()
+        await finish(done.id, "done", registry)
+    async with connected(reference_imap_plugin(home, HOME), reference_imap_plugin(work, WORK)) as registry:
+        await SyncEngine(registry, test_db["user"], poll_seconds=60, provider=provider).sync_all()  # work: first connect
+
+    jobs = await Job.find(Job.owner_id == OWNER).sort("created_at").to_list()
+    assert [(job.state, job.requires_approval, len(job.message_ids)) for job in jobs] == [("done", True, 1), ("open", True, 1)]
+    assert [m["Message-ID"] for m in work.messages("INBOX")] == [message_id]
+
+
+async def test_a_first_connect_copy_joining_an_open_job_makes_it_need_approval(test_db):
+    await add_owner(test_db)
+    home, work = new_mailbox(), new_mailbox()
+    async with connected(reference_imap_plugin(home, HOME)) as registry:
+        await SyncEngine(registry, test_db["user"], poll_seconds=60, provider=FakeAIProvider(result=todo())).sync_all()  # home: past first pass
+    deliver_to_both(home, work, "Invoice 4471")
+    async with connected(reference_imap_plugin(home, HOME), reference_imap_plugin(work, WORK)) as registry:
+        await SyncEngine(registry, test_db["user"], poll_seconds=60, provider=FakeAIProvider(result=todo())).sync_all()
+
+    [job] = await Job.find(Job.owner_id == OWNER).to_list()
+    assert (job.state, len(job.message_ids), job.requires_approval) == ("open", 2, True)
 
 
 async def test_mail_without_a_message_id_never_shares_a_job(test_db, mailbox: Mailbox):
