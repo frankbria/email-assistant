@@ -5,6 +5,7 @@ outside the app."""
 import asyncio
 import contextlib
 import logging
+from pathlib import Path
 from datetime import UTC, datetime, timedelta
 from typing import Literal
 
@@ -16,6 +17,7 @@ from app.models.job import Job
 from app.models.message import Message
 from app.models.sync_cursor import SyncCursor
 from app.executor import wake_due
+from app.permissions import sync_permissions_file
 from app.pipeline.run import process_pending
 from app.plugins.calls import InvalidCursor, SyncError, call_plugin, refs_in_inbox
 from app.plugins.registry import PluginRegistry
@@ -143,6 +145,7 @@ class SyncEngine:
         first_connect_days: int = FIRST_CONNECT_DAYS,
         provider: AIProvider | None = None,
         ai_monthly_cap: int | None = None,
+        permissions_file: Path | None = None,
     ) -> None:
         self.plugins = plugins
         self.users = users
@@ -150,6 +153,7 @@ class SyncEngine:
         self.first_connect_days = first_connect_days
         self.provider = provider  # None: sync only, no jobs (e.g. tests of sync alone)
         self.ai_monthly_cap = ai_monthly_cap
+        self.permissions_file = permissions_file  # None: the stored settings alone (e.g. tests of sync alone)
         self.wake = asyncio.Event()
         self._listeners: dict[str, tuple[Client, asyncio.Task[None]]] = {}
 
@@ -173,6 +177,11 @@ class SyncEngine:
         owner = await self.users.find_one({}, {"_id": 1})
         if owner is None:
             return  # nobody has signed up yet, so there is no one to sync for
+        if self.permissions_file is not None:
+            try:  # before the pipeline, so an edited permissions.yaml applies to this pass's mail
+                await sync_permissions_file(str(owner["_id"]), self.permissions_file)
+            except Exception:
+                logger.exception("Syncing permissions.yaml failed; retrying next pass")
         sent_synced = [await self._sync_plugin(str(owner["_id"]), plugin_id, client) for plugin_id, client in list(self.plugins.clients.items())]
         # Outgoing history is current only if every enabled account is connected and its sent folder synced.
         accounts_up = all(state.status in ("connected", "disabled") for state in self.plugins.states.values())
@@ -201,7 +210,7 @@ class SyncEngine:
             sent_synced = False
         if self.provider is not None:
             try:
-                await process_pending(owner_id, plugin_id, client, self.provider, self.ai_monthly_cap)
+                await process_pending(owner_id, plugin_id, client, self.provider, self.ai_monthly_cap, self.plugins)
             except Exception:  # pending mail stays pending: the next pass picks it up
                 logger.exception("Pipeline for plugin %s failed; retrying next pass", plugin_id)
         return sent_synced

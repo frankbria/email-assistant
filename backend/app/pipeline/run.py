@@ -3,6 +3,7 @@ validate, and becomes a job or an ask-owner job. Anything that goes wrong asks t
 optional monthly AI cap (§5.3) does too, with one warning per month."""
 
 import logging
+from collections.abc import Awaitable, Callable
 from datetime import UTC, datetime
 
 from mcp import Client
@@ -11,22 +12,26 @@ from pydantic import ValidationError
 from beanie.operators import In, NotIn
 from pymongo import ReturnDocument
 
-from app.executor import archive, reopen
+from app.executor import archive, defer, execute, finish, reopen
 from app.models.ai_usage import AiUsage
 from app.models.job import Job
 from app.models.message import Message
+from app.permissions import level_for
 from app.pipeline.minimize import minimize
 from app.pipeline.propose import forward_candidates, propose
 from app.pipeline.rules import apply_rule, matching_rule
 from app.pipeline.validate import ask_owner_job, to_job
 from app.plugins.calls import call_plugin, refs_in_inbox
+from app.plugins.registry import PluginRegistry
 from app.services.ai_provider import AIProposalError, AIProvider
 from mailbox_contract import MessageDetail
 
 logger = logging.getLogger(__name__)
 
 
-async def process_pending(owner_id: str, plugin_id: str, client: Client, provider: AIProvider, cap: int | None) -> int:
+async def process_pending(
+    owner_id: str, plugin_id: str, client: Client, provider: AIProvider, cap: int | None, plugins: PluginRegistry
+) -> int:
     """Every inbox message of this plugin still without its job, oldest first, including any a crash
     left behind. Returns how many were processed; one failure doesn't stop the rest."""
     pending = Message.find(
@@ -43,14 +48,14 @@ async def process_pending(owner_id: str, plugin_id: str, client: Client, provide
             await message.save()
             continue
         try:
-            await process(message, client, provider, cap)
+            await process(message, client, provider, cap, plugins)
             processed += 1
         except Exception:  # e.g. MongoDB briefly unreachable: the message stays pending for next pass
             logger.exception("Pipeline failed for message %s of plugin %s; retrying next pass", message.id, plugin_id)
     return processed
 
 
-async def process(message: Message, client: Client, provider: AIProvider, cap: int | None) -> Job:
+async def process(message: Message, client: Client, provider: AIProvider, cap: int | None, plugins: PluginRegistry) -> Job:
     """The message's job, made once. Transient failures (plugin or AI down) raise and leave it pending."""
     assert message.id is not None, "only stored messages are processed"
     job = await Job.find_one(Job.owner_id == message.owner_id, Job.message_ids == message.id)
@@ -62,11 +67,35 @@ async def process(message: Message, client: Client, provider: AIProvider, cap: i
         job = await decide(message, client, provider, cap)
         job.requires_approval = message.first_pass
         await job.insert()
+        await act_if_autonomous(job, plugins)
     elif job.state in ("done", "dismissed"):
         await archive_late_copy(job, message, client)
     message.pipeline_done = True
     await message.save()
     return job
+
+
+async def act_if_autonomous(job: Job, plugins: PluginRegistry) -> None:
+    """Spec §9: an `autonomous` verb acts without a tap; `ask` and `never_auto` wait for the owner. An
+    ask-owner card or first-connect mail (§5.3) always waits. A reply acts only with a draft, and only to the
+    original sender (execute never adds recipients); forward, todo and unsubscribe can't be autonomous.
+    shortcut: digest waits for the owner until digests group mail (#88)."""
+    job_id = job.id
+    if job.ask_owner or job.requires_approval or job_id is None:
+        return
+    if await level_for(job.owner_id, job.verb) != "autonomous":
+        return
+    actions: dict[str, Callable[[], Awaitable[Job]]] = {
+        "archive_noise": lambda: finish(job_id, "done", plugins),
+        "snooze": lambda: defer(job_id),
+        "follow_up": lambda: defer(job_id),
+    }
+    if job.verb == "reply" and job.artifacts.draft:
+        actions["reply"] = lambda: execute(job_id, plugins)
+    action = actions.get(job.verb)
+    if action is not None:
+        await Job.find(Job.id == job_id).update({"$set": {"permission_level": "autonomous"}})
+        await action()
 
 
 async def sibling_job(message: Message) -> Job | None:

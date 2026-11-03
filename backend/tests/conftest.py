@@ -25,6 +25,7 @@ from app.models.job import Job
 from app.models.message import Message
 from app.models.ai_usage import AiUsage
 from app.models.rule import Rule
+from app.permissions import PermissionSettings
 from app.models.sync_cursor import SyncCursor
 from app.config import Settings
 from app.strategies.action_registry import ActionRegistry
@@ -64,7 +65,7 @@ async def test_db():
 
     db = client[test_db_name]
 
-    document_models = [EmailMessage, AssistantTask, UserSettings, Message, Job, SyncCursor, Rule, AiUsage]
+    document_models = [EmailMessage, AssistantTask, UserSettings, Message, Job, SyncCursor, Rule, AiUsage, PermissionSettings]
     await init_beanie(
         database=db, document_models=document_models, allow_index_dropping=True
     )

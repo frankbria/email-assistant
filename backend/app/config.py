@@ -47,6 +47,9 @@ class Settings(BaseSettings):
     # goes to the owner as ask-owner cards and the app warns once.
     ai_monthly_cap: int | None = Field(default=None, ge=0)
 
+    # The readable per-verb permissions file, kept in sync with the settings screen (env PERMISSIONS_FILE).
+    permissions_file: str = "permissions.yaml"
+
     # new flag for AI summarization
     use_ai_summary: bool = False
 
