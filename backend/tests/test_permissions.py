@@ -280,3 +280,25 @@ async def test_an_autonomous_send_interrupted_by_a_crash_is_recovered_once_its_c
     [job] = await Job.find_all().to_list()
     assert fresh == [("sending", False)]
     assert (job.state, job.permission_level) == ("done", "autonomous") and len(ana.messages("INBOX")) == 1
+
+
+async def test_a_failed_write_is_retried_and_the_stale_file_never_read_back(test_db, tmp_path: Path):
+    """reply set to ask while the file couldn't be written: the old `reply: autonomous` must not return."""
+    config = tmp_path / "config"
+    config.mkdir()
+    path = config / "permissions.yaml"
+    await set_levels(OWNER, {"reply": "autonomous"}, path)
+    config.chmod(0o500)
+    try:
+        await set_levels(OWNER, {"reply": "ask"}, path)  # stored; the file still says autonomous
+        await sync_permissions_file(OWNER, path)  # still unwritable: retried, not read
+        still_unwritable = await level_for(OWNER, "reply")
+    finally:
+        config.chmod(0o700)
+
+    await sync_permissions_file(OWNER, path)
+
+    assert still_unwritable == "ask"
+    assert await level_for(OWNER, "reply") == "ask" and yaml.safe_load(path.read_text())["reply"] == "ask"
+    stored = await PermissionSettings.find_one(PermissionSettings.owner_id == OWNER)
+    assert stored is not None and stored.file_error is None

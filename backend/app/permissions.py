@@ -44,6 +44,7 @@ class PermissionSettings(Document):
     levels: dict[str, PermissionLevel] = Field(default_factory=dict)  # only what differs from DEFAULTS is needed
     file_hash: str | None = None  # sha256 of the permissions.yaml content last read or written
     file_error: str | None = None  # why the current file was rejected (shown on the settings screen)
+    write_pending: bool = False  # the store changed but the file couldn't be written: the store is newer
     updated_at: datetime = Field(default_factory=lambda: datetime.now(UTC))
 
     class Settings:
@@ -116,9 +117,9 @@ async def write_file(settings: PermissionSettings, path: Path) -> None:
         with tempfile.NamedTemporaryFile("w", dir=path.parent, prefix=".permissions-", delete=False) as temporary:
             temporary.write(text)
         os.replace(temporary.name, path)
-        settings.file_hash, settings.file_error = digest(text), None
+        settings.file_hash, settings.file_error, settings.write_pending = digest(text), None, False
     except OSError as error:
-        settings.file_error = f"couldn't write {path}: {error.strerror or error}"
+        settings.file_error, settings.write_pending = f"couldn't write {path}: {error.strerror or error}", True
         logger.error("Couldn't write permissions.yaml: %s", error)
     await settings.save()
 
@@ -128,7 +129,7 @@ async def sync_permissions_file(owner_id: str, path: Path) -> None:
     a missing or empty file (a truncated write) is written from the store, never read as all defaults."""
     settings = await stored_settings(owner_id)
     text = path.read_text() if path.exists() else ""
-    if not text.strip():
+    if settings.write_pending or not text.strip():  # the store is newer than the file: never read it back
         await write_file(settings, path)
         return
     if digest(text) == settings.file_hash:
