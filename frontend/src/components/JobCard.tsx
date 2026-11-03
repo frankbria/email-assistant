@@ -231,7 +231,7 @@ export function JobCard({ card, onReplaced, onRemoved }: JobCardProps) {
               </Button>
             </DropdownMenuTrigger>
             <DropdownMenuContent>
-              {ACTIONS.filter(({ verb }) => verb !== job.verb).map(({ verb, label }) => (
+              {ACTIONS.filter(({ verb }) => job.ask_owner || verb !== job.verb).map(({ verb, label }) => (
                 <DropdownMenuItem
                   key={verb}
                   className={TOUCH_TARGET}

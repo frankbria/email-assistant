@@ -293,4 +293,12 @@ describe('Job queue actions', () => {
     expect(within(card).queryByRole('button', { name: 'Approve' })).not.toBeInTheDocument()
     expect(within(card).getByRole('button', { name: 'Other action' })).toBeInTheDocument()
   })
+
+  it('an ask-owner card can choose its own proposed verb, since approval needs a choice first', async () => {
+    const card = await renderQueue(cardWith({ verb: 'reply', ask_owner: true, problems: ['Unsure'] }))
+
+    await userEvent.click(within(card).getByRole('button', { name: 'Other action' }))
+
+    expect(await screen.findByRole('menuitem', { name: 'Reply' })).toBeInTheDocument()
+  })
 })
