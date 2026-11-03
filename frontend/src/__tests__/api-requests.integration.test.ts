@@ -36,7 +36,7 @@ beforeAll(async () => {
       return
     }
     requests.push({ method: request.method ?? '', url, authorization: request.headers.authorization, body })
-    const isList = request.method === 'GET' && (url.startsWith('/api/v1/tasks') || url.startsWith('/api/v1/email/spam'))
+    const isList = request.method === 'GET' && (url.startsWith('/api/v1/jobs') || url.startsWith('/api/v1/email/spam'))
     response.end(JSON.stringify(isList ? [] : { enable_spam_filtering: true }))
   })
   await new Promise<void>((resolve) => server.listen(0, '127.0.0.1', resolve))
@@ -54,11 +54,14 @@ beforeEach(() => {
 })
 
 async function callEveryService() {
-  const tasks = await import('@/services/taskService')
+  const jobs = await import('@/services/jobsService')
   const email = await import('@/services/emailService')
   const settings = await import('@/services/settingsService')
-  await tasks.fetchTasks('active', false)
-  await tasks.updateTaskStatus('task-1', 'Reply')
+  await jobs.fetchJobs()
+  await jobs.editJob('job-1', { draft: 'Thanks', options: ['Tue', 'Wed'] })
+  await jobs.approveJob('job-1', 'ana@example.com')
+  await jobs.chooseVerb('job-1', 'snooze')
+  await jobs.dismissJob('job-1')
   await email.fetchSpamEmails()
   await email.markNotSpam('email-1')
   await email.archiveSpam('email-1')
@@ -71,12 +74,30 @@ describe('frontend → FastAPI requests', () => {
   it('carry the Better Auth JWT and never a user_id', async () => {
     await callEveryService()
 
-    expect(requests).toHaveLength(8)
+    expect(requests).toHaveLength(11)
     for (const request of requests) {
       expect(request.authorization, `${request.method} ${request.url}`).toBe('Bearer test-jwt')
       expect(request.url).not.toMatch(/user_id/)
       expect(request.body).not.toMatch(/user_id/)
     }
+  })
+
+  it('hit the jobs endpoints with the right method, path and body', async () => {
+    const jobs = await import('@/services/jobsService')
+
+    await jobs.fetchJobs()
+    await jobs.editJob('job-1', { draft: 'Thanks', options: ['Tue', 'Wed'] })
+    await jobs.approveJob('job-1', 'ana@example.com')
+    await jobs.chooseVerb('job-1', 'snooze')
+    await jobs.dismissJob('job-1')
+
+    expect(requests.map(({ method, url, body, authorization }) => ({ method, url, body, authorization }))).toEqual([
+      { method: 'GET', url: '/api/v1/jobs', body: '', authorization: 'Bearer test-jwt' },
+      { method: 'PATCH', url: '/api/v1/jobs/job-1', body: '{"draft":"Thanks","options":["Tue","Wed"]}', authorization: 'Bearer test-jwt' },
+      { method: 'POST', url: '/api/v1/jobs/job-1/approve', body: '{"forward_to":"ana@example.com"}', authorization: 'Bearer test-jwt' },
+      { method: 'POST', url: '/api/v1/jobs/job-1/choose', body: '{"verb":"snooze"}', authorization: 'Bearer test-jwt' },
+      { method: 'POST', url: '/api/v1/jobs/job-1/dismiss', body: '', authorization: 'Bearer test-jwt' },
+    ])
   })
 
   it('are not sent at all without a session', async () => {

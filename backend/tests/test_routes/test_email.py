@@ -1,9 +1,10 @@
 # backend/tests/test_routes/test_email.py
+from app.models.assistant_task import AssistantTask
 from app.strategies.action_registry import ActionRegistry
 from app.strategies.default import DefaultEmailStrategy
 
 
-def test_create_email_task(client, monkeypatch):
+async def test_create_email_task(async_client, db_transaction, monkeypatch):
     """Test that POST /api/v1/email creates a new email task"""
     ActionRegistry._strategies.clear()
     ActionRegistry.register("default", DefaultEmailStrategy)
@@ -22,39 +23,29 @@ def test_create_email_task(client, monkeypatch):
         "subject": "Test",
         "body": "Test Email.",
     }
-    response = client.post("/api/v1/email", json=payload)
+    response = await async_client.post("/api/v1/email", json=payload)
     assert response.status_code == 200
     data = response.json()
     assert "email_id" in data
     assert "task_id" in data
     print(f"🔄 Created email: {data}")
 
-    # Fetch all tasks and verify the created one
-    tasks_resp = client.get("/api/v1/tasks/")
-    assert tasks_resp.status_code == 200
-    tasks = tasks_resp.json()
-    print(f"🔄 Fetched tasks: {tasks}")
-
-    created = next(
-        (t for t in tasks if t.get("email", {}).get("subject") == payload["subject"]),
-        None,
-    )
+    created = await AssistantTask.get(data["task_id"])
     assert created is not None, f"Task with subject '{payload['subject']}' not found"
-    assert "context" in created
+    assert created.context is not None
 
     # Verify actions list
-    assert "actions" in created
-    assert isinstance(created["actions"], list)
-    assert 2 <= len(created["actions"]) <= 3, "Should have 2-3 suggested actions"
+    assert isinstance(created.actions, list)
+    assert 2 <= len(created.actions) <= 3, "Should have 2-3 suggested actions"
     # Common actions that should typically be available
-    action_labels = set(created["actions"])
+    action_labels = set(created.actions)
     print(f"🔄 Action labels: {action_labels}")
     assert any(
         label in action_labels for label in ["Reply", "Forward", "Archive"]
     ), "Should include basic email actions"
 
 
-def test_email_task_context_integration(client, monkeypatch):
+async def test_email_task_context_integration(async_client, db_transaction, monkeypatch):
     """
     When I POST an email containing scheduling keywords,
     the saved task's context should be 'scheduling'.
@@ -74,31 +65,23 @@ def test_email_task_context_integration(client, monkeypatch):
         fake_classify,
     )
 
-    resp = client.post("/api/v1/email", json=payload)
+    resp = await async_client.post("/api/v1/email", json=payload)
     assert resp.status_code == 200
 
-    tasks_resp = client.get("/api/v1/tasks/")
-    assert tasks_resp.status_code == 200
-    tasks = tasks_resp.json()
-
-    task = next(
-        (t for t in tasks if t["email"]["subject"] == payload["subject"]),
-        None,
-    )
+    task = await AssistantTask.get(resp.json()["task_id"])
     assert task is not None, "Created task not found"
-    assert task["context"] == "scheduling"
+    assert task.context == "scheduling"
 
     # Verify context-specific actions
-    assert "actions" in task
-    assert isinstance(task["actions"], list)
-    assert 2 <= len(task["actions"]) <= 3, "Should have 2-3 suggested actions"
-    action_labels = set(task["actions"])
+    assert isinstance(task.actions, list)
+    assert 2 <= len(task.actions) <= 3, "Should have 2-3 suggested actions"
+    action_labels = set(task.actions)
     assert any(
         "Schedule" in label or "Reply" in label for label in action_labels
     ), "Should include scheduling-related actions"
 
 
-def test_email_task_actions_fallback(client, monkeypatch):
+async def test_email_task_actions_fallback(async_client, db_transaction, monkeypatch):
     """Test that tasks always get actions even if suggestion fails"""
     payload = {
         "sender": "charlie@example.com",
@@ -115,24 +98,16 @@ def test_email_task_actions_fallback(client, monkeypatch):
         mock_suggest_actions,
     )
 
-    resp = client.post("/api/v1/email", json=payload)
+    resp = await async_client.post("/api/v1/email", json=payload)
     assert resp.status_code == 200
 
-    tasks_resp = client.get("/api/v1/tasks/")
-    assert tasks_resp.status_code == 200
-    tasks = tasks_resp.json()
-
-    task = next(
-        (t for t in tasks if t["email"]["subject"] == payload["subject"]),
-        None,
-    )
+    task = await AssistantTask.get(resp.json()["task_id"])
     assert task is not None, "Created task not found"
 
     # Should still have default actions
-    assert "actions" in task
-    assert isinstance(task["actions"], list)
-    assert len(task["actions"]) >= 2, "Should have at least 2 default actions"
-    assert "Reply" in task["actions"], "Should include Reply action"
+    assert isinstance(task.actions, list)
+    assert len(task.actions) >= 2, "Should have at least 2 default actions"
+    assert "Reply" in task.actions, "Should include Reply action"
 
 
 # @pytest.mark.skip
