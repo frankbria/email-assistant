@@ -81,3 +81,41 @@ jobs:
         run: npx tsc --noEmit
       - name: vitest
         run: npx vitest run
+
+  e2e:
+    # Playwright against the real stack (frontend/playwright.config.ts starts FastAPI and Next itself).
+    # shortcut: same mongod kernel limit as the backend job (see #105).
+    runs-on: ubuntu-22.04
+    timeout-minutes: 15
+    services:
+      mongodb:
+        image: mongo:8
+        ports: ["27017:27017"]
+        options: >-
+          --health-cmd "mongosh --quiet --eval 'db.runCommand({ping: 1})'"
+          --health-interval 5s
+          --health-retries 12
+      greenmail:
+        image: greenmail/standalone:2.1.15
+        env:
+          GREENMAIL_OPTS: -Dgreenmail.setup.test.smtp -Dgreenmail.setup.test.imap -Dgreenmail.hostname=0.0.0.0 -Dgreenmail.auth.disabled
+        ports: ["3025:3025", "3143:3143"]
+    steps:
+      - uses: actions/checkout@v7
+      - uses: astral-sh/setup-uv@v10.3.3 # no floating major tag upstream
+        with:
+          python-version: "3.14"
+      - run: uv sync --locked
+        working-directory: backend
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 24
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+      - run: npm ci
+        working-directory: frontend
+      - run: npx playwright install --with-deps chromium
+        working-directory: frontend
+      - name: playwright
+        run: npm run e2e
+        working-directory: frontend

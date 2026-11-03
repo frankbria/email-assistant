@@ -1,0 +1,19 @@
+# The Playwright suite's mailbox (frontend/playwright.config.ts): the reference IMAP plugin on the
+# GreenMail test server (docker-compose.test.yml). The E2E stack sets the E2E_MAILBOX_* variables.
+plugins:
+  - id: reference-imap
+    transport:
+      type: stdio
+      command: python
+      args: [-m, imap_mailbox.server]
+      env_from:
+        MAILBOX_ACCOUNT: E2E_MAILBOX_ACCOUNT
+        MAILBOX_USERNAME: E2E_MAILBOX_ACCOUNT
+        MAILBOX_PASSWORD: E2E_MAILBOX_PASSWORD
+        MAILBOX_IMAP_HOST: E2E_MAILBOX_HOST
+        MAILBOX_IMAP_PORT: E2E_MAILBOX_IMAP_PORT
+        MAILBOX_SMTP_HOST: E2E_MAILBOX_HOST
+        MAILBOX_SMTP_PORT: E2E_MAILBOX_SMTP_PORT
+        MAILBOX_SMTP_LOGIN: E2E_MAILBOX_SMTP_LOGIN
+        MAILBOX_TLS: E2E_MAILBOX_TLS
+        MAILBOX_APPEND_SENT: E2E_MAILBOX_APPEND_SENT

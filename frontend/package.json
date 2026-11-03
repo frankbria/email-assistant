@@ -11,7 +11,8 @@
     "start": "next start -p 3200",
     "lint": "eslint .",
     "test": "vitest",
-    "test:watch": "vitest watch"
+    "test:watch": "vitest watch",
+    "e2e": "playwright test"
   },
   "dependencies": {
     "@hugeicons/core-free-icons": "^4.4.0",

@@ -2,7 +2,7 @@ export function JobCardSkeleton() {
   return (
     <div 
       role="article"
-      className="rounded-2xl shadow-sm bg-white p-4 space-y-2 w-96 flex flex-col animate-pulse"
+      className="rounded-2xl shadow-sm bg-white p-4 space-y-2 w-full max-w-96 flex flex-col animate-pulse"
     >
       {/* Context skeleton */}
       <div className="h-5 bg-gray-200 rounded w-2/3" />
