@@ -7,7 +7,8 @@ import pytest
 
 from app.models.message import Message
 from app.models.sync_cursor import SyncCursor
-from app.sync import SyncEngine, recent_sent, sync_folder
+from app.models.message import recent_sent
+from app.sync import SyncEngine, sync_folder
 from tests.conformance.test_mailbox_conformance import reference_imap_plugin
 from tests.test_sync.test_inbox_sync import OWNER, PLUGIN, add_owner, connected
 from tests.utils.mail_server import Mailbox

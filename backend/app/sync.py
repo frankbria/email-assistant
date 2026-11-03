@@ -3,7 +3,6 @@ at once when a `push` plugin says new mail arrived, and close jobs whose message
 outside the app."""
 
 import asyncio
-import re
 import contextlib
 import logging
 from datetime import UTC, datetime, timedelta
@@ -12,49 +11,24 @@ from typing import Literal
 
 from beanie.operators import In
 from mcp import Client
-from mcp.types import CallToolResult
 from pymongo.asynchronous.collection import AsyncCollection
 
 from app.models.job import Job
 from app.models.message import Message
 from app.models.sync_cursor import SyncCursor
-from app.plugins.registry import PluginRegistry, result_text
-from mailbox_contract import INBOX_URI, Capability, ErrorCode, InboxContainsOutput, ListMessagesOutput, ToolError
+from app.pipeline.run import process_pending
+from app.plugins.calls import InvalidCursor, SyncError, call_plugin
+from app.plugins.registry import PluginRegistry
+from app.services.ai_provider import AIProvider
+from mailbox_contract import INBOX_URI, Capability, InboxContainsOutput, ListMessagesOutput
 
 logger = logging.getLogger(__name__)
 
+Folder = Literal["inbox", "sent"]
+
 PAGE_SIZE = 100
 FIRST_CONNECT_DAYS = 14
-PLUGIN_CALL_TIMEOUT_SECONDS = 60  # one hung plugin must not stop every other plugin's sync
 INBOX_CONTAINS_BATCH = 500  # the contract's cap on refs per call
-
-
-class SyncError(Exception):
-    """A plugin call failed during sync; the message says which plugin, which tool and why."""
-
-
-class InvalidCursor(Exception):
-    """The plugin no longer accepts the stored cursor (e.g. the folder was rebuilt)."""
-
-
-async def call_plugin(plugin_id: str, client: Client, tool: str, arguments: dict[str, object]) -> dict[str, object]:
-    async with asyncio.timeout(PLUGIN_CALL_TIMEOUT_SECONDS):
-        result = await client.call_tool(tool, arguments)
-    if result.is_error or result.structured_content is None:
-        raise tool_failure(plugin_id, tool, result)
-    return result.structured_content
-
-
-def tool_failure(plugin_id: str, tool: str, result: CallToolResult) -> InvalidCursor | SyncError:
-    if result.structured_content is None:
-        return SyncError(f"{plugin_id}: {tool} failed: {result_text(result) or 'no structured result'}")
-    error = ToolError.model_validate(result.structured_content)
-    if error.code == ErrorCode.INVALID_CURSOR:
-        return InvalidCursor(error.message)
-    return SyncError(f"{plugin_id}: {tool} failed: {error.message}")
-
-
-Folder = Literal["inbox", "sent"]
 
 
 async def list_folder(
@@ -137,14 +111,6 @@ async def sync_folder(
             return new_messages
 
 
-async def recent_sent(owner_id: str, limit: int, to: str | None = None) -> list[Message]:
-    """The owner's newest sent mail, optionally to one correspondent: their voice and history."""
-    query = Message.find(Message.owner_id == owner_id, Message.folder == "sent")
-    if to is not None:
-        query = query.find({"to.email": {"$regex": f"^{re.escape(to)}$", "$options": "i"}})
-    return await query.sort("-date").limit(limit).to_list()
-
-
 async def close_handled_elsewhere(owner_id: str, plugin_id: str, client: Client) -> int:
     """Close the open jobs over this plugin's messages that left the inbox outside the app
     (archived on a phone, moved by a filter), so the app never archives them again. Returns how many."""
@@ -175,11 +141,15 @@ class SyncEngine:
         users: AsyncCollection[dict[str, object]],
         poll_seconds: float,
         first_connect_days: int = FIRST_CONNECT_DAYS,
+        provider: AIProvider | None = None,
+        ai_monthly_cap: int | None = None,
     ) -> None:
         self.plugins = plugins
         self.users = users
         self.poll_seconds = poll_seconds
         self.first_connect_days = first_connect_days
+        self.provider = provider  # None: sync only, no jobs (e.g. tests of sync alone)
+        self.ai_monthly_cap = ai_monthly_cap
         self.wake = asyncio.Event()
         self._listeners: dict[str, tuple[Client, asyncio.Task[None]]] = {}
 
@@ -218,6 +188,11 @@ class SyncEngine:
             logger.info("Plugin %s: %d new messages", plugin_id, len(new_messages))
         if handled_elsewhere:
             logger.info("Plugin %s: %d jobs handled elsewhere", plugin_id, handled_elsewhere)
+        if self.provider is not None:
+            try:
+                await process_pending(owner_id, plugin_id, client, self.provider, self.ai_monthly_cap)
+            except Exception:  # pending mail stays pending: the next pass picks it up
+                logger.exception("Pipeline for plugin %s failed; retrying next pass", plugin_id)
         try:
             await sync_folder(owner_id, plugin_id, client, folder="sent", window_days=self.first_connect_days)
         except Exception:
