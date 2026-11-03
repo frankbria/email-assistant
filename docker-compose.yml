@@ -19,11 +19,11 @@ services:
     environment:
       MONGODB_URI: ${MONGODB_URI:?set MONGODB_URI (Atlas, or mongodb://mongo:27017 with --profile local-mongo)}
       MONGODB_DB: ${MONGODB_DB:-email_assistant}
-      FRONTEND_ORIGIN: ${FRONTEND_ORIGIN:-http://localhost:3000}
+      FRONTEND_ORIGIN: ${FRONTEND_ORIGIN:-http://localhost:3200}
       API_ENVIRONMENT: production
       # JWT issuer/audience = the public frontend URL; keys are fetched over the Compose network.
-      BETTER_AUTH_URL: ${BETTER_AUTH_URL:-${FRONTEND_ORIGIN:-http://localhost:3000}}
-      BETTER_AUTH_JWKS_URL: http://frontend:3000/api/auth/jwks
+      BETTER_AUTH_URL: ${BETTER_AUTH_URL:-${FRONTEND_ORIGIN:-http://localhost:3200}}
+      BETTER_AUTH_JWKS_URL: http://frontend:3200/api/auth/jwks
       # The owner's per-verb permissions, editable on the host in ./config (see docs/deployment.md).
       PERMISSIONS_FILE: /app/config/permissions.yaml
     volumes:
@@ -42,11 +42,11 @@ services:
       MONGODB_URI: ${MONGODB_URI:?set MONGODB_URI}
       MONGODB_DB: ${MONGODB_DB:-email_assistant}
       BETTER_AUTH_SECRET: ${BETTER_AUTH_SECRET:?set BETTER_AUTH_SECRET (openssl rand -base64 32)}
-      BETTER_AUTH_URL: ${BETTER_AUTH_URL:-${FRONTEND_ORIGIN:-http://localhost:3000}}
+      BETTER_AUTH_URL: ${BETTER_AUTH_URL:-${FRONTEND_ORIGIN:-http://localhost:3200}}
     depends_on:
       - backend
     ports:
-      - "${BIND_ADDRESS:-127.0.0.1}:${FRONTEND_PORT:-3000}:3000"
+      - "${BIND_ADDRESS:-127.0.0.1}:${FRONTEND_PORT:-3200}:3200"
 
   mongo:
     image: mongo:8

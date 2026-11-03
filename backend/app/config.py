@@ -30,7 +30,7 @@ class Settings(BaseSettings):
 
     # Better Auth (the Next.js app): JWT issuer/audience, and where its JWKS lives.
     # BETTER_AUTH_JWKS_URL overrides the JWKS location, e.g. an internal Docker address.
-    better_auth_url: str = "http://localhost:3000"
+    better_auth_url: str = "http://localhost:3200"
     better_auth_jwks_url_override: str | None = Field(default=None, alias="BETTER_AUTH_JWKS_URL")
 
     # AI provider (env AI_PROVIDER / AI_MODEL); the Anthropic key is ANTHROPIC_API_KEY.
@@ -62,7 +62,7 @@ class Settings(BaseSettings):
         for origin in [
             os.getenv("FRONTEND_ORIGIN"),
             "http://localhost",
-            "http://localhost:3000",
+            "http://localhost:3200",
             "http://localhost:8000",
         ]
         if origin
