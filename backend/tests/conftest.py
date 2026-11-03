@@ -18,8 +18,6 @@ from fastapi.testclient import TestClient
 
 # App imports
 from app.main import app
-from app.models.email_message import EmailMessage
-from app.models.assistant_task import AssistantTask
 from app.models.user_settings import UserSettings
 from app.models.job import Job
 from app.models.message import Message
@@ -27,9 +25,7 @@ from app.models.ai_usage import AiUsage
 from app.models.rule import Rule
 from app.permissions import ApprovalStreak, PermissionSettings
 from app.models.sync_cursor import SyncCursor
-from app.config import Settings
-from app.strategies.action_registry import ActionRegistry
-from tests.utils.auth import AUTH_BASE_URL, OWNER_ID, bearer_headers
+from tests.utils.auth import AUTH_BASE_URL, bearer_headers
 
 # Load environment variables
 load_dotenv()
@@ -37,8 +33,6 @@ load_dotenv()
 # Set test environment variables (override as needed)
 os.environ["MONGODB_URI"] = os.getenv("MONGODB_TEST_URI", "mongodb://localhost:27017")
 os.environ["MONGODB_DB"] = os.getenv("MONGODB_TEST_DB", "email_assistant_test")
-os.environ["USE_AI_CONTEXT"] = "false"
-os.environ["USE_AI_SUMMARY"] = "false"
 
 # Better Auth stand-in: a real local JWKS endpoint for test-minted tokens.
 os.environ["BETTER_AUTH_URL"] = AUTH_BASE_URL
@@ -65,7 +59,7 @@ async def test_db():
 
     db = client[test_db_name]
 
-    document_models = [EmailMessage, AssistantTask, UserSettings, Message, Job, SyncCursor, Rule, AiUsage, PermissionSettings, ApprovalStreak]
+    document_models = [UserSettings, Message, Job, SyncCursor, Rule, AiUsage, PermissionSettings, ApprovalStreak]
     await init_beanie(
         database=db, document_models=document_models, allow_index_dropping=True
     )
@@ -106,97 +100,6 @@ async def async_client():
     ) as client:
 
         yield client
-
-
-# ---------------------
-# Auto-loaded test data
-# ---------------------
-
-
-
-
-@pytest.fixture
-async def setup_test_data(db_transaction):
-    """Populate test DB with basic records for each test."""
-    email = EmailMessage(
-        subject="Test Email", sender="test@example.com", body="This is a test email"
-    )
-    await email.insert()
-
-    task = AssistantTask(
-        email=email,
-        context="test",
-        summary="Test task summary",
-        actions=["action1", "action2"],
-        status="pending",
-    )
-    await task.insert()
-
-    yield
-
-    # No need to clean up test data; each test runs in its own transaction
-    # await EmailMessage.find_all().delete()
-    # await AssistantTask.find_all().delete()
-
-
-# ---------------------
-# AI + Mock Fixtures
-# ---------------------
-
-
-@pytest.fixture
-def mock_context_classifier_scenario(monkeypatch):
-    """Mock context classifier to always return a fixed label."""
-
-    async def fake_classify(subject, body):
-        return "mocked_context"
-
-    monkeypatch.setattr(
-        "app.services.context_classifier.classify_context",
-        fake_classify,
-    )
-    yield
-
-
-@pytest.fixture
-def mock_action_registry_scenario():
-    """Clear and register only the mock default strategy."""
-    from app.strategies.default import DefaultEmailStrategy
-
-    ActionRegistry._strategies.clear()
-    ActionRegistry.register("default", DefaultEmailStrategy)
-    yield
-    ActionRegistry._strategies.clear()
-
-
-@pytest.fixture
-def mock_settings_scenario(monkeypatch):
-    """Mock settings to control AI flags."""
-
-    class MockSettings(Settings):
-        use_ai_actions: bool = False
-        use_ai_summary: bool = False
-        use_ai_context: bool = False
-        use_ai_context_classification: bool = False
-
-    monkeypatch.setattr("app.config.get_settings", lambda: MockSettings())
-    yield
-
-
-@pytest.fixture(autouse=True)
-def auto_inject_user_id(monkeypatch):
-    def wrap_init(orig_init):
-        def _init(self, *args, **kwargs):
-            # Inject user_id into the constructor
-            if "user_id" not in kwargs or kwargs["user_id"] is None:
-                kwargs["user_id"] = OWNER_ID
-            return orig_init(self, *args, **kwargs)
-
-        return _init
-
-    monkeypatch.setattr(EmailMessage, "__init__", wrap_init(EmailMessage.__init__))
-    monkeypatch.setattr(AssistantTask, "__init__", wrap_init(AssistantTask.__init__))
-    yield
 
 
 # ---------------------

@@ -2,8 +2,6 @@
 
 from fastapi import FastAPI
 from contextlib import asynccontextmanager
-from app.models.email_message import EmailMessage
-from app.models.assistant_task import AssistantTask
 from app.models.user_settings import UserSettings
 from app.models.job import Job
 from app.models.message import Message
@@ -12,7 +10,7 @@ from app.models.rule import Rule
 from app.permissions import ApprovalStreak, PermissionSettings
 from app.models.sync_cursor import SyncCursor
 from beanie import init_beanie
-from app.api.routers import connections, email, jobs, permissions, settings
+from app.api.routers import connections, jobs, permissions, settings
 from app.middleware import setup_cors
 from app.config import get_settings, Settings
 from pymongo import AsyncMongoClient
@@ -59,7 +57,7 @@ async def init_db(settings: Settings | None = None):
     )
     await init_beanie(
         database=client[settings.current_mongodb_db],
-        document_models=[EmailMessage, AssistantTask, UserSettings, Message, Job, SyncCursor, Rule, AiUsage, PermissionSettings, ApprovalStreak],
+        document_models=[UserSettings, Message, Job, SyncCursor, Rule, AiUsage, PermissionSettings, ApprovalStreak],
         allow_index_dropping=True,
     )
 
@@ -133,7 +131,6 @@ app = FastAPI(title="Email Assistant API", lifespan=lifespan)
 setup_cors(app)
 
 # Include routers
-app.include_router(email.router)  # router already has prefix in its definition
 app.include_router(jobs.router)
 app.include_router(settings.router)  # router already has prefix in its definition
 app.include_router(connections.router)
