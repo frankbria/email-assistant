@@ -131,5 +131,5 @@ export interface JobEdit {
   forward_to?: string
   options?: string[]
   link?: string
-  due?: string
+  due?: string | null
 }

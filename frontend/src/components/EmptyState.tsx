@@ -13,7 +13,7 @@ export function EmptyState({
   onAction
 }: EmptyStateProps) {
   return (
-    <div className="flex flex-col items-center justify-center p-8 bg-white rounded-2xl shadow-sm w-96">
+    <div className="flex flex-col items-center justify-center p-8 bg-white rounded-2xl shadow-sm w-full max-w-96">
       <div className="bg-gray-100 p-4 rounded-full mb-4">
         <HugeiconsIcon icon={InboxIcon} className="w-8 h-8 text-gray-500" />
       </div>
