@@ -15,7 +15,7 @@ from pymongo import ReturnDocument
 
 from app.executor import STALE_SENDING, JobNotOpen, archive, defer, execute, finish, reopen
 from app.models.ai_usage import AiUsage
-from app.models.job import Job
+from app.models.job import Job, Verb
 from app.models.message import Message
 from app.permissions import level_for
 from app.pipeline.minimize import minimize
@@ -98,7 +98,7 @@ async def act_if_autonomous(job: Job, plugins: PluginRegistry) -> None:
     if await level_for(job.owner_id, job.verb) != "autonomous":
         return
     actions: dict[str, Callable[[], Awaitable[Job]]] = {
-        "archive_noise": lambda: finish(job_id, "done", plugins),
+        "archive_noise": lambda: finish(job_id, "done", plugins, verb="archive_noise"),
         "snooze": lambda: defer(job_id),
         "follow_up": lambda: defer(job_id),
     }
@@ -158,24 +158,28 @@ async def archive_late_copy(job: Job, message: Message, client: Client) -> None:
         await reopen(job.id, "done" if job.state == "done" else "dismissed", [problem])
 
 
-async def decide(message: Message, client: Client, provider: AIProvider, cap: int | None) -> Job:
+async def decide(message: Message, client: Client, provider: AIProvider, cap: int | None, chosen: Verb | None = None) -> Job:
+    """`chosen`: the verb the owner picked ("choose another action"); it outranks any rule, like a rule outranks the AI."""
     answer = await call_plugin(message.plugin_id, client, "get_message", {"ref": message.ref})
+    suggested: list[Verb] = [chosen] if chosen else []
     try:
         text = MessageDetail.model_validate(answer).text
     except ValidationError as error:
-        return ask_owner_job(message, [f"couldn't read the message: {error.error_count()} invalid fields"], [])
-    rule = await matching_rule(message.owner_id, message)
-    suggested = [rule.verb] if rule else []
+        return ask_owner_job(message, [f"couldn't read the message: {error.error_count()} invalid fields"], suggested)
+    rule = None if chosen else await matching_rule(message.owner_id, message)
+    fixed_verb = chosen or (rule.verb if rule else None)
+    suggested = [fixed_verb] if fixed_verb else []
     if not await take_ai_call(cap):
         return ask_owner_job(message, ["the monthly AI cap is reached"], suggested)
     try:
-        proposal = await propose(message, text, provider, fixed_verb=rule.verb if rule else None)
+        proposal = await propose(message, text, provider, fixed_verb=fixed_verb)
     except AIProposalError:
         return ask_owner_job(message, ["the AI gave no usable proposal"], suggested)
     except Exception:  # an outage or a failed local read isn't a used call; the message waits for the next pass
         await refund_ai_call()
         raise
-    return to_job(message, apply_rule(proposal, rule), minimize(text, message.subject), await forward_candidates(message.owner_id))
+    decided = proposal.model_copy(update={"needs_owner": False}) if chosen else apply_rule(proposal, rule)
+    return to_job(message, decided, minimize(text, message.subject), await forward_candidates(message.owner_id))
 
 
 async def refund_ai_call() -> None:

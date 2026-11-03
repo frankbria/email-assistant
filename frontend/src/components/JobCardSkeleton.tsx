@@ -1,4 +1,4 @@
-export function TaskCardSkeleton() {
+export function JobCardSkeleton() {
   return (
     <div 
       role="article"

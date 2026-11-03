@@ -8,7 +8,7 @@ interface EmptyStateProps {
 }
 
 export function EmptyState({ 
-  message = 'No tasks found', 
+  message = 'No jobs found', 
   actionLabel = 'Refresh',
   onAction
 }: EmptyStateProps) {
@@ -21,7 +21,7 @@ export function EmptyState({
         {message}
       </h3>
       <p className="text-sm text-gray-500 text-center mb-4">
-        No tasks are currently available. Check back later or refresh to see new tasks.
+        No jobs are currently available. Check back later or refresh to see new jobs.
       </p>
       {onAction && (
         <button

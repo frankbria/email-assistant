@@ -5,10 +5,8 @@
 import React from 'react'
 import { describe, it, expect, vi, beforeEach, beforeAll } from 'vitest'
 import { render, screen, act } from '@testing-library/react'
-import userEvent from '@testing-library/user-event'
 import { Toaster } from 'sonner'
 import Page from '@/app/page'
-import { createEmail } from 'services/emailService'
 
 // Mock fetch globally, before any import: Better Auth's client keeps the fetch it sees at
 // import time. Its JWT endpoint answers for the signed-in owner; every other call goes to
@@ -48,185 +46,92 @@ const renderPage = () => {
   )
 }
 
-describe('Email Task Management Page', () => {
+const jobCard = {
+  job: {
+    _id: 'job-1',
+    owner_id: 'owner-1',
+    verb: 'reply',
+    title: 'Answer the project update',
+    evidence: ['Can you confirm the Friday deadline?', 'Second quote'],
+    artifacts: { draft: null, forward_to: null, options: [], link: null, digest: null, noise_rationale: null },
+    due: null,
+    state: 'open',
+    message_ids: ['<m1@example.com>'],
+    permission_level: 'ask',
+    ask_owner: false,
+    suggested_verbs: [],
+    problems: [],
+    requires_approval: true,
+    edited: false,
+    error: 'Plugin not connected',
+    sending_since: null,
+    sent_at: null,
+    reminder: 'Follow up on Monday',
+    created_at: '2026-11-01T10:00:00Z',
+  },
+  sender: { name: null, email: 'teammate@company.com' },
+  subject: 'Project Update',
+}
+
+describe('Open jobs page', () => {
   beforeEach(() => {
     vi.clearAllMocks()
   })
 
-  it('renders tasks when API call succeeds', async () => {
-    mockFetch.mockResolvedValueOnce({
-      ok: true,
-      json: async () => [
-        {
-          id: '1',
-          email: {
-            id: '1',
-            subject: 'Project Update',
-            sender: 'teammate@company.com',
-            body: 'Here is the latest project update.'
-          },
-          context: 'Project Update',
-          summary: 'Here is the latest project update.',
-          actions: ['Reply', 'Forward', 'Archive'],
-          status: 'pending'
-        }
-      ]
-    })
+  it('lists each open job with sender, subject, first evidence quote, error and reminder', async () => {
+    mockFetch.mockResolvedValueOnce(Response.json([jobCard]))
 
     await act(async () => {
       renderPage()
     })
 
-    const summaryEl = await screen.findByText(/here is the latest project update\./i)
-    expect(summaryEl).toBeInTheDocument()
-
-    const actionButtons = screen.getAllByRole('button', { name: /actions/i })
-    expect(actionButtons).toHaveLength(1)
+    expect(await screen.findByText('Answer the project update')).toBeInTheDocument()
+    expect(screen.getByText(/teammate@company\.com - Project Update/)).toBeInTheDocument()
+    expect(screen.getByText('Can you confirm the Friday deadline?')).toBeInTheDocument()
+    expect(screen.queryByText('Second quote')).not.toBeInTheDocument()
+    expect(screen.getByText('Plugin not connected')).toBeInTheDocument()
+    expect(screen.getByText('Follow up on Monday')).toBeInTheDocument()
+    expect(mockFetch.mock.calls[0][0]).toMatch(/\/api\/v1\/jobs$/)
   })
 
-  it('shows empty state when no tasks are available', async () => {
-    mockFetch.mockResolvedValueOnce({
-      ok: true,
-      json: async () => []
-    })
+  it('prefers the sender name over the address', async () => {
+    mockFetch.mockResolvedValueOnce(
+      Response.json([{ ...jobCard, sender: { name: 'Ana Lima', email: 'ana@company.com' } }])
+    )
 
     await act(async () => {
       renderPage()
     })
 
-    const emptyMsg = await screen.findByText(/no tasks are currently available\./i)
-    expect(emptyMsg).toBeInTheDocument()
+    expect(await screen.findByText(/Ana Lima - Project Update/)).toBeInTheDocument()
   })
 
-  it('handles API errors gracefully', async () => {
-    mockFetch.mockRejectedValueOnce(new Error('Failed to fetch'))
+  it('shows the empty state when there are no open jobs', async () => {
+    mockFetch.mockResolvedValueOnce(Response.json([]))
 
     await act(async () => {
       renderPage()
     })
 
-    const errorMsg = await screen.findByText((content, element) => {
-      return element?.tagName.toLowerCase() === 'p' && 
-             element?.className.includes('text-red-600') && 
-             content === 'Failed to fetch'
-    })
-    expect(errorMsg).toBeInTheDocument()
+    expect(await screen.findByText('No open jobs')).toBeInTheDocument()
   })
 
-  it("shows loading state while fetching tasks", () => {
-    // Simulate fetch never resolving to trigger loading state
-    mockFetch.mockImplementation(() => new Promise(() => {}));
-
-    renderPage();
-
-    expect(
-      screen.getByRole("region", { name: /loading tasks/i })
-    ).toBeInTheDocument();
-  });
-
-  it('opens dropdown and shows suggested actions', async () => {
-    mockFetch.mockResolvedValueOnce({
-      ok: true,
-      json: async () => [
-        {
-          id: '1',
-          email: {
-            id: '1',
-            subject: 'Project Update',
-            sender: 'teammate@company.com',
-            body: 'Here is the latest project update.'
-          },
-          context: 'Project Update',
-          summary: 'Project Update: Here is the latest project update.',
-          actions: ['Reply', 'Forward', 'Archive'],
-          status: 'pending'
-        }
-      ]
-    })
+  it('shows the server reason when the jobs call fails', async () => {
+    mockFetch.mockResolvedValueOnce(Response.json({ detail: 'Plugin not connected' }, { status: 409 }))
 
     await act(async () => {
       renderPage()
     })
 
-    const actionsButton = await screen.findByRole('button', { name: /actions/i })
-    await act(async () => {
-      await userEvent.click(actionsButton)
-    })
-
-    expect(await screen.findByText(/reply/i)).toBeInTheDocument()
+    expect(await screen.findByRole('button', { name: /retry/i })).toBeInTheDocument()
+    expect((await screen.findAllByText('Plugin not connected')).length).toBeGreaterThan(0)
   })
-  
-  it('shows new task in the UI after email submission', async () => {
-    // Mock initial empty task list
-    mockFetch.mockResolvedValueOnce({
-      ok: true,
-      json: async () => []
-    })
-    
-    // Render the page
-    await act(async () => {
-      renderPage()
-    })
-    
-    // Verify empty state is shown
-    const emptyMsg = await screen.findByText(/no tasks are currently available\./i)
-    expect(emptyMsg).toBeInTheDocument()
-    
-    // Mock email creation response
-    const newEmail = {
-      id: 'email-123',
-      subject: 'New Meeting Request',
-      sender: 'client@example.com',
-      body: 'Can we schedule a meeting next week?'
-    }
-    
-    const newTask = {
-      id: 'task-123',
-      email: newEmail,
-      context: 'Scheduling',
-      summary: 'Client requests meeting next week',
-      actions: ['Schedule', 'Reply', 'Decline'],
-      status: 'pending'
-    }
-    
-    // Mock the email creation API call
-    mockFetch.mockResolvedValueOnce({
-      ok: true,
-      json: async () => newEmail
-    })
-    
-    // Mock the subsequent task fetch that includes our new task
-    mockFetch.mockResolvedValueOnce({
-      ok: true,
-      json: async () => [newTask]
-    })
-    
-    // Simulate creating an email (normally triggered by a form submission)
-    await act(async () => {
-      await createEmail({
-        subject: 'New Meeting Request',
-        sender: 'client@example.com',
-        body: 'Can we schedule a meeting next week?'
-      })
-    })
-    
-    // We need to trigger a refetch of tasks
-    // In a real app, this might happen automatically via a hook or event
-    // For testing, we'll simulate component refresh
-    await act(async () => {
-      renderPage()
-    })
-    
-    // Verify the new task appears in the UI
-    const taskSummary = await screen.findByText(/client requests meeting next week/i)
-    expect(taskSummary).toBeInTheDocument()
-    
-    // Verify the suggested actions are available
-    const actionButton = await screen.findByRole('button', { name: /actions/i })
-    await act(async () => {
-      await userEvent.click(actionButton)
-    })
-    
-    expect(await screen.findByText(/schedule/i)).toBeInTheDocument()
+
+  it('shows a loading state while fetching jobs', () => {
+    mockFetch.mockImplementation(() => new Promise(() => {}))
+
+    renderPage()
+
+    expect(screen.getByRole('region', { name: /loading jobs/i })).toBeInTheDocument()
   })
 })

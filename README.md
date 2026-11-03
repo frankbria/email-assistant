@@ -40,7 +40,7 @@ email-assistant/
 │   ├── .env.example   # Sample environment config for FastAPI
 ├── frontend/
 │   ├── app/           # Next.js app router
-│   ├── components/    # TaskCard, BottomNav, etc.
+│   ├── components/    # BottomNav, PermissionsSection, etc.
 │   ├── .env.example   # Sample environment config for Next.js
 ├── README.md
 ├── .gitignore
@@ -74,14 +74,11 @@ npm run dev
 ## 🧱 Key Features (Sprint 1)
 - API endpoints for email-task management:
   - `POST /api/v1/email` to ingest messages and create persisted tasks  
-  - `GET /api/v1/tasks` & `PATCH /api/v1/tasks/{id}` to retrieve and update tasks
+  - `GET /api/v1/jobs` and the job actions (approve, edit, choose another action, dismiss); see `backend/README.md`
 - AI/Rule-based services for:
   - Context classification (scheduling, sales, support, etc.)  
   - One-line summary generation  
   - Quick action suggestion for reply, archive, schedule, etc.
-- Responsive TaskCard UI:
-  - Displays sender, subject, summary and action buttons  
-  - Supports in-card interactions (Done, Snooze, Archive) without a full page reload
 - Bottom navigation bar with active tab highlighting for main app sections
 - Mobile-first, touch-friendly design and persistent MongoDB storage
 

@@ -1,239 +1,95 @@
 // frontend/src/app/page.tsx
 'use client'
 
-import { useEffect, useState, useCallback, useRef } from 'react'
-import { TaskCard } from '@/components/TaskCard'
-import { TaskCardSkeleton } from '@/components/TaskCardSkeleton'
+import { useEffect, useState, useCallback } from 'react'
+import { JobCardSkeleton } from '@/components/JobCardSkeleton'
 import { EmptyState } from '@/components/EmptyState'
 import { ErrorBoundary } from '@/components/ErrorBoundary'
 import { ErrorBanner } from '@/components/ErrorBanner'
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { showToast } from '@/utils/toast'
-import { AssistantTask } from '@/types/api'
-import { getCategoryIcon } from '@/utils/categoryIcon'
-import SpamAlertCard from '@/components/SpamAlertCard'
-import { fetchSpamEmails, markNotSpam, archiveSpam } from '@/services/emailService'
-import { 
-  updateTaskStatus, 
-  getOptimisticUpdate, 
-  getRevertUpdate, 
-  actionToComplete,
-  fetchTasks
-} from '@/services/taskService'
-import { SpamEmail } from '@/types/email'
+import type { JobCard } from '@/types/api'
+import { fetchJobs } from '@/services/jobsService'
 
-const TASKS_CACHE_KEY = 'cached_tasks_v1';
-
-function TaskList({ onLoadTasks }: { onLoadTasks: (loadTasksFn: () => Promise<void>) => void }) {
-  const [tasks, setTasks] = useState<AssistantTask[]>([])
+function JobList() {
+  const [jobCards, setJobCards] = useState<JobCard[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
-  const [readOnly, setReadOnly] = useState(false)
 
-  // Helper to check online status
-  const isOnline = typeof navigator !== 'undefined' ? navigator.onLine : true;
-
-  // Fetch tasks from API or cache
-  const loadTasks = useCallback(async () => {
-    if (!isOnline) {
-      // Offline: load from cache
-      const cached = localStorage.getItem(TASKS_CACHE_KEY)
-      if (cached) {
-        setTasks(JSON.parse(cached))
-        setReadOnly(true)
-        showToast.info('Offline mode: showing cached tasks (read-only)')
-      } else {
-        setTasks([])
-        setReadOnly(true)
-        showToast.warning('Offline mode: no cached tasks available')
-      }
-      setLoading(false)
-      return
-    }
+  const loadJobs = useCallback(async () => {
     try {
       setLoading(true)
       setError(null)
-      setReadOnly(false)
-      
-      // fetchTasks authenticates with the Better Auth JWT (services/apiClient.ts)
-      const tasksWithIds = await fetchTasks('active', false)
-      
-      setTasks(tasksWithIds)
-      // Cache tasks for offline use
-      localStorage.setItem(TASKS_CACHE_KEY, JSON.stringify(tasksWithIds))
-      showToast.success('Tasks loaded successfully')
+      setJobCards(await fetchJobs())
     } catch (error) {
-      const errorMessage = error instanceof Error ? error.message : 'Failed to load tasks'
+      const errorMessage = error instanceof Error ? error.message : 'Failed to load jobs'
       setError(errorMessage)
       showToast.error(errorMessage)
-      setTasks([])
+      setJobCards([])
     } finally {
       setLoading(false)
     }
-  }, [isOnline])
+  }, [])
 
   useEffect(() => {
-    // shortcut: the mount fetch sets loading state synchronously (one extra render); this page is replaced by the job queue in #75.
+    // shortcut: the mount fetch sets loading state synchronously (one extra render); #75 builds the full job queue here.
     // eslint-disable-next-line react-hooks/set-state-in-effect -- see shortcut above
-    loadTasks()
-    onLoadTasks(loadTasks)
-    // Listen for online/offline events to update readOnly state
-    function handleOnline() {
-      setReadOnly(false)
-      loadTasks()
-    }
-    function handleOffline() {
-      setReadOnly(true)
-      loadTasks()
-    }
-    window.addEventListener('online', handleOnline)
-    window.addEventListener('offline', handleOffline)
-    return () => {
-      window.removeEventListener('online', handleOnline)
-      window.removeEventListener('offline', handleOffline)
-    }
-  }, [loadTasks, onLoadTasks])
-
-  const handleRetry = async () => {
-    showToast.info('Retrying task fetch...')
-    await loadTasks()
-  }
-
-  const handleTaskAction = async (taskId: string, action: string) => {
-    if (readOnly || !isOnline) {
-      showToast.warning('Offline mode: actions are disabled in read-only mode.')
-      return
-    }
-    try {
-      // Optimistically update the task list
-      setTasks(prevTasks => getOptimisticUpdate(prevTasks, taskId, action))
-      await updateTaskStatus(taskId, action)
-      const status = actionToComplete()
-      if (status !== 'done') {
-        await loadTasks()
-      }
-    } catch {
-      setTasks(prevTasks => getRevertUpdate(prevTasks, taskId))
-      showToast.error('Failed to update task status')
-    }
-  }
+    loadJobs()
+  }, [loadJobs])
 
   if (loading) {
     return (
-      <div 
+      <div
         className="space-y-4 flex flex-col items-center"
         role="region"
-        aria-label="loading tasks"
+        aria-label="loading jobs"
       >
-        <TaskCardSkeleton />
-        <TaskCardSkeleton />
-        <TaskCardSkeleton />
+        <JobCardSkeleton />
+        <JobCardSkeleton />
+        <JobCardSkeleton />
       </div>
     )
   }
 
   if (error) {
-    return <ErrorBanner message={error} onRetry={handleRetry} />
+    return <ErrorBanner message={error} onRetry={loadJobs} />
   }
 
-  if (tasks.length === 0) {
+  if (jobCards.length === 0) {
     return (
       <div className="flex justify-center pt-10">
-        <EmptyState
-          message="No tasks found"
-          actionLabel="Refresh tasks"
-          onAction={() => {
-            showToast.info('Refreshing tasks...')
-            loadTasks()
-          }}
-        />
+        <EmptyState message="No open jobs" actionLabel="Refresh jobs" onAction={loadJobs} />
       </div>
     )
   }
 
   return (
-    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
-      {tasks.map((task) => {
-        const contextCategory = typeof task.context === 'string' ? task.context : undefined;
-        return (
-          <TaskCard
-            key={task.id}
-            summary={task.summary || 'Task from incoming email'}
-            contextCategory={contextCategory}
-            categoryIcon={getCategoryIcon(contextCategory)}
-            suggestedActions={ task.actions || []}
-            subject={task.email?.subject}
-            sender={task.email?.sender}
-            body={task.email?.body}
-            onAction={(action) => handleTaskAction(task.id, action)}
-            readOnly={readOnly}
-          />
-        )
-      })}
+    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6 p-6">
+      {jobCards.map(({ job, sender, subject }) => (
+        <Card key={job._id}>
+          <CardHeader>
+            <CardTitle>{job.title}</CardTitle>
+            <CardDescription>
+              {sender.name ?? sender.email} - {subject}
+            </CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-2 text-sm">
+            {job.evidence[0] && <blockquote className="border-l-2 pl-3 text-muted-foreground">{job.evidence[0]}</blockquote>}
+            {job.error && <p className="text-red-600">{job.error}</p>}
+            {job.reminder && <p className="text-yellow-700">{job.reminder}</p>}
+          </CardContent>
+        </Card>
+      ))}
     </div>
   )
 }
 
 export default function Page() {
-  const [spamEmails, setSpamEmails] = useState<SpamEmail[]>([])
-  // Create a ref to the loadTasks function that can be accessed from the spam handlers
-  const loadTasksRef = useRef<() => Promise<void>>(null)
-
-  useEffect(() => {
-    async function loadSpam() {
-      const emails = await fetchSpamEmails()
-      setSpamEmails(emails)
-    }
-    loadSpam()
-  }, [])
-
-  const handleMarkNotSpam = async (id: string) => {
-    try {
-      await markNotSpam(id)
-      setSpamEmails(prev => prev.filter(email => email.id !== id))
-      showToast.success("Marked as not spam")
-      
-      // Refresh the task list to display the newly unmarked email as a task
-      if (loadTasksRef.current) {
-        // Brief delay to allow backend processing
-        setTimeout(() => {
-          if (loadTasksRef.current) {
-            loadTasksRef.current()
-          }
-        }, 500)
-      }
-    } catch {
-      showToast.error("Failed to mark as not spam")
-    }
-  }
-
-  const handleArchiveSpam = async (id: string) => {
-    try {
-      await archiveSpam(id)
-      setSpamEmails(prev => prev.filter(email => email.id !== id))
-      showToast.success("Archived spam email")
-    } catch {
-      showToast.error("Failed to archive spam email")
-    }
-  }
-  
-  // Create a function that gets the loadTasks function from the TaskList component
-  const setLoadTasksFunction = useCallback((loadTasksFn: () => Promise<void>) => {
-    loadTasksRef.current = loadTasksFn
-  }, [])
-
   return (
     <ErrorBoundary>
       <div className="flex flex-col h-screen">
         <div className="overflow-auto flex-1">
-          <TaskList onLoadTasks={setLoadTasksFunction} />
-        </div>
-
-        <div className="fixed bottom-0 left-0 right-0 bg-yellow-100 text-yellow-800 p-4 shadow-md z-50">
-          <SpamAlertCard
-            flaggedEmails={spamEmails}
-            onMarkNotSpam={handleMarkNotSpam}
-            onArchiveSpam={handleArchiveSpam}
-          />
+          <JobList />
         </div>
       </div>
     </ErrorBoundary>

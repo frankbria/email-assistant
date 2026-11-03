@@ -117,20 +117,6 @@ async def test_api_endpoints_filter_by_user_id(async_client, db_transaction):
                 )
                 await task.insert()
 
-    # Each user, signed in, sees only their own data
-    for user_id in user_ids:
-        # Request tasks for specific user
-        response = await async_client.get("/api/v1/tasks/", headers=bearer_headers(user_id))
-        assert response.status_code == 200
-
-        # Parse the response data
-        tasks = response.json()
-        assert len(tasks) == emails_per_user - 1  # One fewer task because of spam email
-
-        # Verify all returned tasks belong to the specified user
-        for task in tasks:
-            assert task["user_id"] == user_id
-
     # Test spam endpoint with different user_ids
     for user_id in user_ids:
         # Request spam emails for specific user

@@ -6,7 +6,7 @@ import pytest
 from beanie import PydanticObjectId
 from beanie.operators import In
 
-from app.executor import JobNotOpen, defer, wake_due
+from app.executor import JobNotOpen, defer, wake, wake_due
 from app.models.job import Artifacts, Job, Verb
 from app.models.message import Message
 from app.plugins.config import PluginConfig, StdioTransport
@@ -236,3 +236,20 @@ async def test_follow_ups_wait_while_a_configured_account_is_down(test_db, mailb
         await registry.close()
 
     assert await state(follow_up) == ("snoozed", None)
+
+
+async def test_a_reminder_the_owner_turned_into_another_action_isnt_closed_as_answered(test_db, mailbox: Mailbox):
+    """wake() read a follow-up; the owner chose a reply for it meanwhile (#74). An answer then mustn't finish the reply."""
+    ref = mailbox.deliver(sender="ana@example.com", subject="Contract", body="Please sign")
+    job = await job_over(await message(ref, "ana@example.com"), "follow_up")
+    await job.set({"reminder": "No answer from ana@example.com"})
+    await message("<answer@ana>", "ana@example.com", date=DUE)
+    stale = await Job.get(job.id)
+    await job.set({"verb": "reply", "reminder": None, "artifacts.draft": "Signed, thanks."})
+    assert stale is not None
+
+    async with connected(reference_imap_plugin(mailbox)) as registry:
+        with pytest.raises(JobNotOpen):
+            await wake(stale, registry)
+
+    assert await state(job) == ("open", None) and len(mailbox.messages("INBOX")) == 1

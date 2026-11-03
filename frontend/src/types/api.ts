@@ -1,67 +1,7 @@
-// Client-side representation of an email
-export interface EmailMessage {
-  id: string;
-  subject?: string;
-  sender?: string;
-  body?: string;
-  recipient?: string;
-  context?: string | null;
-  message_id?: string;
-  signature?: string | null;
-  user_id: string;
-  is_spam?: boolean;
-}
-
-export interface AssistantTask {
-  id: string;
-  user_id: string;
-  sender?: string;
-  subject?: string;
-  summary?: string;
-  context?: string | null;
-  actions: string[];
-  status: string;
-  action_taken: string | null;
-  email?: EmailMessage;
-}
-
-
-// Server-side MongoDB representation of a task
-export interface RawMongoTask {
-  _id?: string;
-  id?: string;
-  user_id?: string;
-  sender?: string;
-  subject?: string;
-  summary?: string;
-  context?: string | null;
-  actions?: string[];
-  status?: string;
-  action_taken?: string | null;
-  email?: RawMongoEmail;
-}
-
-// Server-side MongoDB representation of an email
-export interface RawMongoEmail {
-  _id?: string;
-  id?: string;
-  subject?: string;
-  sender?: string;
-  body?: string;
-  recipient?: string;
-  context?: string | null;
-  message_id?: string;
-  signature?: string | null;
-  user_id?: string;
-  is_spam?: boolean;
-}
-
 export type APIResponse<T> = {
   data: T
   error?: string
 }
-
-export type TasksResponse = APIResponse<AssistantTask[]>
 
 // Helper type for MongoDB _id handling
 export interface MongoDocument {
@@ -127,4 +67,69 @@ export interface Permissions {
   verbs: VerbPermission[]
   file_error: string | null
   promotions: string[]
+}
+
+export type Verb =
+  | 'reply'
+  | 'forward'
+  | 'digest'
+  | 'snooze'
+  | 'follow_up'
+  | 'todo'
+  | 'archive_noise'
+  | 'unsubscribe'
+
+export type JobState =
+  | 'open'
+  | 'sending'
+  | 'snoozed'
+  | 'done'
+  | 'dismissed'
+  | 'failed'
+  | 'handled_elsewhere'
+
+export interface JobArtifacts {
+  draft: string | null
+  forward_to: string | null
+  options: string[]
+  link: string | null
+  digest: string | null
+  noise_rationale: string | null
+}
+
+export interface Job {
+  _id: string
+  owner_id: string
+  verb: Verb
+  title: string
+  evidence: string[]
+  artifacts: JobArtifacts
+  due: string | null
+  state: JobState
+  message_ids: string[]
+  permission_level: PermissionLevel | null
+  ask_owner: boolean
+  suggested_verbs: Verb[]
+  problems: string[]
+  requires_approval: boolean
+  edited: boolean
+  error: string | null
+  sending_since: string | null
+  sent_at: string | null
+  reminder: string | null
+  created_at: string
+}
+
+export interface JobCard {
+  job: Job
+  sender: { name: string | null; email: string }
+  subject: string
+}
+
+export interface JobEdit {
+  draft?: string
+  forward_to?: string
+  options?: string[]
+  link?: string
+  due?: string
 }
