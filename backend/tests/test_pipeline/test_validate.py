@@ -137,3 +137,12 @@ async def test_a_failing_proposal_becomes_an_ask_owner_job_and_never_a_guess(tes
     assert job.problems == ["evidence not in the email: 'Invented quote'"]
     assert job.title == "Q4 budget review" and job.evidence == []
     assert job.artifacts.model_dump() == job.artifacts.model_validate({}).model_dump()
+
+
+def test_titles_in_any_script_and_links_ending_in_punctuation_pass():
+    body = BODY + "\nSee https://en.wikipedia.org/wiki/Function_(mathematics) for the formula."
+    japanese = proposal(title="予算会議について")
+    wiki = proposal(verb="todo", options=[], link="https://en.wikipedia.org/wiki/Function_(mathematics)")
+
+    assert problems(japanese, body, HISTORY) == []
+    assert problems(wiki, body, HISTORY) == []

@@ -22,7 +22,7 @@ REQUIRED_ARTIFACTS: dict[Verb, tuple[tuple[str, ...], str]] = {
     "unsubscribe": (("noise_rationale",), "unsubscribing needs a reason"),
 }
 # A title that is only the verb says nothing, however it's punctuated ("Reply.", "Follow-up!").
-VERB_TITLES = {re.sub(r"[^a-z]", "", verb) for verb in REQUIRED_ARTIFACTS}
+VERB_TITLES = {re.sub(r"[\W_]", "", verb) for verb in REQUIRED_ARTIFACTS}
 URL = re.compile(r"https?://[^\s<>]+")
 TRAILING_PUNCTUATION = ".,;:!?)]'\""
 
@@ -34,7 +34,7 @@ def problems(proposal: Proposal, body: str, forward_history: Sequence[str]) -> l
         found.append("the AI wants the owner to decide")
     if proposal.confidence < CONFIDENCE_FLOOR:
         found.append("the AI isn't confident")
-    if re.sub(r"[^a-z]", "", proposal.title.lower()) in VERB_TITLES | {""}:
+    if re.sub(r"[\W_]", "", proposal.title.lower()) in VERB_TITLES | {""}:  # \W is Unicode-aware: 予算 stays
         found.append("the title doesn't say what this email is")
     found += grounding_problems(proposal, body)
     fields, missing = REQUIRED_ARTIFACTS[proposal.verb]
@@ -57,7 +57,8 @@ def grounding_problems(proposal: Proposal, body: str) -> list[str]:
 def injection_problems(proposal: Proposal, body: str, forward_history: Sequence[str]) -> list[str]:
     """Links must come from the email (never invented); recipients only from the owner's history."""
     found = []
-    links = {url.rstrip(TRAILING_PUNCTUATION) for url in URL.findall(body)}
+    # As written, or without trailing prose punctuation: "(see https://x/a)." vs ".../Function_(math)".
+    links = {form for url in URL.findall(body) for form in (url, url.rstrip(TRAILING_PUNCTUATION))}
     if proposal.link and proposal.link not in links:  # a whole link, not a prefix of a longer one
         found.append(f"link not in the email: {proposal.link}")
     history = {address.strip().lower() for address in forward_history}
