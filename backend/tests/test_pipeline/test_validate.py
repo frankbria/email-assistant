@@ -9,8 +9,11 @@ from app.models.message import Message
 from app.pipeline.proposal import Proposal
 from app.pipeline.validate import problems, to_job
 
-BODY = "Could we meet Thursday at 3pm to go over the Q4 budget?\nPay at https://vendor.example/pay/4471 by Friday."
-HISTORY = ["legal@example.com"]
+BODY = (
+    "Could we meet Thursday at 3pm to go over the Q4 budget?\nPay at https://vendor.example/pay/4471 by Friday.\n"
+    "Details: https://trusted.example.evil.test/path."
+)
+HISTORY = ["Legal@Example.com"]
 
 
 def proposal(**changes: object) -> Proposal:
@@ -56,6 +59,31 @@ def test_a_grounded_specific_proposal_has_no_problems():
 )
 def test_each_failed_check_is_named(changes: dict[str, object], problem: str):
     assert problem in problems(proposal(**changes), BODY, HISTORY)
+
+
+@pytest.mark.parametrize(
+    ("changes", "problem"),
+    [
+        ({"evidence": [""]}, "blank evidence"),
+        ({"evidence": ["  \n "]}, "blank evidence"),
+        ({"options": ["", "  "], "draft": " "}, "a reply needs a draft or options"),
+        ({"verb": "archive_noise", "options": [], "noise_rationale": "  "}, "archiving as noise needs a reason"),
+        ({"verb": "todo", "options": [], "link": "https://trusted.example"}, "link not in the email: https://trusted.example"),
+        ({"verb": "todo", "options": [], "link": "https://vendor.example/pay/447"}, "link not in the email: https://vendor.example/pay/447"),
+        ({"title": "Reply."}, "the title doesn't say what this email is"),
+        ({"title": "Follow-up!"}, "the title doesn't say what this email is"),
+    ],
+)
+def test_blank_or_partial_content_counts_as_missing(changes: dict[str, object], problem: str):
+    assert problem in problems(proposal(**changes), BODY, HISTORY)
+
+
+def test_whole_links_and_recipients_match_however_they_are_written():
+    link = proposal(verb="todo", options=[], link="https://trusted.example.evil.test/path")
+    recipient = proposal(verb="forward", options=[], draft="FYI", forward_to=" legal@EXAMPLE.com ")
+
+    assert problems(link, BODY, HISTORY) == []
+    assert problems(recipient, BODY, HISTORY) == []
 
 
 def test_grounding_tolerates_reflowed_whitespace_but_nothing_else():
