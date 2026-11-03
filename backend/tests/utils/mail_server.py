@@ -86,11 +86,15 @@ class Mailbox:
         return message["Message-ID"]
 
     def append(
-        self, folder: str, *, sender: str, subject: str, body: str, to: str | None = None, received: datetime | None = None
+        self, folder: str, *, sender: str, subject: str, body: str, to: str | None = None, received: datetime | None = None,
+        headers: dict[str, str] | None = None,
     ) -> str:
         """Put a message straight into a folder (Sent, Archive, …) over IMAP; returns its Message-ID.
-        `received` backdates both its Date header and the server's arrival (IMAP internal) date."""
+        `received` backdates both its Date header and the server's arrival (IMAP internal) date;
+        `headers` adds more (e.g. List-Id)."""
         message = build_message(sender=sender, to=to or self.address, subject=subject, body=body)
+        for name, value in (headers or {}).items():
+            message[name] = value
         if received is not None:
             message["Date"] = format_datetime(received)
         with self.imap() as connection:

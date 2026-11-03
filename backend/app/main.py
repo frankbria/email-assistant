@@ -9,6 +9,7 @@ from app.models.job import Job
 from app.models.message import Message
 from app.models.ai_usage import AiUsage
 from app.models.rule import Rule
+from app.permissions import PermissionSettings
 from app.models.sync_cursor import SyncCursor
 from beanie import init_beanie
 from app.api.routers import connections, email, tasks, settings
@@ -58,7 +59,7 @@ async def init_db(settings: Settings | None = None):
     )
     await init_beanie(
         database=client[settings.current_mongodb_db],
-        document_models=[EmailMessage, AssistantTask, UserSettings, Message, Job, SyncCursor, Rule, AiUsage],
+        document_models=[EmailMessage, AssistantTask, UserSettings, Message, Job, SyncCursor, Rule, AiUsage, PermissionSettings],
         allow_index_dropping=True,
     )
 
@@ -104,6 +105,7 @@ async def lifespan(app: FastAPI):
             settings.first_connect_days,
             provider=get_ai_provider(),
             ai_monthly_cap=settings.ai_monthly_cap,
+            permissions_file=Path(settings.permissions_file),
         )
         sync_task = asyncio.create_task(sync.run())
         yield

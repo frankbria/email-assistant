@@ -24,6 +24,10 @@ services:
       # JWT issuer/audience = the public frontend URL; keys are fetched over the Compose network.
       BETTER_AUTH_URL: ${BETTER_AUTH_URL:-${FRONTEND_ORIGIN:-http://localhost:3000}}
       BETTER_AUTH_JWKS_URL: http://frontend:3000/api/auth/jwks
+      # The owner's per-verb permissions, editable on the host in ./config (see docs/deployment.md).
+      PERMISSIONS_FILE: /app/config/permissions.yaml
+    volumes:
+      - ./config:/app/config
     ports:
       - "${BIND_ADDRESS:-127.0.0.1}:${BACKEND_PORT:-8000}:8000"
 

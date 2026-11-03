@@ -26,6 +26,10 @@ __pycache__/
 
 # Local plugin config (copy of backend/plugins.example.yaml)
 backend/plugins.yaml
+# The owner's per-verb permissions, written by the app (rewritten from the database when missing)
+backend/permissions.yaml
+# Host-side config mounted into the backend container (docker-compose.yml)
+/config/
 
 # Editor swap and lock files (vim, nano), e.g. ..env.swp next to an open .env
 *.swp
