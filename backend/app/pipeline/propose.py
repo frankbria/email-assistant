@@ -18,6 +18,13 @@ from app.sync import recent_sent
 
 VOICE_SAMPLES = 5
 VOICE_SAMPLE_CHARACTERS = 300
+# Snippets arrive flattened to one line (the plugin joins the body's lines), so minimize() can't see
+# quote or signature lines; the owner's own words are what comes before the first marker of either.
+# shortcut: cuts at known inline markers only; fetch full sent bodies (get_message) once #65 orchestrates.
+FLATTENED_HISTORY = re.compile(
+    r"\bOn\b.{0,200}?\bwrote:|-{2,} ?Original Message|_{8,}|\bFrom: .{0,200}?\bSent: | -- |(?:^| )>",
+    re.IGNORECASE,
+)
 FORWARD_CANDIDATES = 10
 FORWARDED_SUBJECT = re.compile(r"^\s*(?:fw|fwd)\s*:", re.IGNORECASE)  # also run by MongoDB
 
@@ -82,7 +89,7 @@ def proposal_prompt(
         listed = "\n".join(f"- {one_line(example)}" for example in examples)
         sections.append("How the owner handled similar mail:\n" + fenced("examples", listed))
     if voice:
-        samples = "\n".join(f"- {one_line(minimize(sample.snippet))[:VOICE_SAMPLE_CHARACTERS]}" for sample in voice)
+        samples = "\n".join(f"- {own_words(sample.snippet)}" for sample in voice)
         sections.append("The owner's own recent mail (match their tone, greeting and sign-off):\n" + fenced("owner_mail", samples))
     headers = [f"From: {message.sender.email}", f"Subject: {message.subject}", f"Date: {message.date.isoformat()}"]
     if message.list_id:
@@ -97,6 +104,12 @@ def schema_for(fixed_verb: Verb | None) -> type[Proposal]:
     if fixed_verb is None:
         return Proposal
     return create_model("Proposal", __base__=Proposal, verb=(Literal[fixed_verb], ...))  # type: ignore[valid-type]  # the rule's verb is only known at run time
+
+
+def own_words(snippet: str) -> str:
+    """The owner's own text from a sent snippet, before any inline quote or signature."""
+    cut = FLATTENED_HISTORY.search(snippet)
+    return one_line(minimize(snippet[: cut.start()] if cut else snippet))[:VOICE_SAMPLE_CHARACTERS]
 
 
 def one_line(text: str) -> str:
