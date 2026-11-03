@@ -78,3 +78,36 @@ async def test_one_rule_per_owner_match_and_value(test_db):
 
     with pytest.raises(DuplicateKeyError):
         await Rule(owner_id=OWNER, match="sender", value="a@example.com", verb="digest").insert()
+
+
+async def test_rule_values_are_normalized_when_created(test_db):
+    """Whoever creates a rule (corrections in M3), it matches, and case variants are one rule."""
+    await Rule(owner_id=OWNER, match="list_id", value="Shop Deals <Deals.Shop.Example>", verb="unsubscribe").insert()
+
+    rule = await matching_rule(OWNER, message_from("x@y.example", list_id="<deals.shop.example>"))
+
+    assert rule is not None and rule.value == "deals.shop.example"
+    with pytest.raises(DuplicateKeyError):
+        await Rule(owner_id=OWNER, match="list_id", value="<DEALS.shop.example>", verb="digest").insert()
+
+
+async def test_a_blank_sender_or_list_matches_no_rule(test_db):
+    await Rule.get_pymongo_collection().insert_one({"owner_id": OWNER, "match": "sender", "value": "", "verb": "archive_noise"})
+    await Rule.get_pymongo_collection().insert_one({"owner_id": OWNER, "match": "list_id", "value": "", "verb": "archive_noise"})
+
+    assert await matching_rule(OWNER, message_from("", list_id="   ")) is None
+
+
+def test_details_written_for_another_verb_are_dropped_when_the_rule_changes_it():
+    rule = Rule(owner_id=OWNER, match="sender", value="a@example.com", verb="archive_noise")
+
+    decided = apply_rule(ai_reply().model_copy(update={"options": ["Yes", "No"]}), rule)
+
+    assert (decided.draft, decided.options, decided.due) == (None, [], None)
+    assert decided.title == ai_reply().title and decided.evidence == ai_reply().evidence
+
+
+def test_details_stay_when_the_rule_agrees_with_the_ai():
+    rule = Rule(owner_id=OWNER, match="sender", value="a@example.com", verb="reply")
+
+    assert apply_rule(ai_reply(), rule) == ai_reply()
