@@ -38,7 +38,7 @@ public SSH, and no host names or addresses in this repo (see the operator's loca
      tags move one after the other, so a pull during a publish can briefly mix commits.
    - or build on the host: `docker compose up -d --build`
 5. Before relying on it, check CORS from the UI origin:
-   `curl -si -X OPTIONS <api>/api/v1/tasks/ -H 'Origin: <FRONTEND_ORIGIN>' -H 'Access-Control-Request-Method: GET'`
+   `curl -si -X OPTIONS <api>/api/v1/jobs -H 'Origin: <FRONTEND_ORIGIN>' -H 'Access-Control-Request-Method: GET'`
    must answer with `access-control-allow-origin: <FRONTEND_ORIGIN>`.
 
 `PUBLIC_API_BASE` is baked into the frontend bundle at build time. For GHCR images, set

@@ -100,12 +100,13 @@ backend/
 
 - `POST /api/v1/email` - Ingest a new email and create a task
 
-### Task Management
+### Job Queue
 
-- `GET /api/v1/tasks` - List all tasks with filtering options
-- `GET /api/v1/tasks/{id}` - Get a specific task
-- `PATCH /api/v1/tasks/{id}` - Update a task's status or properties
-- `DELETE /api/v1/tasks/{id}` - Delete a task
+- `GET /api/v1/jobs` - The owner's open and failed jobs, newest first, with each one's sender and subject
+- `PATCH /api/v1/jobs/{id}` - Edit a job's artifacts (draft, forward recipient, options, link, due date)
+- `POST /api/v1/jobs/{id}/approve` - Carry out the job (send, snooze, finish); body `{"forward_to": ...}` for a forward
+- `POST /api/v1/jobs/{id}/choose` - Choose another action: `{"verb": ...}` re-runs the proposal for that verb
+- `POST /api/v1/jobs/{id}/dismiss` - Dismiss the job and archive its mail
 
 ## 🧪 Running Tests
 
