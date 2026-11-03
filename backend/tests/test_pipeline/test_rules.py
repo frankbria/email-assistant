@@ -98,7 +98,7 @@ async def test_a_blank_sender_or_list_matches_no_rule(test_db):
     assert await matching_rule(OWNER, message_from("", list_id="   ")) is None
 
 
-def test_details_written_for_another_verb_are_dropped_when_the_rule_changes_it():
+async def test_details_written_for_another_verb_are_dropped_when_the_rule_changes_it(test_db):
     rule = Rule(owner_id=OWNER, match="sender", value="a@example.com", verb="archive_noise")
 
     decided = apply_rule(ai_reply().model_copy(update={"options": ["Yes", "No"]}), rule)
@@ -107,7 +107,7 @@ def test_details_written_for_another_verb_are_dropped_when_the_rule_changes_it()
     assert decided.title == ai_reply().title and decided.evidence == ai_reply().evidence
 
 
-def test_details_stay_when_the_rule_agrees_with_the_ai():
+async def test_details_stay_when_the_rule_agrees_with_the_ai(test_db):
     rule = Rule(owner_id=OWNER, match="sender", value="a@example.com", verb="reply")
 
     assert apply_rule(ai_reply(), rule) == ai_reply()
