@@ -1,11 +1,14 @@
-"""Sync (spec §5.3): poll each plugin's inbox from its stored cursor, poll at once when a `push`
-plugin says new mail arrived, and close jobs whose message left the inbox outside the app."""
+"""Sync (spec §5.2, §5.3): poll each plugin's inbox and sent folders from their stored cursors, poll
+at once when a `push` plugin says new mail arrived, and close jobs whose message left the inbox
+outside the app."""
 
 import asyncio
+import re
 import contextlib
 import logging
 from datetime import UTC, datetime, timedelta
 from itertools import batched
+from typing import Literal
 
 from beanie.operators import In
 from mcp import Client
@@ -51,11 +54,14 @@ def tool_failure(plugin_id: str, tool: str, result: CallToolResult) -> InvalidCu
     return SyncError(f"{plugin_id}: {tool} failed: {error.message}")
 
 
-async def list_inbox(
-    plugin_id: str, client: Client, cursor: str | None, since: datetime, page_size: int
+Folder = Literal["inbox", "sent"]
+
+
+async def list_folder(
+    plugin_id: str, client: Client, folder: Folder, cursor: str | None, since: datetime, page_size: int
 ) -> ListMessagesOutput:
-    """One page of the inbox after `cursor`; without a cursor, from `since`."""
-    arguments: dict[str, object] = {"folder": "inbox", "cursor": cursor, "since": since.isoformat(), "limit": page_size}
+    """One page of the folder after `cursor`; without a cursor, from `since`."""
+    arguments: dict[str, object] = {"folder": folder, "cursor": cursor, "since": since.isoformat(), "limit": page_size}
     return ListMessagesOutput.model_validate(await call_plugin(plugin_id, client, "list_messages", arguments))
 
 
@@ -74,53 +80,69 @@ async def store_if_new(message: Message) -> bool:
     return True
 
 
-async def inbox_cursor(owner_id: str, plugin_id: str) -> SyncCursor:
+async def folder_cursor(owner_id: str, plugin_id: str, folder: Folder) -> SyncCursor:
     stored = await SyncCursor.find_one(
-        SyncCursor.owner_id == owner_id, SyncCursor.plugin_id == plugin_id, SyncCursor.folder == "inbox"
+        SyncCursor.owner_id == owner_id, SyncCursor.plugin_id == plugin_id, SyncCursor.folder == folder
     )
-    return stored or SyncCursor(owner_id=owner_id, plugin_id=plugin_id, folder="inbox", first_pass_complete=False)
+    return stored or SyncCursor(owner_id=owner_id, plugin_id=plugin_id, folder=folder, first_pass_complete=False)
 
 
 async def store_page(
-    owner_id: str, plugin_id: str, page: ListMessagesOutput, first_pass: bool = False
+    owner_id: str, plugin_id: str, page: ListMessagesOutput, first_pass: bool = False, folder: Folder = "inbox"
 ) -> list[Message]:
-    """The page's messages that weren't stored yet, now stored."""
+    """The page's messages that weren't stored yet, now stored.
+    shortcut: refs are unique per account, so self-addressed mail is stored once, under the folder synced
+    first; store per folder if follow_up (#69) or voice samples need both copies."""
     stored = []
     for summary in page.messages:
-        message = Message(owner_id=owner_id, plugin_id=plugin_id, first_pass=first_pass, **summary.model_dump())
+        message = Message(owner_id=owner_id, plugin_id=plugin_id, folder=folder, first_pass=first_pass, **summary.model_dump())
         if await store_if_new(message):
             stored.append(message)
     return stored
 
 
-async def sync_inbox(
-    owner_id: str, plugin_id: str, client: Client, page_size: int = PAGE_SIZE, window_days: int = FIRST_CONNECT_DAYS
+async def sync_folder(
+    owner_id: str,
+    plugin_id: str,
+    client: Client,
+    folder: Folder = "inbox",
+    page_size: int = PAGE_SIZE,
+    window_days: int = FIRST_CONNECT_DAYS,
 ) -> list[Message]:
-    """Store the inbox mail that arrived since the stored cursor and return it, oldest first.
-    Without a cursor only the last `window_days` are listed; older mail is left alone.
-    Mail stored before the first listing completes is marked `first_pass` (spec §5.3).
+    """Store the folder's mail that arrived since its stored cursor and return it, oldest first.
+    Without a cursor only the last `window_days` are listed; older mail is left alone. Inbox mail
+    stored before the first listing completes is marked `first_pass` (spec §5.3).
 
     The cursor is saved after each page is stored: a crash in between re-lists that page,
     and dedupe drops what was already stored, so nothing is missed or duplicated."""
-    cursor = await inbox_cursor(owner_id, plugin_id)
+    cursor = await folder_cursor(owner_id, plugin_id, folder)
     since = datetime.now(UTC) - timedelta(days=window_days)
     new_messages: list[Message] = []
     while True:
         try:
-            page = await list_inbox(plugin_id, client, cursor.cursor, since, page_size)
+            page = await list_folder(plugin_id, client, folder, cursor.cursor, since, page_size)
         except InvalidCursor as error:
             if cursor.cursor is None:
                 raise SyncError(f"{plugin_id}: list_messages rejected a fresh start: {error}") from error
-            logger.warning("Plugin %s no longer accepts its cursor (%s); listing the inbox from the start", plugin_id, error)
+            logger.warning("Plugin %s no longer accepts its %s cursor (%s); listing from the start", plugin_id, folder, error)
             cursor.cursor = None
             continue
-        new_messages += await store_page(owner_id, plugin_id, page, first_pass=not cursor.first_pass_complete)
+        first_pass = folder == "inbox" and not cursor.first_pass_complete
+        new_messages += await store_page(owner_id, plugin_id, page, first_pass, folder)
         cursor.cursor = page.next_cursor
         cursor.first_pass_complete = cursor.first_pass_complete or not page.has_more
         cursor.updated_at = datetime.now(UTC)
         await cursor.save()
         if not page.has_more:
             return new_messages
+
+
+async def recent_sent(owner_id: str, limit: int, to: str | None = None) -> list[Message]:
+    """The owner's newest sent mail, optionally to one correspondent: their voice and history."""
+    query = Message.find(Message.owner_id == owner_id, Message.folder == "sent")
+    if to is not None:
+        query = query.find({"to.email": {"$regex": f"^{re.escape(to)}$", "$options": "i"}})
+    return await query.sort("-date").limit(limit).to_list()
 
 
 async def close_handled_elsewhere(owner_id: str, plugin_id: str, client: Client) -> int:
@@ -182,18 +204,24 @@ class SyncEngine:
         if owner is None:
             return  # nobody has signed up yet, so there is no one to sync for
         for plugin_id, client in list(self.plugins.clients.items()):
-            try:
-                new_messages = await sync_inbox(
-                    str(owner["_id"]), plugin_id, client, window_days=self.first_connect_days
-                )
-                handled_elsewhere = await close_handled_elsewhere(str(owner["_id"]), plugin_id, client)
-            except Exception:
-                logger.exception("Sync of plugin %s failed; retrying next pass", plugin_id)
-                continue
-            if new_messages:
-                logger.info("Plugin %s: %d new messages", plugin_id, len(new_messages))
-            if handled_elsewhere:
-                logger.info("Plugin %s: %d jobs handled elsewhere", plugin_id, handled_elsewhere)
+            await self._sync_plugin(str(owner["_id"]), plugin_id, client)
+
+    async def _sync_plugin(self, owner_id: str, plugin_id: str, client: Client) -> None:
+        """Inbox first; the sent folder separately, so its failure never holds up the inbox."""
+        try:
+            new_messages = await sync_folder(owner_id, plugin_id, client, window_days=self.first_connect_days)
+            handled_elsewhere = await close_handled_elsewhere(owner_id, plugin_id, client)
+        except Exception:
+            logger.exception("Sync of plugin %s failed; retrying next pass", plugin_id)
+            return
+        if new_messages:
+            logger.info("Plugin %s: %d new messages", plugin_id, len(new_messages))
+        if handled_elsewhere:
+            logger.info("Plugin %s: %d jobs handled elsewhere", plugin_id, handled_elsewhere)
+        try:
+            await sync_folder(owner_id, plugin_id, client, folder="sent", window_days=self.first_connect_days)
+        except Exception:
+            logger.exception("Sync of plugin %s's sent folder failed; retrying next pass", plugin_id)
 
     def _listen_for_push(self) -> None:
         """(Re)subscribe to every connected `push` plugin; a reconnect brings a new client."""
