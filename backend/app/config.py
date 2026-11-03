@@ -43,6 +43,10 @@ class Settings(BaseSettings):
     # On first connect only mail from this many recent days is synced (env FIRST_CONNECT_DAYS).
     first_connect_days: int = Field(default=14, gt=0)
 
+    # Optional cap on AI calls per month (env AI_MONTHLY_CAP); unset means no cap. At the cap new mail
+    # goes to the owner as ask-owner cards and the app warns once.
+    ai_monthly_cap: int | None = Field(default=None, ge=0)
+
     # new flag for AI summarization
     use_ai_summary: bool = False
 

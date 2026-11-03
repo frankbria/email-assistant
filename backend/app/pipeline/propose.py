@@ -10,11 +10,10 @@ from typing import Literal
 from pydantic import create_model
 
 from app.models.job import Verb
-from app.models.message import Message
+from app.models.message import Message, recent_sent
 from app.pipeline.minimize import minimize
 from app.pipeline.proposal import Proposal
 from app.services.ai_provider import AIProvider
-from app.sync import recent_sent
 
 VOICE_SAMPLES = 5
 VOICE_SAMPLE_CHARACTERS = 300

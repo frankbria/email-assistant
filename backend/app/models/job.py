@@ -38,6 +38,8 @@ class Job(Document):
     ask_owner: bool = False
     suggested_verbs: list[Verb] = Field(default_factory=list)
     problems: list[str] = Field(default_factory=list)  # why validation sent it to the owner
+    # First-connect mail (§5.3): every decision on it is `ask`, whatever the verb's permission (#71 enforces).
+    requires_approval: bool = False
     created_at: datetime = Field(default_factory=lambda: datetime.now(UTC))
 
     class Settings:

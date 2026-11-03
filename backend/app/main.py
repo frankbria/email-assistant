@@ -7,6 +7,7 @@ from app.models.assistant_task import AssistantTask
 from app.models.user_settings import UserSettings
 from app.models.job import Job
 from app.models.message import Message
+from app.models.ai_usage import AiUsage
 from app.models.rule import Rule
 from app.models.sync_cursor import SyncCursor
 from beanie import init_beanie
@@ -17,6 +18,7 @@ from pymongo import AsyncMongoClient
 from pathlib import Path
 from app.plugins.config import load_plugins_config
 from app.plugins.registry import PluginRegistry
+from app.services.ai_provider import get_ai_provider
 from app.sync import SyncEngine
 import logging
 import asyncio
@@ -56,7 +58,7 @@ async def init_db(settings: Settings | None = None):
     )
     await init_beanie(
         database=client[settings.current_mongodb_db],
-        document_models=[EmailMessage, AssistantTask, UserSettings, Message, Job, SyncCursor, Rule],
+        document_models=[EmailMessage, AssistantTask, UserSettings, Message, Job, SyncCursor, Rule, AiUsage],
         allow_index_dropping=True,
     )
 
@@ -96,7 +98,12 @@ async def lifespan(app: FastAPI):
             raise RuntimeError("Plugins failed to start; the error is logged below")
         app.state.plugins = plugins
         sync = SyncEngine(
-            plugins, client[settings.current_mongodb_db]["user"], settings.sync_poll_seconds, settings.first_connect_days
+            plugins,
+            client[settings.current_mongodb_db]["user"],
+            settings.sync_poll_seconds,
+            settings.first_connect_days,
+            provider=get_ai_provider(),
+            ai_monthly_cap=settings.ai_monthly_cap,
         )
         sync_task = asyncio.create_task(sync.run())
         yield
