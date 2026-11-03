@@ -8,7 +8,7 @@ The backend API for an executive-style AI assistant that processes emails, class
 - **Beanie 2**: MongoDB ODM based on PyMongo and Pydantic
 - **PyMongo** (`AsyncMongoClient`): asynchronous MongoDB driver
 - **uv**: Fast Python package and project manager
-- **Anthropic Claude** (via `app/services/ai_provider.py`): AI classification, summaries and action suggestions (optional)
+- **Anthropic Claude** (via `app/services/ai_provider.py`): proposes one action per message; rules constrain it, and a failed proposal becomes an ask-owner job
 
 ## 🧪 Setup & Installation
 
@@ -41,9 +41,6 @@ The backend API for an executive-style AI assistant that processes emails, class
    ```
    ANTHROPIC_API_KEY=your_api_key_here
    AI_MODEL=claude-opus-5-5
-   USE_AI_CONTEXT=true
-   USE_AI_SUMMARY=true
-   USE_AI_ACTIONS=true
    MONGODB_URI=<your_mongodb_uri>
    MONGODB_DB=<your_database_name>
    ```
@@ -73,18 +70,9 @@ backend/
 │   │   ├── message.py       # One mail in one account (plugin ref + Message-ID)
 │   │   ├── job.py           # One action for the owner over one or more messages
 │   │   ├── sync_cursor.py   # Where sync left off per plugin folder
-│   │   ├── assistant_task.py, email_message.py  # legacy, until the jobs API replaces them
-│   ├── routes/              # API endpoints
-│   │   ├── email.py         # Email ingestion endpoints
-│   │   ├── tasks.py         # Task management endpoints
-│   ├── services/            # Business logic
-│   │   ├── classifier.py    # Context classification
-│   │   ├── summarizer.py    # Summary generation
-│   │   ├── action_suggester.py # Action suggestion logic
-│   │   ├── email_task_mapper.py # Email to task mapping
-│   ├── utils/               # Utility functions
-│   │   ├── email_utils.py   # Email parsing utilities
-│   │   ├── logging.py       # Logging configuration
+│   ├── api/routers/         # API endpoints (connections, jobs, permissions, settings)
+│   ├── pipeline/            # minimize → rules → AI proposal → validate
+│   ├── services/ai_provider.py # AI provider used by the pipeline
 ├── tests/                   # Test suite
 │   ├── conftest.py          # Test configuration
 │   ├── test_routes/         # API endpoint tests
@@ -95,10 +83,6 @@ backend/
 ```
 
 ## 📚 API Endpoints
-
-### Email Management
-
-- `POST /api/v1/email` - Ingest a new email and create a task
 
 ### Job Queue
 
@@ -125,12 +109,6 @@ Run with coverage report:
 ```bash
 uv run pytest --cov=app
 ```
-
-## 📨 Email Parsing
-
-The backend includes utilities for parsing forwarded emails to extract the original sender and subject. This allows the system to correctly attribute tasks even when emails are forwarded from other systems.
-
-See `app/utils/email_utils.py` for implementation details.
 
 ## 🛠️ Development Guidelines
 

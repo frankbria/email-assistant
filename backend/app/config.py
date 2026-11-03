@@ -50,12 +50,6 @@ class Settings(BaseSettings):
     # The readable per-verb permissions file, kept in sync with the settings screen (env PERMISSIONS_FILE).
     permissions_file: str = "permissions.yaml"
 
-    # new flag for AI summarization
-    use_ai_summary: bool = False
-
-    # new flag for AI action suggestions
-    use_ai_actions: bool = False
-
     # CORS settings
     allow_origins: List[str] = [
         origin
