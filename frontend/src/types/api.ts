@@ -112,3 +112,19 @@ export interface Checklist {
   plugin_id: string
   steps: SetupStep[]
 }
+
+export type PermissionLevel = 'autonomous' | 'ask' | 'never_auto'
+
+export interface VerbPermission {
+  verb: string
+  level: PermissionLevel
+  default: PermissionLevel
+  ceiling: PermissionLevel
+  reason: string
+}
+
+export interface Permissions {
+  verbs: VerbPermission[]
+  file_error: string | null
+  promotions: string[]
+}

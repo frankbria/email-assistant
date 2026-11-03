@@ -9,10 +9,10 @@ from app.models.job import Job
 from app.models.message import Message
 from app.models.ai_usage import AiUsage
 from app.models.rule import Rule
-from app.permissions import PermissionSettings
+from app.permissions import ApprovalStreak, PermissionSettings
 from app.models.sync_cursor import SyncCursor
 from beanie import init_beanie
-from app.api.routers import connections, email, tasks, settings
+from app.api.routers import connections, email, permissions, tasks, settings
 from app.middleware import setup_cors
 from app.config import get_settings, Settings
 from pymongo import AsyncMongoClient
@@ -59,7 +59,7 @@ async def init_db(settings: Settings | None = None):
     )
     await init_beanie(
         database=client[settings.current_mongodb_db],
-        document_models=[EmailMessage, AssistantTask, UserSettings, Message, Job, SyncCursor, Rule, AiUsage, PermissionSettings],
+        document_models=[EmailMessage, AssistantTask, UserSettings, Message, Job, SyncCursor, Rule, AiUsage, PermissionSettings, ApprovalStreak],
         allow_index_dropping=True,
     )
 
@@ -137,6 +137,7 @@ app.include_router(email.router)  # router already has prefix in its definition
 app.include_router(tasks.router)  # router already has prefix in its definition
 app.include_router(settings.router)  # router already has prefix in its definition
 app.include_router(connections.router)
+app.include_router(permissions.router)
 
 
 @app.get("/")
