@@ -6,6 +6,7 @@ import { JobCardSkeleton } from '@/components/JobCardSkeleton'
 import { EmptyState } from '@/components/EmptyState'
 import { ErrorBoundary } from '@/components/ErrorBoundary'
 import { ErrorBanner } from '@/components/ErrorBanner'
+import { AskOwnerCard } from '@/components/AskOwnerCard'
 import { JobCard } from '@/components/JobCard'
 import { showToast } from '@/utils/toast'
 import type { Job, JobCard as QueuedJob } from '@/types/api'
@@ -77,7 +78,11 @@ function JobQueue() {
   return (
     <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-3">
       {jobCards.map((card) => (
-        <JobCard key={card.job._id} card={card} onReplaced={replaceJob} onRemoved={removeJob} />
+        card.job.ask_owner ? (
+          <AskOwnerCard key={card.job._id} card={card} onReplaced={replaceJob} onRemoved={removeJob} />
+        ) : (
+          <JobCard key={card.job._id} card={card} onReplaced={replaceJob} onRemoved={removeJob} />
+        )
       ))}
     </div>
   )

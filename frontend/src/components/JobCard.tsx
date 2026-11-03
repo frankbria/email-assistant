@@ -16,7 +16,7 @@ import { approveJob, chooseVerb, dismissJob, editJob } from '@/services/jobsServ
 import { showToast } from '@/utils/toast'
 import type { Job, JobCard as QueuedJob, JobEdit, Verb } from '@/types/api'
 
-const ACTIONS: { verb: Verb; label: string }[] = [
+export const ACTIONS: { verb: Verb; label: string }[] = [
   { verb: 'reply', label: 'Reply' },
   { verb: 'forward', label: 'Forward' },
   { verb: 'digest', label: 'Digest' },
@@ -30,7 +30,7 @@ const ACTIONS: { verb: Verb; label: string }[] = [
 // snooze and follow-up wake on their due date, so they cannot lose it
 const DATED_VERBS: Verb[] = ['snooze', 'follow_up']
 const STILL_QUEUED: Job['state'][] = ['open', 'failed']
-const TOUCH_TARGET = 'min-h-11' // 44 px
+export const TOUCH_TARGET = 'min-h-11' // 44 px
 const TEXT_AREA =
   'w-full rounded-md border border-input bg-background px-3 py-2 text-sm focus-visible:outline-none focus-visible:ring-[3px] focus-visible:ring-ring/50'
 
@@ -185,7 +185,6 @@ export function JobCard({ card, onReplaced, onRemoved }: JobCardProps) {
       </CardHeader>
       <CardContent className="space-y-3 text-sm">
         {job.evidence[0] && <blockquote className="border-l-2 pl-3 text-muted-foreground">{job.evidence[0]}</blockquote>}
-        {job.ask_owner && <p>{job.problems.join(' ')}</p>}
         {editing ? (
           <EditForm
             job={job}
@@ -198,7 +197,7 @@ export function JobCard({ card, onReplaced, onRemoved }: JobCardProps) {
         ) : (
           <Artifacts job={job} />
         )}
-        {job.verb === 'forward' && !job.ask_owner && !editing && (
+        {job.verb === 'forward' && !editing && (
           <label className="flex flex-col gap-1 font-medium">
             Forward to
             <Input type="email" className={TOUCH_TARGET} value={forwardTo} onChange={(event) => setForwardTo(event.target.value)} />
@@ -209,16 +208,14 @@ export function JobCard({ card, onReplaced, onRemoved }: JobCardProps) {
       </CardContent>
       {!editing && (
         <CardFooter className="flex-wrap gap-2">
-          {!job.ask_owner && (
-            <Button
-              className={TOUCH_TARGET}
-              disabled={busy}
-              onClick={() => act(() => approveJob(job._id, job.verb === 'forward' ? forwardTo : undefined), 'Failed to approve the job')}
-            >
-              <HugeiconsIcon icon={CheckmarkCircle01Icon} />
-              Approve
-            </Button>
-          )}
+          <Button
+            className={TOUCH_TARGET}
+            disabled={busy}
+            onClick={() => act(() => approveJob(job._id, job.verb === 'forward' ? forwardTo : undefined), 'Failed to approve the job')}
+          >
+            <HugeiconsIcon icon={CheckmarkCircle01Icon} />
+            Approve
+          </Button>
           {editableFields(job).length > 0 && (
             <Button variant="outline" className={TOUCH_TARGET} disabled={busy} onClick={() => setEditing(true)}>
               <HugeiconsIcon icon={PencilEdit02Icon} />
@@ -233,7 +230,7 @@ export function JobCard({ card, onReplaced, onRemoved }: JobCardProps) {
               </Button>
             </DropdownMenuTrigger>
             <DropdownMenuContent>
-              {ACTIONS.filter(({ verb }) => job.ask_owner || verb !== job.verb).map(({ verb, label }) => (
+              {ACTIONS.filter(({ verb }) => verb !== job.verb).map(({ verb, label }) => (
                 <DropdownMenuItem
                   key={verb}
                   className={TOUCH_TARGET}
