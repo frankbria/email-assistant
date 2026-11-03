@@ -4,7 +4,7 @@
 
 import logging
 from collections.abc import Awaitable, Callable
-from datetime import datetime
+from datetime import UTC, datetime
 
 from beanie import PydanticObjectId
 from beanie.operators import In
@@ -13,7 +13,7 @@ from pydantic import BaseModel, Field
 
 from app.auth import OwnerId
 from app.config import Settings, get_settings
-from app.executor import JobNotOpen, defer, execute, finish
+from app.executor import STALE_SENDING, JobNotOpen, defer, execute, finish
 from app.models.job import Job, PermissionLevel, Verb
 from app.models.message import Message
 from app.permissions import level_for, record_approval
@@ -76,7 +76,10 @@ async def acting(action: Callable[[], Awaitable[Job]]) -> Job:
 
 @router.get("", response_model=list[JobCard])
 async def list_jobs(owner_id: OwnerId) -> list[JobCard]:
-    jobs = await Job.find(Job.owner_id == owner_id, In(Job.state, IN_QUEUE)).sort("-created_at").to_list()
+    # A send whose claim went stale (the process died mid-send) waits for the owner's retry like a failed one.
+    stuck = {"state": "sending", "sending_since": {"$lt": datetime.now(UTC) - STALE_SENDING}}
+    waiting = {"owner_id": owner_id, "$or": [{"state": {"$in": IN_QUEUE}}, stuck]}
+    jobs = await Job.find(waiting).sort("-created_at").to_list()
     messages = await Message.find(In(Message.id, [job.message_ids[0] for job in jobs])).to_list()
     by_id = {message.id: message for message in messages}
     return [

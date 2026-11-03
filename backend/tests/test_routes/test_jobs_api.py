@@ -8,7 +8,7 @@ from beanie import PydanticObjectId
 from beanie.operators import In
 
 from app.api.routers.jobs import plugin_registry
-from app.executor import JobNotOpen, defer, execute, finish
+from app.executor import STALE_SENDING, JobNotOpen, defer, execute, finish
 from app.main import app
 from app.models.job import Artifacts, Job, JobState, Verb
 from app.models.message import Message
@@ -285,3 +285,16 @@ async def test_an_empty_edit_changes_nothing(async_client, test_db, mailbox):
 
     stored = await Job.get(job.id)
     assert response.status_code == 422 and stored is not None and stored.edited is False
+
+
+async def test_a_send_interrupted_by_a_crash_comes_back_to_the_queue_and_can_be_retried(async_client, test_db, mailbox, plugins):
+    ana = new_mailbox()
+    stuck = await job_from(ana, mailbox, "reply", Artifacts(draft="Thursday works."), state="sending",
+                           sending_since=datetime.now(UTC) - STALE_SENDING - timedelta(minutes=1))
+    await job_from(ana, mailbox, "reply", Artifacts(draft="Yes"), state="sending", sending_since=datetime.now(UTC))
+
+    listed = (await async_client.get("/api/v1/jobs")).json()
+    retried = await async_client.post(f"/api/v1/jobs/{stuck.id}/approve", json={})
+
+    assert [card["job"]["_id"] for card in listed] == [str(stuck.id)]  # a send still in flight stays out
+    assert retried.json()["state"] == "done" and "Thursday works." in ana.messages("INBOX")[0].get_content()
