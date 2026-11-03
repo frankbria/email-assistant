@@ -229,7 +229,7 @@ async def wake(job: Job, plugins: PluginRegistry) -> int:
     assert job.id is not None
     reminder = await missing_answer(job) if job.verb == "follow_up" else None
     if job.verb == "follow_up" and reminder is None:  # answered: done, straight from where it waits
-        await finish(job.id, "done", plugins, claim_from=(job.state,))
+        await finish(job.id, "done", plugins, claim_from=(job.state,), verb=job.verb)
         return 1
     if job.state == "open":
         return 0  # a reminder still without an answer: it stays as it is

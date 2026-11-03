@@ -98,7 +98,7 @@ async def act_if_autonomous(job: Job, plugins: PluginRegistry) -> None:
     if await level_for(job.owner_id, job.verb) != "autonomous":
         return
     actions: dict[str, Callable[[], Awaitable[Job]]] = {
-        "archive_noise": lambda: finish(job_id, "done", plugins),
+        "archive_noise": lambda: finish(job_id, "done", plugins, verb="archive_noise"),
         "snooze": lambda: defer(job_id),
         "follow_up": lambda: defer(job_id),
     }
