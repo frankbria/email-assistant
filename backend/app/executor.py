@@ -123,7 +123,9 @@ async def execute(
     except asyncio.CancelledError:  # a BaseException: interrupted, it must still end retryable
         await asyncio.shield(mark_failed(job_id, "interrupted before it finished"))
         raise
-    except Exception as error:  # whatever broke, the job must end retryable, never stuck sending
+    except (SyncError, InvalidCursor, TimeoutError, ValidationError, MCPError, OSError) as error:  # the plugin's answer
+        problem = str(error) or type(error).__name__
+    except Exception as error:  # a bug: still never stuck sending, but logged with its traceback
         logger.exception("Sending job %s failed", job_id)
         problem = str(error) or type(error).__name__
     if problem is not None:
