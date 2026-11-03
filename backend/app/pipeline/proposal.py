@@ -19,4 +19,9 @@ class Proposal(BaseModel):
     forward_to: str | None = None  # chosen only from the owner's forwarding history
     link: str | None = None  # the todo's link, copied exactly from the mail
     noise_rationale: str | None = None  # why archive_noise / digest / unsubscribe needs no owner
+    digest: str | None = None  # the digest's summary of this message
     confidence: float = Field(ge=0, le=1)
+
+
+# What a proposal saves the owner for its verb; written for one verb, meaningless for another.
+ARTIFACTS = ("draft", "options", "due", "forward_to", "link", "noise_rationale", "digest")

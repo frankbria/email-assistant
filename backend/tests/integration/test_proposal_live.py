@@ -18,7 +18,9 @@ pytestmark = [
 
 BARE_TITLES = {"reply", "forward", "digest", "snooze", "follow up", "follow_up", "todo", "archive", "archive noise",
                "archive_noise", "unsubscribe", "reply to email", "archive email", "forward email"}
-STOPWORDS = {"the", "a", "an", "to", "of", "for", "and", "on", "in", "at", "your", "from", "this", "with", "about"}
+STOPWORDS = {"the", "a", "an", "to", "of", "for", "and", "on", "in", "at", "your", "from", "this", "with", "about",
+             "email", "message", "mail", "reply", "forward", "archive", "noise", "digest", "snooze", "todo", "follow",
+             "unsubscribe", "re", "fwd", "com", "example", "regarding", "update", "new"}
 
 
 def words(text: str) -> set[str]:
@@ -38,4 +40,5 @@ async def test_each_proposal_is_schema_valid_with_a_message_specific_title(test_
 
     assert isinstance(proposal, Proposal)  # parsed against the schema by the provider
     assert proposal.title.strip().lower() not in BARE_TITLES
-    assert words(proposal.title) & words(f"{case.sender} {case.subject} {case.body}"), proposal.title
+    # Specific = names something from this mail's subject or body, not just the verb, the sender or generic words.
+    assert words(proposal.title) & words(f"{case.subject} {case.body}"), proposal.title
