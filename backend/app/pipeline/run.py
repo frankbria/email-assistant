@@ -8,6 +8,9 @@ from datetime import UTC, datetime
 from mcp import Client
 from pydantic import ValidationError
 
+from beanie.operators import In
+
+from app.executor import archive, reopen
 from app.models.ai_usage import AiUsage
 from app.models.job import Job
 from app.models.message import Message
@@ -50,13 +53,42 @@ async def process(message: Message, client: Client, provider: AIProvider, cap: i
     """The message's job, made once. Transient failures (plugin or AI down) raise and leave it pending."""
     assert message.id is not None, "only stored messages are processed"
     job = await Job.find_one(Job.owner_id == message.owner_id, Job.message_ids == message.id)
-    if job is None:
+    if job is None and (job := await sibling_job(message)) is not None:
+        await attach_copy(job, message, client)
+    elif job is None:
         job = await decide(message, client, provider, cap)
         job.requires_approval = message.first_pass
         await job.insert()
     message.pipeline_done = True
     await message.save()
     return job
+
+
+async def sibling_job(message: Message) -> Job | None:
+    """The job over another copy of this mail (same Message-ID, another account or ref), if any.
+    A blank Message-ID identifies nothing; a copy handled elsewhere left its inbox, so it doesn't count."""
+    if not message.message_id:
+        return None
+    copies = await Message.find(
+        Message.owner_id == message.owner_id, Message.message_id == message.message_id, Message.id != message.id
+    ).to_list()
+    if not copies:
+        return None
+    return await Job.find_one(
+        Job.owner_id == message.owner_id, In(Job.message_ids, [copy.id for copy in copies]), Job.state != "handled_elsewhere"
+    )
+
+
+async def attach_copy(job: Job, message: Message, client: Client) -> None:
+    """One job for every copy (spec §5.3). A copy arriving after its job was finished is archived at
+    once, like the rest were; if that fails, the job reopens with the error (as in finish)."""
+    assert message.id is not None
+    await Job.find(Job.id == job.id).update({"$addToSet": {"message_ids": message.id}})
+    if job.state in ("done", "dismissed"):
+        problem = await archive(message, client)
+        if problem:
+            assert job.id is not None
+            await reopen(job.id, job.state, [problem])
 
 
 async def decide(message: Message, client: Client, provider: AIProvider, cap: int | None) -> Job:

@@ -7,6 +7,7 @@ from typing import Literal
 
 from beanie import PydanticObjectId
 from beanie.operators import In, NotIn
+from mcp import Client
 from mcp.shared.exceptions import MCPError
 from pydantic import ValidationError
 
@@ -63,15 +64,15 @@ async def archive_settled_messages(job: Job, plugins: PluginRegistry) -> list[st
         waiting = await Job.find(Job.message_ids == message.id, Job.id != job.id, NotIn(Job.state, SETTLED)).exists()
         if waiting:
             continue  # another job still needs it in the inbox (AC-2.1)
-        problem = await archive(message, plugins)
+        problem = await archive(message, plugins.clients.get(message.plugin_id))
         if problem:
             errors.append(problem)
     return errors
 
 
-async def archive(message: Message, plugins: PluginRegistry) -> str | None:
+async def archive(message: Message, client: Client | None) -> str | None:
+    """Archives one copy if it's still in its inbox; what went wrong, naming the plugin, or None."""
     plugin_id = message.plugin_id
-    client = plugins.clients.get(plugin_id)
     if client is None:
         return f"{plugin_id} isn't connected, so the message is still in the inbox"
     try:
