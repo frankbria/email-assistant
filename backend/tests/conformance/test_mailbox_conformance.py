@@ -27,7 +27,7 @@ class Target:
     plugin_config: Callable[[Mailbox], PluginConfig]
 
 
-def reference_imap_plugin(mailbox: Mailbox) -> PluginConfig:
+def reference_imap_plugin(mailbox: Mailbox, plugin_id: str = "reference-imap") -> PluginConfig:
     settings = {
         "MAILBOX_ACCOUNT": mailbox.address,
         "MAILBOX_USERNAME": mailbox.address,
@@ -40,16 +40,17 @@ def reference_imap_plugin(mailbox: Mailbox) -> PluginConfig:
         "MAILBOX_TLS": "none",
         "MAILBOX_APPEND_SENT": "true",
     }
-    # plugins.yaml passes values through env_from references; mirror that.
+    # plugins.yaml passes values through env_from references; mirror that, one set per plugin id.
+    prefix = f"CONFORMANCE_{plugin_id.upper().replace('-', '_')}"
     for name, value in settings.items():
-        os.environ[f"CONFORMANCE_{name}"] = value
+        os.environ[f"{prefix}_{name}"] = value
     return PluginConfig(
-        id="reference-imap",
+        id=plugin_id,
         transport=StdioTransport(
             type="stdio",
             command=sys.executable,
             args=["-m", "imap_mailbox.server"],
-            env_from={name: f"CONFORMANCE_{name}" for name in settings},
+            env_from={name: f"{prefix}_{name}" for name in settings},
         ),
     )
 

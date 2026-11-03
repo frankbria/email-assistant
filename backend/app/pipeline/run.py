@@ -8,6 +8,10 @@ from datetime import UTC, datetime
 from mcp import Client
 from pydantic import ValidationError
 
+from beanie.operators import In, NotIn
+from pymongo import ReturnDocument
+
+from app.executor import archive, reopen
 from app.models.ai_usage import AiUsage
 from app.models.job import Job
 from app.models.message import Message
@@ -50,13 +54,56 @@ async def process(message: Message, client: Client, provider: AIProvider, cap: i
     """The message's job, made once. Transient failures (plugin or AI down) raise and leave it pending."""
     assert message.id is not None, "only stored messages are processed"
     job = await Job.find_one(Job.owner_id == message.owner_id, Job.message_ids == message.id)
+    sibling = await sibling_job(message) if job is None else None
+    if sibling is not None and not (message.first_pass and sibling.state in ("done", "dismissed")):
+        # A first-connect copy never rides on a decision already carried out elsewhere (§5.3: it's `ask`).
+        job = await attach_copy(sibling, message)
     if job is None:
         job = await decide(message, client, provider, cap)
         job.requires_approval = message.first_pass
         await job.insert()
+    elif job.state in ("done", "dismissed"):
+        await archive_late_copy(job, message, client)
     message.pipeline_done = True
     await message.save()
     return job
+
+
+async def sibling_job(message: Message) -> Job | None:
+    """The job over another copy of this mail (same Message-ID, another account or ref), if any.
+    A blank Message-ID identifies nothing; a copy handled elsewhere left its inbox, so it doesn't count."""
+    if not message.message_id:
+        return None
+    copies = await Message.find(
+        Message.owner_id == message.owner_id, Message.message_id == message.message_id, Message.id != message.id
+    ).to_list()
+    if not copies:
+        return None
+    over_copies = (Job.owner_id == message.owner_id, In(Job.message_ids, [copy.id for copy in copies]))
+    # An unfinished job first: the copy belongs with the work still outstanding, not a decision already made.
+    unfinished = await Job.find_one(*over_copies, NotIn(Job.state, ["done", "dismissed", "handled_elsewhere"]))
+    return unfinished or await Job.find_one(*over_copies, In(Job.state, ["done", "dismissed"]))
+
+
+async def attach_copy(job: Job, message: Message) -> Job:
+    """One job for every copy (spec §5.3). Returns the job as stored right after attaching, so a
+    finish that landed meanwhile is seen (its archive may have missed this copy)."""
+    attach: dict[str, object] = {"$addToSet": {"message_ids": message.id}}
+    if message.first_pass:  # a first-connect copy makes the shared job need the owner's approval (§5.3)
+        attach["$set"] = {"requires_approval": True}
+    stored = await Job.get_pymongo_collection().find_one_and_update(
+        {"_id": job.id}, attach, return_document=ReturnDocument.AFTER
+    )
+    assert stored is not None
+    return Job.model_validate(stored)
+
+
+async def archive_late_copy(job: Job, message: Message, client: Client) -> None:
+    """A copy that joined a finished job is archived like the rest were (a no-op once it's out of the
+    inbox, so a crash here is retried safely); if that fails, the job reopens with the error."""
+    problem = await archive(message, client)
+    if problem and job.id is not None and job.state in ("done", "dismissed"):
+        await reopen(job.id, "done" if job.state == "done" else "dismissed", [problem])
 
 
 async def decide(message: Message, client: Client, provider: AIProvider, cap: int | None) -> Job:

@@ -111,19 +111,23 @@ async def sync_folder(
 
 async def close_handled_elsewhere(owner_id: str, plugin_id: str, client: Client) -> int:
     """Close the open jobs over this plugin's messages that left the inbox outside the app
-    (archived on a phone, moved by a filter), so the app never archives them again. Returns how many."""
+    (archived on a phone, moved by a filter), so the app never archives them again; a job shared with
+    a copy in another inbox just lets go of the gone copy. Returns how many closed."""
     # A job reopened with an error (a finish that failed partway) stays for the owner to retry.
     open_jobs = await Job.find(Job.owner_id == owner_id, Job.state == "open", {"error": None}).to_list()
     referenced = list({message_id for job in open_jobs for message_id in job.message_ids})
     messages = await Message.find(In(Message.id, referenced), Message.plugin_id == plugin_id).to_list()
     present = await refs_in_inbox(plugin_id, client, [message.ref for message in messages])
     gone = {message.id for message in messages if message.ref not in present}
-    closing = [job.id for job in open_jobs if gone.intersection(job.message_ids)]
-    if not closing:
-        return 0
-    # Still open and still error-free: an owner action or a failed finish that landed meanwhile wins.
-    result = await Job.find(In(Job.id, closing), Job.state == "open", {"error": None}).update({"$set": {"state": "handled_elsewhere"}})
-    return result.modified_count
+    closed = 0
+    for job in [job for job in open_jobs if gone.intersection(job.message_ids)]:
+        # Still open and still error-free: an owner action or a failed finish that landed meanwhile wins.
+        unchanged = Job.find(Job.id == job.id, Job.state == "open", {"error": None})
+        if all(message_id in gone for message_id in job.message_ids):
+            closed += (await unchanged.update({"$set": {"state": "handled_elsewhere"}})).modified_count
+        else:  # a copy still waits in another inbox (spec §5.3): the job stays open for it
+            await unchanged.update({"$pull": {"message_ids": {"$in": list(gone)}}})
+    return closed
 
 
 class SyncEngine:
