@@ -6,6 +6,8 @@ from typing import Literal
 
 from beanie import PydanticObjectId
 from beanie.operators import In, NotIn
+from mcp.shared.exceptions import MCPError
+from pydantic import ValidationError
 
 from app.models.job import Job
 from app.models.message import Message
@@ -30,9 +32,13 @@ async def finish(job_id: PydanticObjectId, outcome: Outcome, plugins: PluginRegi
         raise JobNotOpen(f"job {job_id} isn't open")
     job = await Job.get(job_id)
     assert job is not None
-    errors = await archive_settled_messages(job, plugins)
+    try:
+        errors = await archive_settled_messages(job, plugins)
+    except Exception as error:  # whatever broke, the job must not stay final while its mail is in the inbox
+        errors = [f"archiving failed ({error}), so the message is still in the inbox"]
     if errors:
-        await Job.find(Job.id == job_id).update({"$set": {"state": "open", "error": "; ".join(errors)}})
+        reopen = {"$set": {"state": "open", "error": "; ".join(errors)}}
+        await Job.find(Job.id == job_id, Job.state == outcome).update(reopen)
     refreshed = await Job.get(job_id)
     assert refreshed is not None
     return refreshed
@@ -40,7 +46,10 @@ async def finish(job_id: PydanticObjectId, outcome: Outcome, plugins: PluginRegi
 
 async def archive_settled_messages(job: Job, plugins: PluginRegistry) -> list[str]:
     """Archives each of the job's messages that no other unsettled job needs and that is still in its
-    account's inbox. Returns what went wrong, one line per plugin problem."""
+    account's inbox. Returns what went wrong, one line per plugin problem.
+    shortcut: no per-message claim, so two jobs on one message finished at the same instant can both
+    archive (one then reopens); and a multi-message job that fails partway stays reopened with some
+    mail archived. Both need a durable per-message archive claim once multi-message jobs exist (#59, #88)."""
     errors = []
     for message in await Message.find(In(Message.id, job.message_ids)).to_list():
         waiting = await Job.find(Job.message_ids == message.id, Job.id != job.id, NotIn(Job.state, SETTLED)).exists()
@@ -61,7 +70,9 @@ async def archive(message: Message, plugins: PluginRegistry) -> str | None:
         if message.ref not in await refs_in_inbox(plugin_id, client, [message.ref]):
             return None  # already out of the inbox (moved elsewhere): nothing to archive
         result = MoveResult.model_validate(await call_plugin(plugin_id, client, "archive", {"ref": message.ref}))
-    except (SyncError, InvalidCursor, TimeoutError) as error:
+    except ValidationError:
+        return f"{plugin_id} couldn't archive the message (it answered outside the contract), so it is still in the inbox"
+    except (SyncError, InvalidCursor, TimeoutError, MCPError, OSError) as error:
         return f"{plugin_id} couldn't archive the message ({error}), so it is still in the inbox"
     if not (result.ok and result.verified):
         return f"{plugin_id} couldn't confirm the archive, so the message is still in the inbox"

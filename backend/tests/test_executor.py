@@ -9,6 +9,7 @@ from app.executor import JobNotOpen, finish
 from app.models.job import Artifacts, Job, Verb
 from app.models.message import Message
 from app.plugins.registry import PluginRegistry
+from app.sync import close_handled_elsewhere
 from tests.conformance.test_mailbox_conformance import reference_imap_plugin
 from tests.test_sync.test_inbox_sync import OWNER, PLUGIN, connected, fake_plugin
 from tests.utils.mail_server import Mailbox
@@ -52,17 +53,20 @@ async def test_a_message_stays_until_every_job_on_it_is_final(test_db, mailbox: 
     assert subjects(mailbox, "INBOX") == [] and subjects(mailbox, "Archive") == [ref]
 
 
-async def test_an_unverified_archive_keeps_the_job_open_and_names_the_plugin(test_db, monkeypatch):
-    """AC-1.3."""
-    monkeypatch.setenv("FAKE_MODE_ARCHIVE", "unverified")
+@pytest.mark.parametrize(("mode", "error"), [
+    ("unverified", "fake couldn't confirm the archive, so the message is still in the inbox"),
+    ("malformed", "fake couldn't archive the message (it answered outside the contract), so it is still in the inbox"),
+])
+async def test_an_unverified_or_garbled_archive_keeps_the_job_open_and_names_the_plugin(test_db, monkeypatch, mode, error):
+    """AC-1.3; a reply outside the contract must reopen the job too, never leave it done."""
+    monkeypatch.setenv("FAKE_MODE_ARCHIVE", mode)
     monkeypatch.setenv("FAKE_MODE_INBOX", "present")
     job = await job_over(await stored("fake", "r1"))
     plugin = fake_plugin("fake", {"FAKE_ARCHIVE": "FAKE_MODE_ARCHIVE", "FAKE_INBOX_CONTAINS": "FAKE_MODE_INBOX"})
     async with connected(plugin) as registry:
         finished = await finish(job.id, "done", registry)
 
-    assert finished.state == "open"
-    assert finished.error == "fake couldn't confirm the archive, so the message is still in the inbox"
+    assert (finished.state, finished.error) == ("open", error)
 
 
 async def test_a_disconnected_plugin_keeps_the_job_open_and_names_it(test_db):
@@ -103,3 +107,16 @@ async def test_only_an_open_job_can_be_finished(test_db):
 
     with pytest.raises(JobNotOpen):
         await finish(job.id, "done", PluginRegistry())
+
+
+async def test_a_job_reopened_with_an_error_isnt_closed_as_handled_elsewhere(test_db, mailbox: Mailbox):
+    """Its error must stay in front of the owner until they retry."""
+    ref = mailbox.deliver(sender="a@example.com", subject="Invoice", body="x")
+    job = await job_over(await stored(PLUGIN, ref))
+    await Job.find(Job.id == job.id).update({"$set": {"error": "proton couldn't confirm the archive"}})
+    mailbox.move(ref, "Archive")
+    async with connected(reference_imap_plugin(mailbox)) as registry:
+        closed = await close_handled_elsewhere(OWNER, PLUGIN, registry.clients[PLUGIN])
+
+    reloaded = await Job.get(job.id)
+    assert closed == 0 and reloaded is not None and reloaded.state == "open"

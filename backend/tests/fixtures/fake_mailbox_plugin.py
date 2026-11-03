@@ -5,7 +5,8 @@ FAKE_HEALTH_DELAY (seconds) in its environment control what it reports. `list_me
 mail and counts its calls in `next_cursor`; FAKE_LIST_FAILS makes it fail and FAKE_LIST_DELAY slow. The `fake_new_mail` tool
 publishes the push event a `push` plugin sends when mail arrives. FAKE_INBOX_CONTAINS (`extra` or
 `missing`) adds an `inbox_contains` that breaks the exact-keys rule that way; `present` answers every
-ref as in the inbox. FAKE_ARCHIVE=unverified adds an `archive` whose move is never verified.
+ref as in the inbox. FAKE_ARCHIVE=unverified adds an `archive` whose move is never verified; `malformed`, one that answers
+outside the contract.
 """
 
 import os
@@ -69,6 +70,12 @@ if os.environ.get("FAKE_ARCHIVE") == "unverified":
     @server.tool()
     async def archive(ref: str) -> MoveResult:
         return MoveResult(ok=True, verified=False)
+
+elif os.environ.get("FAKE_ARCHIVE") == "malformed":
+
+    @server.tool()
+    async def archive(ref: str) -> dict[str, str]:
+        return {"moved": "probably"}
 
 
 @server.tool()
