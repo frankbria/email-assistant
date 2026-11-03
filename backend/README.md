@@ -8,7 +8,7 @@ The backend API for an executive-style AI assistant that processes emails, class
 - **Beanie 2**: MongoDB ODM based on PyMongo and Pydantic
 - **PyMongo** (`AsyncMongoClient`): asynchronous MongoDB driver
 - **uv**: Fast Python package and project manager
-- **Anthropic Claude** (via `app/services/ai_provider.py`): AI classification, summaries and action suggestions (optional)
+- **Anthropic Claude** (via `app/services/ai_provider.py`): proposes one action per message; rules constrain it, and a failed proposal becomes an ask-owner job
 
 ## 🧪 Setup & Installation
 

@@ -25,7 +25,7 @@ Think: 1950s secretary triaging your morning mail.
 | Backend   | FastAPI + Beanie (MongoDB ODM) (Python 3.13+) |
 | Database  | MongoDB Atlas |
 | Auth      | (TBD — Clerk or custom) |
-| AI        | Anthropic Claude (provider interface) or rule-based fallback |
+| AI        | Anthropic Claude (provider interface); the owner decides when the AI cannot |
 | Package Mgmt | uv (backend), npm (frontend) |
 
 ---
