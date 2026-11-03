@@ -15,7 +15,7 @@ from mcp.shared.exceptions import MCPError
 from pydantic import ValidationError
 from pymongo import ReturnDocument
 
-from app.models.job import Job, JobState
+from app.models.job import Job, JobState, Verb
 from app.models.message import Message
 from app.plugins.calls import InvalidCursor, SyncError, call_plugin, refs_in_inbox
 from app.plugins.registry import PluginRegistry
@@ -36,12 +36,18 @@ class JobNotOpen(Exception):
 
 
 async def finish(
-    job_id: PydanticObjectId, outcome: Outcome, plugins: PluginRegistry, claim_from: tuple[JobState, ...] = ("open",)
+    job_id: PydanticObjectId,
+    outcome: Outcome,
+    plugins: PluginRegistry,
+    claim_from: tuple[JobState, ...] = ("open",),
+    verb: Verb | None = None,
 ) -> Job:
     """Done (the action succeeded, or a todo's owner tapped done) or dismissed; then archive what's settled.
-    `claim_from`: execute() finishes a job it already holds as `sending`."""
+    `claim_from`: execute() finishes a job it already holds as `sending`. `verb`: only while the job is still
+    that verb and not an ask-owner card (the owner approved what they saw, not a choice made meanwhile)."""
+    unchanged = {"verb": verb, "ask_owner": False} if verb else {}
     # Out of `open` before any archive, so a sync pass can't close it as handled elsewhere meanwhile.
-    claimed = await Job.find(Job.id == job_id, In(Job.state, list(claim_from))).update({"$set": {"state": outcome, "error": None}})
+    claimed = await Job.find(Job.id == job_id, In(Job.state, list(claim_from)), unchanged).update({"$set": {"state": outcome, "error": None}})
     if not claimed.modified_count:
         raise JobNotOpen(f"job {job_id} isn't open")
     try:  # everything after the claim: any failure must end with the job reopened, never stuck final
@@ -111,7 +117,8 @@ async def execute(
     if job is None or job.verb not in ("reply", "forward"):
         raise ValueError(f"only reply and forward jobs send; job {job_id} isn't one")
     now = datetime.now(UTC)
-    claimable = {"_id": job_id, "$or": [
+    # Still the verb read above: another action chosen meanwhile must not be sent as this one.
+    claimable = {"_id": job_id, "verb": job.verb, "ask_owner": False, "$or": [
         {"state": {"$in": ["open", "failed"]}},
         {"state": "sending", "sending_since": {"$lt": now - STALE_SENDING}},
     ]}
@@ -188,7 +195,8 @@ async def defer(job_id: PydanticObjectId, until: datetime | None = None) -> Job:
     when = until or job.due
     if when is None:
         raise ValueError(f"job {job_id} needs a date to wait for")
-    claimed = await Job.find(Job.id == job_id, Job.state == "open").update({"$set": {"state": "snoozed", "due": when, "reminder": None}})
+    still = (Job.id == job_id, Job.state == "open", Job.verb == job.verb, Job.ask_owner == False)  # noqa: E712  (a query, not a bool)
+    claimed = await Job.find(*still).update({"$set": {"state": "snoozed", "due": when, "reminder": None}})
     if not claimed.modified_count:
         raise JobNotOpen(f"job {job_id} isn't open")
     deferred = await Job.get(job_id)

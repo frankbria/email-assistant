@@ -89,9 +89,11 @@ async def list_jobs(owner_id: OwnerId) -> list[JobCard]:
 @router.patch("/{job_id}", response_model=Job)
 async def edit_job(job_id: PydanticObjectId, edit: JobEdit, owner_id: OwnerId) -> Job:
     await owned(job_id, owner_id)
-    changes: dict[str, object] = {"edited": True}
-    for field, value in edit.model_dump(exclude_unset=True).items():
-        changes["due" if field == "due" else f"artifacts.{field}"] = value
+    sent = edit.model_dump(exclude_unset=True)
+    if not sent:
+        raise HTTPException(status_code=422, detail="nothing to change")
+    changes: dict[str, object] = {"due" if field == "due" else f"artifacts.{field}": value for field, value in sent.items()}
+    changes["edited"] = True
     edited = await Job.find(Job.id == job_id, In(Job.state, IN_QUEUE)).update({"$set": changes})
     if not edited.modified_count:
         raise HTTPException(status_code=409, detail=f"job {job_id} isn't open")
@@ -114,7 +116,7 @@ async def approve_job(
         "snooze": lambda: defer(job_id),
         "follow_up": lambda: defer(job_id),
     }
-    acted = await acting(actions.get(job.verb, lambda: finish(job_id, "done", plugins)))
+    acted = await acting(actions.get(job.verb, lambda: finish(job_id, "done", plugins, verb=job.verb)))
     if acted.state in ("done", "snoozed"):
         # The owner's tap is the `ask` path whatever the verb's level; never_auto verbs say so.
         level: PermissionLevel = "never_auto" if await level_for(owner_id, job.verb) == "never_auto" else "ask"
@@ -144,10 +146,11 @@ async def choose_action(
         proposed = await decide(message, client, provider, settings.ai_monthly_cap, chosen=choice.verb)
     except Exception as error:  # the plugin or the AI is down: nothing changed, the owner can try again
         logger.exception("Proposing %s for job %s failed", choice.verb, job_id)
-        raise HTTPException(status_code=502, detail=f"couldn't get a {choice.verb} proposal, try again: {error}") from error
+        raise HTTPException(status_code=502, detail=f"couldn't get a {choice.verb} proposal, try again") from error
     replaced = proposed.model_dump(include={"verb", "title", "evidence", "artifacts", "due", "ask_owner", "suggested_verbs", "problems"})
     # Re-checked at write time: an approval may have sent it while the AI was proposing.
-    stored = await Job.find({"_id": job_id, "state": "open", "sent_at": None}).update({"$set": {**replaced, "edited": False}})
+    fresh = {**replaced, "edited": False, "error": None, "reminder": None, "permission_level": None}  # the old action's
+    stored = await Job.find({"_id": job_id, "state": "open", "sent_at": None}).update({"$set": fresh})
     if not stored.modified_count:
         raise HTTPException(status_code=409, detail=f"job {job_id} isn't open")
     return await owned(job_id, owner_id)

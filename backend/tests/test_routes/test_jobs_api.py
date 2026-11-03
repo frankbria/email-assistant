@@ -5,8 +5,10 @@ from datetime import UTC, datetime, timedelta
 
 import pytest
 from beanie import PydanticObjectId
+from beanie.operators import In
 
 from app.api.routers.jobs import plugin_registry
+from app.executor import JobNotOpen, defer, execute, finish
 from app.main import app
 from app.models.job import Artifacts, Job, JobState, Verb
 from app.models.message import Message
@@ -241,3 +243,45 @@ async def test_each_owner_sees_only_their_own_jobs(async_client, test_db, mailbo
 async def test_the_old_tasks_routes_are_gone(async_client, test_db):
     assert (await async_client.get("/api/v1/tasks/")).status_code == 404
     assert (await async_client.patch(f"/api/v1/tasks/{PydanticObjectId()}", json={"status": "done"})).status_code == 404
+
+
+async def test_an_approval_never_carries_out_an_action_chosen_since_the_owner_saw_the_job(test_db, mailbox, plugins):
+    """The route read `todo`; a choice made meanwhile turned the job into a reply or an ask-owner card."""
+    ana = new_mailbox()
+    todo = await job_from(ana, mailbox, "todo", Artifacts(link="https://x.example"))
+    reply = await job_from(ana, mailbox, "reply", Artifacts(draft="Yes"))
+    snooze = await job_from(ana, mailbox, "snooze", due=datetime.now(UTC) + timedelta(days=1))
+    assert todo.id is not None and reply.id is not None and snooze.id is not None
+    await todo.set({"verb": "reply", "artifacts.draft": "Yes"})
+    await reply.set({"ask_owner": True})
+    await snooze.set({"ask_owner": True})
+
+    with pytest.raises(JobNotOpen):
+        await finish(todo.id, "done", plugins, verb="todo")
+    with pytest.raises(JobNotOpen):
+        await execute(reply.id, plugins)
+    with pytest.raises(JobNotOpen):
+        await defer(snooze.id)
+
+    states = [job.state for job in await Job.find(In(Job.id, [todo.id, reply.id, snooze.id])).to_list()]
+    assert states == ["open"] * 3 and len(mailbox.messages("INBOX")) == 3 and ana.messages("INBOX") == []
+
+
+async def test_choosing_another_action_drops_what_was_about_the_old_one(async_client, test_db, mailbox, plugins, ai):
+    job = await job_from(new_mailbox(), mailbox, "follow_up", reminder="No answer from Ana", error="archiving failed", edited=True,
+                         permission_level="autonomous")
+    ai.result = Proposal(needs_owner=False, verb="todo", title="Book the Thursday meeting room", evidence=[QUESTION],
+                         due=datetime(2026, 11, 5, tzinfo=UTC), confidence=0.9)
+
+    chosen = (await async_client.post(f"/api/v1/jobs/{job.id}/choose", json={"verb": "todo"})).json()
+
+    assert (chosen["verb"], chosen["error"], chosen["reminder"], chosen["edited"], chosen["permission_level"]) == ("todo", None, None, False, None)
+
+
+async def test_an_empty_edit_changes_nothing(async_client, test_db, mailbox):
+    job = await job_from(new_mailbox(), mailbox, "reply", Artifacts(draft="Yes"))
+
+    response = await async_client.patch(f"/api/v1/jobs/{job.id}", json={})
+
+    stored = await Job.get(job.id)
+    assert response.status_code == 422 and stored is not None and stored.edited is False
