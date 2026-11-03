@@ -55,20 +55,60 @@ class MailboxError(Exception):
 
 
 class TextExtractor(HTMLParser):
-    """HTML → plain text for messages without a text part."""
+    """HTML → plain text for messages without a text part. Quoted blocks get "> " markers like
+    plain-text mail, so the app can tell quoted history from new content; style and script are dropped."""
+
+    LINE_TAGS = frozenset({"br", "p", "div", "li", "tr", "blockquote", "h1", "h2", "h3", "h4", "h5", "h6"})
+    MAX_QUOTE_MARKERS = 8  # deeper nesting adds no meaning, only size (hostile HTML nests thousands)
+    HIDDEN_TAGS = frozenset({"style", "script", "title"})  # not "head": its end tag is optional
 
     def __init__(self) -> None:
         super().__init__()
-        self.parts: list[str] = []
+        self.lines: list[str] = []
+        self.line: list[str] = []  # chunks; joining once per line keeps long inline runs linear
+        self.quote_depth = 0
+        self.hidden_depth = 0
+
+    def handle_starttag(self, tag: str, attrs: list[tuple[str, str | None]]) -> None:
+        self.on_tag(tag, entering=True)
+
+    def handle_endtag(self, tag: str) -> None:
+        self.on_tag(tag, entering=False)
+
+    def on_tag(self, tag: str, entering: bool) -> None:
+        step = 1 if entering else -1
+        if tag in self.LINE_TAGS:
+            self.end_line()  # before the depth changes, so the line keeps the depth it was written at
+        if tag == "blockquote":
+            self.quote_depth = max(0, self.quote_depth + step)
+        elif tag in self.HIDDEN_TAGS:
+            self.hidden_depth = max(0, self.hidden_depth + step)
 
     def handle_data(self, data: str) -> None:
-        self.parts.append(data)
+        if self.hidden_depth:
+            return
+        first, *rest = data.split("\n")
+        self.line.append(first)
+        for piece in rest:
+            self.end_line()
+            self.line.append(piece)
+
+    def end_line(self) -> None:
+        raw = "".join(self.line)
+        line = raw.strip()
+        if line == "--" and raw.lstrip().startswith("-- "):
+            line = "-- "  # the RFC 3676 signature delimiter's trailing space is meaningful
+        if line:
+            self.lines.append("> " * min(self.quote_depth, self.MAX_QUOTE_MARKERS) + line)
+        self.line = []
 
 
 def html_to_text(html: str) -> str:
     extractor = TextExtractor()
     extractor.feed(html)
-    return re.sub(r"\s+\n", "\n", "".join(extractor.parts)).strip()
+    extractor.close()
+    extractor.end_line()
+    return "\n".join(extractor.lines)
 
 
 def addresses(message: EmailMessage, header: str) -> list[Address]:

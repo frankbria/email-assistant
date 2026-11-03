@@ -5,6 +5,7 @@ implicit-TLS front-end relaying plaintext to the GreenMail test server."""
 import datetime
 import functools
 import ipaddress
+import select
 import socket
 import ssl
 import tempfile
@@ -50,14 +51,21 @@ def start_tls_relay(target_port: int, cert_path: Path, key_path: Path, listen_po
     context.load_cert_chain(cert_path, key_path)
     listener = socket.create_server(("127.0.0.1", listen_port))
 
-    def pipe(source: socket.socket, sink: socket.socket) -> None:
+    def relay(secure: ssl.SSLSocket, upstream: socket.socket) -> None:
+        # One thread per connection: an SSLSocket must not be read and written from two threads at
+        # once (OpenSSL state isn't thread-safe), which garbled replies now and then under load.
         try:
-            while data := source.recv(65536):
-                sink.sendall(data)
-        except OSError:
+            while True:
+                readable = [secure] if secure.pending() else select.select([secure, upstream], [], [])[0]
+                for source in readable:
+                    data = source.recv(65536)
+                    if not data:
+                        return
+                    (upstream if source is secure else secure).sendall(data)
+        except OSError:  # ssl.SSLError is an OSError
             pass
         finally:
-            for end in (source, sink):
+            for end in (secure, upstream):
                 end.close()
 
     def handle(client: socket.socket) -> None:
@@ -66,9 +74,7 @@ def start_tls_relay(target_port: int, cert_path: Path, key_path: Path, listen_po
         except (ssl.SSLError, OSError):
             client.close()
             return
-        upstream = socket.create_connection(("127.0.0.1", target_port))
-        threading.Thread(target=pipe, args=(secure, upstream), daemon=True).start()
-        pipe(upstream, secure)
+        relay(secure, socket.create_connection(("127.0.0.1", target_port)))
 
     def serve() -> None:
         while True:
