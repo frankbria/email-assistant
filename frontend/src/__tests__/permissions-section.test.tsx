@@ -78,6 +78,19 @@ describe('Permissions section', () => {
     expect(api.calls.at(-1)).toEqual({ method: 'PUT', path: '/api/v1/permissions/reply', body: { level: 'autonomous' } })
   })
 
+  it('holds every other change until a save finishes, so an older answer never replaces a newer choice', async () => {
+    api.state = permissions({ promotions: ['reply'] })
+    render(<PermissionsSection />)
+    const reply = await screen.findByRole('radiogroup', { name: 'reply' })
+
+    fireEvent.click(within(reply).getByLabelText('Autonomous'))
+
+    expect(within(screen.getByRole('radiogroup', { name: 'forward' })).getByLabelText('Never automatic')).toBeDisabled()
+    expect(screen.getByRole('button', { name: 'Not now' })).toBeDisabled()
+    expect(await within(reply).findByLabelText('Autonomous')).toBeChecked()
+    expect(within(screen.getByRole('radiogroup', { name: 'forward' })).getByLabelText('Never automatic')).toBeEnabled()
+  })
+
   it('shows why a choice above the ceiling is rejected and keeps the level (AC-K.3 UI half)', async () => {
     api.reject = "forward can't be autonomous: its highest level is ask (new recipients come from AI judgment)"
     render(<PermissionsSection />)

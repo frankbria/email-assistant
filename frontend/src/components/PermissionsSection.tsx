@@ -14,9 +14,9 @@ const LEVEL_LABELS: Record<PermissionLevel, string> = {
 const LEVELS: PermissionLevel[] = ['autonomous', 'ask', 'never_auto']
 const PROMOTION_AFTER = 10 // matches the backend's PROMOTION_AFTER (spec §9)
 
-function VerbRow({ row, onChange, rejection }: { row: VerbPermission; onChange: (level: PermissionLevel) => void; rejection?: string }) {
+function VerbRow({ row, onChange, rejection, disabled }: { row: VerbPermission; onChange: (level: PermissionLevel) => void; rejection?: string; disabled: boolean }) {
   return (
-    <fieldset role="radiogroup" aria-label={row.verb} data-slot="permission-row" className="rounded-xl border bg-white dark:bg-gray-800 p-4 text-left transition-all">
+    <fieldset role="radiogroup" aria-label={row.verb} disabled={disabled} data-slot="permission-row" className="rounded-xl border bg-white dark:bg-gray-800 p-4 text-left transition-all">
       <legend className="sr-only">{row.verb}</legend>
       <p className="font-medium">{row.verb}</p>
       <div className="mt-2 flex flex-wrap gap-3">
@@ -50,6 +50,7 @@ export default function PermissionsSection() {
   const [permissions, setPermissions] = useState<Permissions | null>(null)
   const [rejections, setRejections] = useState<Record<string, string>>({})
   const [error, setError] = useState<string | null>(null)
+  const [saving, setSaving] = useState(false) // one change at a time: each answer replaces all state, so an older one mustn't land last
 
   useEffect(() => {
     fetchPermissions().then(setPermissions, (failure: Error) => setError(failure.message))
@@ -57,11 +58,14 @@ export default function PermissionsSection() {
 
   // A failure is shown under the verb's row: the server's reason for a rejection, else what couldn't be done.
   async function update(verb: string, request: Promise<Permissions>) {
+    setSaving(true)
     try {
       setPermissions(await request)
       setRejections((current) => ({ ...current, [verb]: '' }))
     } catch (failure) {
       setRejections((current) => ({ ...current, [verb]: failure instanceof Error ? failure.message : String(failure) }))
+    } finally {
+      setSaving(false)
     }
   }
 
@@ -86,15 +90,15 @@ export default function PermissionsSection() {
             You approved {PROMOTION_AFTER} {verb} jobs in a row without changes. Let the assistant do these on its own?
           </p>
           <div className="mt-3 flex gap-2">
-            <Button onClick={() => answer(verb, true)}>Make {verb} autonomous</Button>
-            <Button variant="outline" onClick={() => answer(verb, false)}>
+            <Button disabled={saving} onClick={() => answer(verb, true)}>Make {verb} autonomous</Button>
+            <Button variant="outline" disabled={saving} onClick={() => answer(verb, false)}>
               Not now
             </Button>
           </div>
         </section>
       ))}
       {permissions.verbs.map((row) => (
-        <VerbRow key={row.verb} row={row} rejection={rejections[row.verb]} onChange={(level) => choose(row.verb, level)} />
+        <VerbRow key={row.verb} row={row} rejection={rejections[row.verb]} disabled={saving} onChange={(level) => choose(row.verb, level)} />
       ))}
     </section>
   )
