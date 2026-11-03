@@ -4,7 +4,8 @@ FAKE_CONTRACT_VERSION, FAKE_ACCOUNT, FAKE_CAPABILITIES (comma-separated), FAKE_I
 FAKE_HEALTH_DELAY (seconds) in its environment control what it reports. `list_messages` returns no
 mail and counts its calls in `next_cursor`; FAKE_LIST_FAILS makes it fail and FAKE_LIST_DELAY slow. The `fake_new_mail` tool
 publishes the push event a `push` plugin sends when mail arrives. FAKE_INBOX_CONTAINS (`extra` or
-`missing`) adds an `inbox_contains` that breaks the exact-keys rule that way.
+`missing`) adds an `inbox_contains` that breaks the exact-keys rule that way; `present` answers every
+ref as in the inbox. FAKE_ARCHIVE=unverified adds an `archive` whose move is never verified.
 """
 
 import os
@@ -14,7 +15,7 @@ import anyio
 
 from mcp.server.mcpserver import Context, MCPServer
 
-from mailbox_contract import INBOX_URI, Capability, Folders, Health, HealthCheck, ListMessagesOutput, MailboxInfo
+from mailbox_contract import INBOX_URI, Capability, Folders, Health, HealthCheck, ListMessagesOutput, MailboxInfo, MoveResult
 
 server = MCPServer("fake-mailbox")
 
@@ -58,9 +59,16 @@ if os.environ.get("FAKE_INBOX_CONTAINS"):
         answer = {ref: True for ref in refs}
         if os.environ["FAKE_INBOX_CONTAINS"] == "extra":
             answer["not-asked-about"] = False
-        else:
+        elif os.environ["FAKE_INBOX_CONTAINS"] == "missing":
             answer.pop(refs[0])
         return answer
+
+
+if os.environ.get("FAKE_ARCHIVE") == "unverified":
+
+    @server.tool()
+    async def archive(ref: str) -> MoveResult:
+        return MoveResult(ok=True, verified=False)
 
 
 @server.tool()

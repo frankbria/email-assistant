@@ -40,6 +40,7 @@ class Job(Document):
     problems: list[str] = Field(default_factory=list)  # why validation sent it to the owner
     # First-connect mail (§5.3): every decision on it is `ask`, whatever the verb's permission (#71 enforces).
     requires_approval: bool = False
+    error: str | None = None  # why finishing it didn't go through, naming the plugin (§10.3, AC-1.3)
     created_at: datetime = Field(default_factory=lambda: datetime.now(UTC))
 
     class Settings:
