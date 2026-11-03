@@ -19,7 +19,7 @@ from app.models.message import Message
 from app.models.sync_cursor import SyncCursor
 from app.plugins.config import PluginConfig, StdioTransport
 from app.plugins.registry import PluginRegistry
-from app.sync import SyncEngine, SyncError, store_page, sync_inbox
+from app.sync import SyncEngine, SyncError, store_page, sync_folder
 from mailbox_contract import ListMessagesOutput, MessageSummary
 from tests.conformance.test_mailbox_conformance import reference_imap_plugin
 from tests.utils.mail_server import Mailbox
@@ -70,12 +70,12 @@ async def test_catches_up_after_an_outage_with_no_duplicates_or_missed_mail(test
     """AC-P.3: when the plugin returns after an outage, sync resumes from the stored cursor."""
     before = mailbox.deliver(sender="a@example.com", subject="Before", body="one")
     async with connected(reference_imap_plugin(mailbox)) as registry:
-        first = await sync_inbox(OWNER, PLUGIN, registry.clients[PLUGIN])
+        first = await sync_folder(OWNER, PLUGIN, registry.clients[PLUGIN])
 
     during = [mailbox.deliver(sender="b@example.com", subject=f"During {n}", body="x") for n in range(3)]
     async with connected(reference_imap_plugin(mailbox)) as registry:
-        caught_up = await sync_inbox(OWNER, PLUGIN, registry.clients[PLUGIN], page_size=2)
-        again = await sync_inbox(OWNER, PLUGIN, registry.clients[PLUGIN])
+        caught_up = await sync_folder(OWNER, PLUGIN, registry.clients[PLUGIN], page_size=2)
+        again = await sync_folder(OWNER, PLUGIN, registry.clients[PLUGIN])
 
     assert [message.message_id for message in first] == [before]
     assert [message.message_id for message in caught_up] == during
@@ -112,14 +112,14 @@ async def test_one_mail_under_two_refs_or_listed_twice_is_stored_once(test_db):
 async def test_a_cursor_the_plugin_no_longer_accepts_restarts_without_duplicates(test_db, mailbox: Mailbox):
     seen = mailbox.deliver(sender="a@example.com", subject="Seen", body="x")
     async with connected(reference_imap_plugin(mailbox)) as registry:
-        await sync_inbox(OWNER, PLUGIN, registry.clients[PLUGIN])
+        await sync_folder(OWNER, PLUGIN, registry.clients[PLUGIN])
         cursor = await SyncCursor.find_one(SyncCursor.owner_id == OWNER)
         assert cursor is not None
         cursor.cursor = "0:999"  # e.g. the folder was rebuilt and its UIDVALIDITY changed
         await cursor.save()
         unseen = mailbox.deliver(sender="a@example.com", subject="Unseen", body="x")
 
-        new = await sync_inbox(OWNER, PLUGIN, registry.clients[PLUGIN])
+        new = await sync_folder(OWNER, PLUGIN, registry.clients[PLUGIN])
 
     assert [message.message_id for message in new] == [unseen]
     assert sorted(await stored_message_ids()) == sorted([seen, unseen])
@@ -134,7 +134,7 @@ async def test_first_connect_takes_only_the_last_14_days_and_archives_nothing(te
     older = mailbox.append("INBOX", sender="a@example.com", subject="15 days", body="x", received=days_ago(15))
     recent = mailbox.append("INBOX", sender="a@example.com", subject="13 days", body="x", received=days_ago(13))
     async with connected(reference_imap_plugin(mailbox)) as registry:
-        first_pass = await sync_inbox(OWNER, PLUGIN, registry.clients[PLUGIN])
+        first_pass = await sync_folder(OWNER, PLUGIN, registry.clients[PLUGIN])
 
     assert [(message.message_id, message.first_pass) for message in first_pass] == [(recent, True)]
     assert await stored_message_ids() == [recent]
@@ -146,8 +146,8 @@ async def test_older_mail_at_a_higher_uid_than_recent_mail_never_enters(test_db,
     recent = mailbox.append("INBOX", sender="a@example.com", subject="2 days", body="x", received=days_ago(2))
     mailbox.append("INBOX", sender="a@example.com", subject="30 days", body="x", received=days_ago(30))
     async with connected(reference_imap_plugin(mailbox)) as registry:
-        first_pass = await sync_inbox(OWNER, PLUGIN, registry.clients[PLUGIN])
-        next_pass = await sync_inbox(OWNER, PLUGIN, registry.clients[PLUGIN])
+        first_pass = await sync_folder(OWNER, PLUGIN, registry.clients[PLUGIN])
+        next_pass = await sync_folder(OWNER, PLUGIN, registry.clients[PLUGIN])
 
     assert [message.message_id for message in first_pass] == [recent]
     assert next_pass == []
@@ -159,9 +159,9 @@ async def test_the_whole_first_pass_is_marked_even_across_pages_but_later_mail_i
         for n in range(3)
     ]
     async with connected(reference_imap_plugin(mailbox)) as registry:
-        first_pass = await sync_inbox(OWNER, PLUGIN, registry.clients[PLUGIN], page_size=1)
+        first_pass = await sync_folder(OWNER, PLUGIN, registry.clients[PLUGIN], page_size=1)
         later = mailbox.deliver(sender="b@example.com", subject="Later", body="x")
-        afterwards = await sync_inbox(OWNER, PLUGIN, registry.clients[PLUGIN])
+        afterwards = await sync_folder(OWNER, PLUGIN, registry.clients[PLUGIN])
 
     assert [(message.message_id, message.first_pass) for message in first_pass] == [(m, True) for m in week_old]
     assert [(message.message_id, message.first_pass) for message in afterwards] == [(later, False)]
@@ -169,11 +169,11 @@ async def test_the_whole_first_pass_is_marked_even_across_pages_but_later_mail_i
 
 async def test_a_cursor_saved_before_first_pass_tracking_counts_as_past_its_first_pass(test_db, mailbox: Mailbox):
     async with connected(reference_imap_plugin(mailbox)) as registry:
-        await sync_inbox(OWNER, PLUGIN, registry.clients[PLUGIN])
+        await sync_folder(OWNER, PLUGIN, registry.clients[PLUGIN])
         await test_db["sync_cursors"].update_many({}, {"$unset": {"first_pass_complete": ""}})
         later = mailbox.deliver(sender="b@example.com", subject="Later", body="x")
 
-        afterwards = await sync_inbox(OWNER, PLUGIN, registry.clients[PLUGIN])
+        afterwards = await sync_folder(OWNER, PLUGIN, registry.clients[PLUGIN])
 
     assert [(message.message_id, message.first_pass) for message in afterwards] == [(later, False)]
 
@@ -189,7 +189,7 @@ async def test_the_first_connect_window_is_configurable(test_db, mailbox: Mailbo
 
 async def test_restarting_after_a_rejected_cursor_keeps_the_window_and_is_not_a_first_pass(test_db, mailbox: Mailbox):
     async with connected(reference_imap_plugin(mailbox)) as registry:
-        await sync_inbox(OWNER, PLUGIN, registry.clients[PLUGIN])
+        await sync_folder(OWNER, PLUGIN, registry.clients[PLUGIN])
         cursor = await SyncCursor.find_one(SyncCursor.owner_id == OWNER)
         assert cursor is not None
         cursor.cursor = "0:999"  # e.g. the folder was rebuilt and its UIDVALIDITY changed
@@ -197,7 +197,7 @@ async def test_restarting_after_a_rejected_cursor_keeps_the_window_and_is_not_a_
         mailbox.append("INBOX", sender="a@example.com", subject="Moved back in", body="x", received=days_ago(30))
         unseen = mailbox.deliver(sender="a@example.com", subject="Unseen", body="x")
 
-        new = await sync_inbox(OWNER, PLUGIN, registry.clients[PLUGIN])
+        new = await sync_folder(OWNER, PLUGIN, registry.clients[PLUGIN])
 
     assert [(message.message_id, message.first_pass) for message in new] == [(unseen, False)]
 
@@ -206,7 +206,7 @@ async def test_a_failing_list_messages_raises_with_the_plugins_words(test_db, mo
     monkeypatch.setenv("FAKE_FAILS", "1")
     async with connected(fake_plugin("broken", {"FAKE_LIST_FAILS": "FAKE_FAILS"})) as registry:
         with pytest.raises(SyncError, match="broken.*list_messages failed"):
-            await sync_inbox(OWNER, "broken", registry.clients["broken"])
+            await sync_folder(OWNER, "broken", registry.clients["broken"])
 
 
 async def test_engine_polls_on_its_interval_and_one_failing_plugin_does_not_stop_the_others(

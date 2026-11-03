@@ -3,9 +3,10 @@
 messages with the same `message_id`, which one job can reference together (spec §5.3)."""
 
 from datetime import datetime
+from typing import Literal
 
 from beanie import Document
-from pymongo import ASCENDING, IndexModel
+from pymongo import ASCENDING, DESCENDING, IndexModel
 
 from mailbox_contract import Address
 
@@ -13,6 +14,7 @@ from mailbox_contract import Address
 class Message(Document):
     owner_id: str
     plugin_id: str
+    folder: Literal["inbox", "sent"] = "inbox"  # sent mail feeds voice, forward history and follow_up (§5.2)
     ref: str  # opaque and stable within the plugin
     message_id: str  # RFC 5322 Message-ID
     sender: Address
@@ -30,4 +32,5 @@ class Message(Document):
         indexes = [
             IndexModel([("owner_id", ASCENDING), ("plugin_id", ASCENDING), ("ref", ASCENDING)], unique=True),
             IndexModel([("owner_id", ASCENDING), ("message_id", ASCENDING)]),
+            IndexModel([("owner_id", ASCENDING), ("folder", ASCENDING), ("date", DESCENDING)]),
         ]
