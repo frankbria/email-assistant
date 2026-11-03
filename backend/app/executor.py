@@ -11,9 +11,9 @@ from typing import Literal
 from beanie import PydanticObjectId
 from beanie.operators import In, NotIn
 from mcp import Client
-from pymongo import ReturnDocument
 from mcp.shared.exceptions import MCPError
 from pydantic import ValidationError
+from pymongo import ReturnDocument
 
 from app.models.job import Job, JobState
 from app.models.message import Message
@@ -139,7 +139,8 @@ async def execute(
         failed = await Job.get(job_id)
         assert failed is not None
         return failed
-    await Job.find(Job.id == job_id).update({"$set": {"sent_at": job.sent_at or now}})
+    # The plugin confirmed the send: record it even if cancelled now, so no retry ever sends it again.
+    await asyncio.shield(Job.find(Job.id == job_id).update({"$set": {"sent_at": job.sent_at or now}}))
     return await finish(job_id, "done", plugins, claim_from=("sending",))
 
 
