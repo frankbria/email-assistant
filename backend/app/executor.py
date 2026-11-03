@@ -196,14 +196,17 @@ async def defer(job_id: PydanticObjectId, until: datetime | None = None) -> Job:
     return deferred
 
 
-async def wake_due(owner_id: str, plugins: PluginRegistry, now: datetime) -> int:
+async def wake_due(owner_id: str, plugins: PluginRegistry, now: datetime, check_follow_ups: bool = True) -> int:
     """Brings back every snoozed job whose date has come: a snooze reopens; a follow-up that got its answer
     is done (archive-on-done), one that didn't reopens with a reminder. Open reminders are re-checked each
     pass, so an answer arriving late (or missed by a sync that failed that pass) resolves them. One broken
-    job never stops the rest. Returns how many woke."""
+    job never stops the rest. `check_follow_ups` is False on a pass whose sent folders didn't sync: the
+    owner's latest reply may be missing, so follow-ups wait. Returns how many woke."""
     woken = 0
     due = await Job.find(Job.owner_id == owner_id, Job.state == "snoozed", {"due": {"$lte": now}}).to_list()
     reminded = await Job.find(Job.owner_id == owner_id, Job.state == "open", Job.verb == "follow_up", {"reminder": {"$ne": None}}).to_list()
+    if not check_follow_ups:
+        due, reminded = [job for job in due if job.verb != "follow_up"], []
     for job in [*due, *reminded]:
         try:
             woken += await wake(job, plugins)

@@ -4,6 +4,7 @@ from datetime import UTC, datetime, timedelta
 
 import pytest
 from beanie import PydanticObjectId
+from beanie.operators import In
 
 from app.executor import JobNotOpen, defer, wake_due
 from app.models.job import Artifacts, Job, Verb
@@ -198,3 +199,21 @@ async def test_the_owners_latest_turn_in_a_back_and_forth_is_the_one_awaiting_an
     await wake_due(OWNER, PluginRegistry(), now=DUE + timedelta(minutes=1))
 
     assert await state(job) == ("open", "No answer from ana@example.com to “Contract” since 2026-11-04")
+
+
+async def test_follow_ups_wait_for_a_pass_whose_sent_folders_synced(test_db, mailbox: Mailbox):
+    """A fresh test mailbox has no Sent folder, so sent sync fails: outgoing history may be stale, so a
+    follow-up isn't judged this pass (a snooze still wakes)."""
+    await add_owner(test_db)
+    past = datetime.now(UTC) - timedelta(minutes=1)
+    follow_up = await job_over(await message("<f@x>", "ana@example.com"), "follow_up", due=past)
+    snooze = await job_over(await message("<s@x>", "bob@example.com"), "snooze", due=past)
+    await Job.find(In(Job.id, [follow_up.id, snooze.id])).update({"$set": {"state": "snoozed"}})
+    async with connected(reference_imap_plugin(mailbox)) as registry:
+        await SyncEngine(registry, test_db["user"], poll_seconds=60).sync_all()
+        waiting, snooze_woke = await state(follow_up), await state(snooze)
+        mailbox.create_folder("Sent")
+        await SyncEngine(registry, test_db["user"], poll_seconds=60).sync_all()
+
+    assert waiting == ("snoozed", None) and snooze_woke == ("open", None)
+    assert await state(follow_up) == ("open", "No answer from ana@example.com to “Contract” since 2026-11-02")
