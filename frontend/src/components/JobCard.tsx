@@ -60,11 +60,13 @@ function Artifacts({ job }: { job: Job }) {
         </ul>
       )}
       {digest && <p className="whitespace-pre-wrap">{digest}</p>}
-      {link && (
+      {link && (isWebLink(link) ? (
         <a href={link} target="_blank" rel="noreferrer" className="break-all text-primary underline">
           {link}
         </a>
-      )}
+      ) : (
+        <p className="break-all">{link}</p>
+      ))}
       {noise_rationale && <p className="text-muted-foreground">{noise_rationale}</p>}
     </>
   )
@@ -244,4 +246,9 @@ export function JobCard({ card, onReplaced, onRemoved }: JobCardProps) {
       )}
     </Card>
   )
+}
+
+// The link comes from inbound mail, so a javascript: or data: URL must never become clickable.
+function isWebLink(link: string): boolean {
+  return URL.canParse(link) && ['http:', 'https:'].includes(new URL(link).protocol)
 }

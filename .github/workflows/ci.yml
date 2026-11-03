@@ -119,3 +119,9 @@ jobs:
       - name: playwright
         run: npm run e2e
         working-directory: frontend
+      - name: upload playwright traces
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: playwright-traces
+          path: frontend/test-results/

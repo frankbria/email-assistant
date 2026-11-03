@@ -168,6 +168,18 @@ describe('Job queue actions', () => {
     expect(within(card).getByText('Friday works for me.')).toBeInTheDocument()
   })
 
+  it('only makes web links clickable, since the link comes from inbound mail', async () => {
+    const card = await renderQueue(
+      cardWith({ title: 'Pay the invoice', artifacts: { ...jobCard.job.artifacts, link: 'https://pay.example/invoice' } }),
+      cardWith({ _id: 'job-2', title: 'Hostile link', artifacts: { ...jobCard.job.artifacts, link: 'javascript:alert(1)' } }),
+    )
+
+    expect(within(card).getByRole('link', { name: 'https://pay.example/invoice' })).toHaveAttribute('href', 'https://pay.example/invoice')
+    const hostile = screen.getByRole('article', { name: 'Hostile link' })
+    expect(within(hostile).queryByRole('link')).toBeNull()
+    expect(within(hostile).getByText('javascript:alert(1)')).toBeInTheDocument()
+  })
+
   it('approving a job removes its card from the queue', async () => {
     await renderQueue(replyCard)
     mockFetch.mockResolvedValueOnce(Response.json({ ...replyCard.job, state: 'done' }))

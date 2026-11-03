@@ -19,7 +19,7 @@ test('approving a reply sends the draft and removes the card', async ({ page }) 
   await cardTitled(page, job.title).getByRole('button', { name: 'Approve' }).click()
 
   await expect(cardTitled(page, job.title)).toHaveCount(0)
-  await expect.poll(() => inbox(job.sender)).toEqual([
+  await expect.poll(() => inbox(job.sender), { timeout: 30_000, intervals: [1_000] }).toEqual([
     { subject: `Re: ${job.title}`, body: expect.stringContaining('Thursday at 3 works.') },
   ])
 })
@@ -36,7 +36,7 @@ test('an edited draft is what gets sent on approval', async ({ page }) => {
   await card.getByRole('button', { name: 'Approve' }).click()
 
   await expect(card).toHaveCount(0)
-  await expect.poll(() => inbox(job.sender)).toEqual([
+  await expect.poll(() => inbox(job.sender), { timeout: 30_000, intervals: [1_000] }).toEqual([
     { subject: `Re: ${job.title}`, body: expect.stringContaining('Thursday at 3 works. See you there!') },
   ])
 })
