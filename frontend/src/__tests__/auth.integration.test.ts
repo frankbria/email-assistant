@@ -31,9 +31,9 @@ afterAll(async () => {
 })
 
 function signUpRequest(body: typeof owner): Request {
-  return new Request('http://localhost:3000/api/auth/sign-up/email', {
+  return new Request('http://localhost:3200/api/auth/sign-up/email', {
     method: 'POST',
-    headers: { 'content-type': 'application/json', origin: 'http://localhost:3000' },
+    headers: { 'content-type': 'application/json', origin: 'http://localhost:3200' },
     body: JSON.stringify(body),
   })
 }
@@ -82,10 +82,10 @@ describe('route protection (proxy.ts)', () => {
   it('redirects a request without a session to /sign-in', async () => {
     const { NextRequest } = await import('next/server')
 
-    const response = await proxyModule.proxy(new NextRequest('http://localhost:3000/settings'))
+    const response = await proxyModule.proxy(new NextRequest('http://localhost:3200/settings'))
 
     expect(response.status).toBe(307)
-    expect(response.headers.get('location')).toBe('http://localhost:3000/sign-in')
+    expect(response.headers.get('location')).toBe('http://localhost:3200/sign-in')
   })
 
   it('lets a signed-in owner through', async () => {
@@ -94,7 +94,7 @@ describe('route protection (proxy.ts)', () => {
     const sessionCookie = signUp.headers.getSetCookie().map((cookie) => cookie.split(';')[0]).join('; ')
 
     const response = await proxyModule.proxy(
-      new NextRequest('http://localhost:3000/settings', { headers: { cookie: sessionCookie } }),
+      new NextRequest('http://localhost:3200/settings', { headers: { cookie: sessionCookie } }),
     )
 
     expect(response.headers.get('x-middleware-next')).toBe('1')

@@ -15,7 +15,7 @@ public SSH, and no host names or addresses in this repo (see the operator's loca
 
 ## First deploy
 
-1. Check the ports are free on the shared host: `ss -ltn | grep -E ':(3000|8000) '`.
+1. Check the ports are free on the shared host: `ss -ltn | grep -E ':(3200|8000) '`.
    Pick other ports if they're taken.
 2. Copy `.env.example` to `.env` next to `docker-compose.yml` and fill it in:
    `MONGODB_URI`, the ports, `BIND_ADDRESS` (the host's Tailscale IP, from

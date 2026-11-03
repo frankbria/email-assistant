@@ -13,8 +13,8 @@ logger = logging.getLogger(__name__)
 
 def setup_cors(app: FastAPI) -> None:
     """Configure CORS middleware for the FastAPI application"""
-    # Get allowed origins from environment variable, defaulting to localhost:3000
-    allowed_origins = os.getenv("FRONTEND_ORIGIN", "http://localhost:3000").split(",")
+    # Get allowed origins from environment variable, defaulting to localhost:3200
+    allowed_origins = os.getenv("FRONTEND_ORIGIN", "http://localhost:3200").split(",")
     allowed_credentials = True
 
     logger.debug(f"🔒 CORS allowed origins: {allowed_origins}")
