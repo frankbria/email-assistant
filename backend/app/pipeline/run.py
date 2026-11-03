@@ -3,6 +3,7 @@ validate, and becomes a job or an ask-owner job. Anything that goes wrong asks t
 optional monthly AI cap (§5.3) does too, with one warning per month."""
 
 import logging
+import re
 from collections.abc import Awaitable, Callable
 from datetime import UTC, datetime
 
@@ -12,7 +13,7 @@ from pydantic import ValidationError
 from beanie.operators import In, NotIn
 from pymongo import ReturnDocument
 
-from app.executor import archive, defer, execute, finish, reopen
+from app.executor import JobNotOpen, archive, defer, execute, finish, reopen
 from app.models.ai_usage import AiUsage
 from app.models.job import Job
 from app.models.message import Message
@@ -68,6 +69,8 @@ async def process(message: Message, client: Client, provider: AIProvider, cap: i
         job.requires_approval = message.first_pass
         await job.insert()
         await act_if_autonomous(job, plugins)
+    elif job.state == "open" and job.permission_level is None:
+        await act_if_autonomous(job, plugins)  # stored, then a crash before acting: act now
     elif job.state in ("done", "dismissed"):
         await archive_late_copy(job, message, client)
     message.pipeline_done = True
@@ -75,10 +78,15 @@ async def process(message: Message, client: Client, provider: AIProvider, cap: i
     return job
 
 
+NO_REPLY = re.compile(r"^(?:no-?reply|do-?not-?reply|mailer-daemon|postmaster|bounces?)[^@]*@", re.IGNORECASE)
+
+
 async def act_if_autonomous(job: Job, plugins: PluginRegistry) -> None:
     """Spec §9: an `autonomous` verb acts without a tap; `ask` and `never_auto` wait for the owner. An
-    ask-owner card or first-connect mail (§5.3) always waits. A reply acts only with a draft, and only to the
-    original sender (execute never adds recipients); forward, todo and unsubscribe can't be autonomous.
+    ask-owner card or first-connect mail (§5.3) always waits. A reply acts only with a draft, only to the
+    original sender (execute never adds recipients), and never to a list (it would post to everyone) or a
+    no-reply address. forward, todo and unsubscribe can't be autonomous. The level is recorded only once
+    the action took effect.
     shortcut: digest waits for the owner until digests group mail (#88)."""
     job_id = job.id
     if job.ask_owner or job.requires_approval or job_id is None:
@@ -90,12 +98,23 @@ async def act_if_autonomous(job: Job, plugins: PluginRegistry) -> None:
         "snooze": lambda: defer(job_id),
         "follow_up": lambda: defer(job_id),
     }
-    if job.verb == "reply" and job.artifacts.draft:
+    if job.verb == "reply" and job.artifacts.draft and await safe_to_reply(job):
         actions["reply"] = lambda: execute(job_id, plugins)
     action = actions.get(job.verb)
-    if action is not None:
-        await Job.find(Job.id == job_id).update({"$set": {"permission_level": "autonomous"}})
-        await action()
+    if action is None:
+        return
+    try:
+        acted = await action()
+    except (JobNotOpen, ValueError) as error:  # the owner got there first, or it can't act (e.g. no date)
+        logger.info("Job %s wasn't acted on autonomously: %s", job_id, error)
+        return
+    if acted.state in ("done", "snoozed"):
+        await Job.find(Job.id == job_id, Job.state == acted.state).update({"$set": {"permission_level": "autonomous"}})
+
+
+async def safe_to_reply(job: Job) -> bool:
+    message = await Message.get(job.message_ids[0])
+    return message is not None and not message.list_id and not NO_REPLY.match(message.sender.email)
 
 
 async def sibling_job(message: Message) -> Job | None:

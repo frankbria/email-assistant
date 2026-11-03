@@ -23,14 +23,21 @@ public SSH, and no host names or addresses in this repo (see the operator's loca
    (`PUBLIC_API_BASE`, `FRONTEND_ORIGIN`, i.e. the tailnet host name plus port).
    Ports bind only to `BIND_ADDRESS` (default `127.0.0.1`). Never use `0.0.0.0`:
    Docker's published ports bypass UFW, which would expose the API publicly.
-3. Start it:
+3. Create the config directory the backend writes the owner's `permissions.yaml` to
+   (mounted at `/app/config`; the container runs as `nobody`, uid 65534):
+   `mkdir -p config && sudo chown 65534 config`. The app writes the file on its first
+   pass and keeps it in sync with the settings screen. Edit it on the host to change a
+   verb's level; a level above a verb's ceiling is rejected (the settings screen says why)
+   and the previous settings stay. If the directory isn't writable the settings still
+   apply; only the file is missing, and the settings screen says so.
+4. Start it:
    - with images from GHCR (built by `.github/workflows/images.yml` on every push to
      `main`). **Recommended:** set `IMAGE_TAG=<commit sha>` in `.env` so both services
      run the same immutable build, then `docker compose pull && docker compose up -d`.
      Leaving `IMAGE_TAG` unset uses `:latest`. That's convenient, but the two `:latest`
      tags move one after the other, so a pull during a publish can briefly mix commits.
    - or build on the host: `docker compose up -d --build`
-4. Before relying on it, check CORS from the UI origin:
+5. Before relying on it, check CORS from the UI origin:
    `curl -si -X OPTIONS <api>/api/v1/tasks/ -H 'Origin: <FRONTEND_ORIGIN>' -H 'Access-Control-Request-Method: GET'`
    must answer with `access-control-allow-origin: <FRONTEND_ORIGIN>`.
 

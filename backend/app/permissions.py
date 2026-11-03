@@ -1,7 +1,10 @@
 """Per-verb permissions (spec §4 table, §9): one level per verb, kept in a readable permissions.yaml that
 stays in sync with the stored settings. A level above a verb's ceiling is rejected with the reason."""
 
+import hashlib
 import logging
+import os
+import tempfile
 from collections.abc import Iterable
 from datetime import UTC, datetime
 from pathlib import Path
@@ -39,7 +42,7 @@ class PermissionsRejected(ValueError):
 class PermissionSettings(Document):
     owner_id: str
     levels: dict[str, PermissionLevel] = Field(default_factory=dict)  # only what differs from DEFAULTS is needed
-    file_mtime: float | None = None  # the permissions.yaml version last read or written
+    file_hash: str | None = None  # sha256 of the permissions.yaml content last read or written
     file_error: str | None = None  # why the current file was rejected (shown on the settings screen)
     updated_at: datetime = Field(default_factory=lambda: datetime.now(UTC))
 
@@ -51,8 +54,9 @@ class PermissionSettings(Document):
 async def level_for(owner_id: str, verb: str) -> PermissionLevel:
     """The stored level, else the §4 default; a verb nobody has heard of asks (spec §9)."""
     settings = await PermissionSettings.find_one(PermissionSettings.owner_id == owner_id)
-    stored = settings.levels if settings else {}
-    return stored.get(verb) or DEFAULTS.get(verb, "ask")
+    level = (settings.levels if settings else {}).get(verb) or DEFAULTS.get(verb, "ask")
+    ceiling = CEILINGS.get(verb, ("ask", ""))[0]
+    return min(level, ceiling, key=LEVELS.index)  # a ceiling lowered later still holds
 
 
 def is_level(value: object) -> TypeGuard[PermissionLevel]:
@@ -96,30 +100,44 @@ async def set_levels(owner_id: str, levels: dict[str, PermissionLevel], path: Pa
     """The settings screen's change: validated like the file, stored, then written to the file."""
     settings = await stored_settings(owner_id)
     settings.levels |= validated(levels.items())
+    settings.updated_at = datetime.now(UTC)
+    await settings.save()  # stored first: a file that can't be written never loses the change
     await write_file(settings, path)
 
 
+def digest(text: str) -> str:
+    return hashlib.sha256(text.encode()).hexdigest()
+
+
 async def write_file(settings: PermissionSettings, path: Path) -> None:
-    path.write_text(render_permissions(settings.levels))
-    settings.file_mtime, settings.file_error, settings.updated_at = path.stat().st_mtime, None, datetime.now(UTC)
+    """Atomically (temp file + rename), so a crash or a reader never sees half a file."""
+    text = render_permissions(settings.levels)
+    try:
+        with tempfile.NamedTemporaryFile("w", dir=path.parent, prefix=".permissions-", delete=False) as temporary:
+            temporary.write(text)
+        os.replace(temporary.name, path)
+        settings.file_hash, settings.file_error = digest(text), None
+    except OSError as error:
+        settings.file_error = f"couldn't write {path}: {error.strerror or error}"
+        logger.error("Couldn't write permissions.yaml: %s", error)
     await settings.save()
 
 
 async def sync_permissions_file(owner_id: str, path: Path) -> None:
     """Each pass: an edited file updates the store (or is rejected, keeping the store and saying why);
-    a missing file is written from the store."""
+    a missing or empty file (a truncated write) is written from the store, never read as all defaults."""
     settings = await stored_settings(owner_id)
-    if not path.exists():
+    text = path.read_text() if path.exists() else ""
+    if not text.strip():
         await write_file(settings, path)
         return
-    mtime = path.stat().st_mtime
-    if mtime == settings.file_mtime:
-        return
+    if digest(text) == settings.file_hash:
+        return  # compared by content: an edit in the same clock tick still counts
     try:
-        settings.levels = parse_permissions(path.read_text())
+        settings.levels = parse_permissions(text)
         settings.file_error = None
     except (PermissionsRejected, yaml.YAMLError) as error:
         settings.file_error = str(error)
         logger.error("permissions.yaml was rejected, keeping the current settings: %s", error)
-    settings.file_mtime, settings.updated_at = mtime, datetime.now(UTC)
+    settings.file_hash, settings.updated_at = digest(text), datetime.now(UTC)
     await settings.save()
