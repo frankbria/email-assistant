@@ -183,3 +183,14 @@ async def test_a_crash_after_the_job_was_stored_never_makes_a_second_job(test_db
 
     assert len(await jobs()) == 1 and len(provider.prompts) == 1
     assert all(message.pipeline_done for message in await Message.find_all().to_list())
+
+
+async def test_sent_mail_is_synced_before_proposals_so_they_have_the_owners_voice(test_db, mailbox: Mailbox):
+    await add_owner(test_db)
+    mailbox.append("Sent", sender=mailbox.address, to="ana@example.com", subject="Re: Offsite", body="Hey Ana! Works for me. Cheers, F")
+    mailbox.deliver(sender="ana@example.com", subject="Q4 budget", body=BODY)
+    provider = FakeAIProvider(result=meeting())
+
+    await run_pass(test_db, mailbox, provider)
+
+    assert "Hey Ana! Works for me. Cheers, F" in provider.prompts[0]

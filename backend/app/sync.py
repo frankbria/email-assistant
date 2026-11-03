@@ -177,7 +177,7 @@ class SyncEngine:
             await self._sync_plugin(str(owner["_id"]), plugin_id, client)
 
     async def _sync_plugin(self, owner_id: str, plugin_id: str, client: Client) -> None:
-        """Inbox first; the sent folder separately, so its failure never holds up the inbox."""
+        """Inbox, then sent, then the pipeline: each separately, so one failing never holds up the others."""
         try:
             new_messages = await sync_folder(owner_id, plugin_id, client, window_days=self.first_connect_days)
             handled_elsewhere = await close_handled_elsewhere(owner_id, plugin_id, client)
@@ -188,15 +188,15 @@ class SyncEngine:
             logger.info("Plugin %s: %d new messages", plugin_id, len(new_messages))
         if handled_elsewhere:
             logger.info("Plugin %s: %d jobs handled elsewhere", plugin_id, handled_elsewhere)
+        try:  # before the pipeline, so proposals see the owner's latest voice and forwards
+            await sync_folder(owner_id, plugin_id, client, folder="sent", window_days=self.first_connect_days)
+        except Exception:
+            logger.exception("Sync of plugin %s's sent folder failed; retrying next pass", plugin_id)
         if self.provider is not None:
             try:
                 await process_pending(owner_id, plugin_id, client, self.provider, self.ai_monthly_cap)
             except Exception:  # pending mail stays pending: the next pass picks it up
                 logger.exception("Pipeline for plugin %s failed; retrying next pass", plugin_id)
-        try:
-            await sync_folder(owner_id, plugin_id, client, folder="sent", window_days=self.first_connect_days)
-        except Exception:
-            logger.exception("Sync of plugin %s's sent folder failed; retrying next pass", plugin_id)
 
     def _listen_for_push(self) -> None:
         """(Re)subscribe to every connected `push` plugin; a reconnect brings a new client."""

@@ -5,7 +5,6 @@ optional monthly AI cap (§5.3) does too, with one warning per month."""
 import logging
 from datetime import UTC, datetime
 
-from anthropic import APIError
 from mcp import Client
 from pydantic import ValidationError
 
@@ -72,8 +71,8 @@ async def decide(message: Message, client: Client, provider: AIProvider, cap: in
         proposal = await propose(message, text, provider, fixed_verb=rule.verb if rule else None)
     except AIProposalError:
         return ask_owner_job(message, ["the AI gave no usable proposal"], suggested)
-    except APIError:
-        await refund_ai_call()  # an outage isn't a used call; the message waits for the next pass
+    except Exception:  # an outage or a failed local read isn't a used call; the message waits for the next pass
+        await refund_ai_call()
         raise
     return to_job(message, apply_rule(proposal, rule), minimize(text, message.subject), await forward_candidates(message.owner_id))
 
