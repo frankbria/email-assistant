@@ -174,8 +174,10 @@ class SyncEngine:
         if owner is None:
             return  # nobody has signed up yet, so there is no one to sync for
         sent_synced = [await self._sync_plugin(str(owner["_id"]), plugin_id, client) for plugin_id, client in list(self.plugins.clients.items())]
+        # Outgoing history is current only if every enabled account is connected and its sent folder synced.
+        accounts_up = all(state.status in ("connected", "disabled") for state in self.plugins.states.values())
         try:  # snoozes and follow-ups whose date has come; follow-ups only with current outgoing history
-            await wake_due(str(owner["_id"]), self.plugins, datetime.now(UTC), check_follow_ups=all(sent_synced))
+            await wake_due(str(owner["_id"]), self.plugins, datetime.now(UTC), check_follow_ups=accounts_up and all(sent_synced))
         except Exception:
             logger.exception("Waking due jobs failed; retrying next pass")
 

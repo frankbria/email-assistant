@@ -9,6 +9,7 @@ from beanie.operators import In
 from app.executor import JobNotOpen, defer, wake_due
 from app.models.job import Artifacts, Job, Verb
 from app.models.message import Message
+from app.plugins.config import PluginConfig, StdioTransport
 from app.plugins.registry import PluginRegistry
 from app.sync import SyncEngine, close_handled_elsewhere
 from tests.conformance.test_mailbox_conformance import reference_imap_plugin
@@ -217,3 +218,21 @@ async def test_follow_ups_wait_for_a_pass_whose_sent_folders_synced(test_db, mai
 
     assert waiting == ("snoozed", None) and snooze_woke == ("open", None)
     assert await state(follow_up) == ("open", "No answer from ana@example.com to “Contract” since 2026-11-02")
+
+
+async def test_follow_ups_wait_while_a_configured_account_is_down(test_db, mailbox: Mailbox):
+    """Its sent folder can't be read, so the owner's latest reply may be missing."""
+    await add_owner(test_db)
+    mailbox.create_folder("Sent")
+    follow_up = await job_over(await message("<f@x>", "ana@example.com"), "follow_up", due=datetime.now(UTC) - timedelta(minutes=1))
+    await Job.find(Job.id == follow_up.id).update({"$set": {"state": "snoozed"}})
+    down = PluginConfig(id="down", transport=StdioTransport(type="stdio", command="/nonexistent/plugin", args=[], env_from={}))
+    registry = PluginRegistry()
+    await registry.connect_all([reference_imap_plugin(mailbox), down])
+    try:
+        assert registry.states["down"].status != "connected"
+        await SyncEngine(registry, test_db["user"], poll_seconds=60).sync_all()
+    finally:
+        await registry.close()
+
+    assert await state(follow_up) == ("snoozed", None)
