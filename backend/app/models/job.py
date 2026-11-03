@@ -9,7 +9,7 @@ from pydantic import BaseModel, Field
 from pymongo import ASCENDING, IndexModel
 
 Verb = Literal["reply", "forward", "digest", "snooze", "follow_up", "todo", "archive_noise", "unsubscribe"]
-JobState = Literal["open", "snoozed", "done", "dismissed", "failed", "handled_elsewhere"]
+JobState = Literal["open", "sending", "snoozed", "done", "dismissed", "failed", "handled_elsewhere"]
 PermissionLevel = Literal["autonomous", "ask", "never_auto"]
 
 
@@ -41,6 +41,8 @@ class Job(Document):
     # First-connect mail (§5.3): every decision on it is `ask`, whatever the verb's permission (#71 enforces).
     requires_approval: bool = False
     error: str | None = None  # why finishing it didn't go through, naming the plugin (§10.3, AC-1.3)
+    sending_since: datetime | None = None  # when execute() claimed it; a stale claim (a crash) can be retried
+    sent_at: datetime | None = None  # its reply/forward went out: a retry only archives, never resends
     created_at: datetime = Field(default_factory=lambda: datetime.now(UTC))
 
     class Settings:

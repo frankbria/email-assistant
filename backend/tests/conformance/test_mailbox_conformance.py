@@ -27,7 +27,8 @@ class Target:
     plugin_config: Callable[[Mailbox], PluginConfig]
 
 
-def reference_imap_plugin(mailbox: Mailbox, plugin_id: str = "reference-imap") -> PluginConfig:
+def reference_imap_plugin(mailbox: Mailbox, plugin_id: str = "reference-imap", **overrides: str) -> PluginConfig:
+    """`overrides` replace settings, e.g. MAILBOX_SMTP_PORT="1" for a mailbox that can't send."""
     settings = {
         "MAILBOX_ACCOUNT": mailbox.address,
         "MAILBOX_USERNAME": mailbox.address,
@@ -39,7 +40,7 @@ def reference_imap_plugin(mailbox: Mailbox, plugin_id: str = "reference-imap") -
         "MAILBOX_SMTP_LOGIN": "false",
         "MAILBOX_TLS": "none",
         "MAILBOX_APPEND_SENT": "true",
-    }
+    } | overrides
     # plugins.yaml passes values through env_from references; mirror that, one set per plugin id.
     prefix = f"CONFORMANCE_{plugin_id.upper().replace('-', '_')}"
     for name, value in settings.items():

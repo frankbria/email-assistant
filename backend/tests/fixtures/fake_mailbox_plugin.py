@@ -6,7 +6,8 @@ mail and counts its calls in `next_cursor`; FAKE_LIST_FAILS makes it fail and FA
 publishes the push event a `push` plugin sends when mail arrives. FAKE_INBOX_CONTAINS (`extra` or
 `missing`) adds an `inbox_contains` that breaks the exact-keys rule that way; `present` answers every
 ref as in the inbox. FAKE_ARCHIVE=unverified adds an `archive` whose move is never verified; `malformed`, one that answers
-outside the contract; `slow`, one that takes 30 s.
+outside the contract; `slow`, one that takes 30 s. FAKE_SEND=slow
+adds a `send` that takes 30 s.
 """
 
 import os
@@ -83,6 +84,15 @@ elif os.environ.get("FAKE_ARCHIVE") == "malformed":
     @server.tool()
     async def archive(ref: str) -> dict[str, str]:
         return {"moved": "probably"}
+
+
+if os.environ.get("FAKE_SEND") == "slow":
+
+    @server.tool()
+    async def send(to: list[dict[str, str]], subject: str, body_text: str, cc: list[dict[str, str]] | None = None,
+                   in_reply_to_ref: str | None = None) -> dict[str, object]:
+        await anyio.sleep(30)
+        return {"ok": True, "sent_message_id": "<sent@fake>"}
 
 
 @server.tool()

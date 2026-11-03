@@ -77,6 +77,14 @@ class Mailbox:
         self._wait_for(message["Message-ID"], "INBOX")
         return message["Message-ID"]
 
+    def deliver_to(self, recipient: "Mailbox", *, subject: str, body: str) -> str:
+        """Mail from this mailbox's address to another over SMTP; returns its Message-ID."""
+        message = build_message(sender=self.address, to=recipient.address, subject=subject, body=body)
+        with smtplib.SMTP(MAIL_HOST, SMTP_PORT, timeout=10) as smtp:
+            smtp.send_message(message)
+        recipient._wait_for(message["Message-ID"], "INBOX")
+        return message["Message-ID"]
+
     def append(
         self, folder: str, *, sender: str, subject: str, body: str, to: str | None = None, received: datetime | None = None
     ) -> str:
