@@ -11,6 +11,7 @@ from typing import Literal
 from beanie import PydanticObjectId
 from beanie.operators import In, NotIn
 from mcp import Client
+from pymongo import ReturnDocument
 from mcp.shared.exceptions import MCPError
 from pydantic import ValidationError
 
@@ -115,9 +116,12 @@ async def execute(
         {"state": "sending", "sending_since": {"$lt": now - STALE_SENDING}},
     ]}
     # Out of open/failed first, so a sync pass can't close it as handled elsewhere mid-send.
-    claimed = await Job.get_pymongo_collection().update_one(claimable, {"$set": {"state": "sending", "sending_since": now, "error": None}})
-    if not claimed.modified_count:
+    claimed = await Job.get_pymongo_collection().find_one_and_update(
+        claimable, {"$set": {"state": "sending", "sending_since": now, "error": None}}, return_document=ReturnDocument.AFTER
+    )
+    if claimed is None:
         raise JobNotOpen(f"job {job_id} isn't open or failed")
+    job = Job.model_validate(claimed)  # as of the claim: an overlapping approval may have sent it meanwhile
     try:
         problem = None if job.sent_at else await send(job, plugins, body, forward_to)
     except asyncio.CancelledError:  # a BaseException: interrupted, it must still end retryable
