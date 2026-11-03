@@ -144,5 +144,8 @@ def test_titles_in_any_script_and_links_ending_in_punctuation_pass():
     japanese = proposal(title="予算会議について")
     wiki = proposal(verb="todo", options=[], link="https://en.wikipedia.org/wiki/Function_(mathematics)")
 
+    shouting = proposal(verb="todo", options=[], link="HTTPS://Vendor.example/Pay")
+
     assert problems(japanese, body, HISTORY) == []
     assert problems(wiki, body, HISTORY) == []
+    assert problems(shouting, body + "\nOr HTTPS://Vendor.example/Pay.", HISTORY) == []

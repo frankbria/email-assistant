@@ -23,7 +23,7 @@ REQUIRED_ARTIFACTS: dict[Verb, tuple[tuple[str, ...], str]] = {
 }
 # A title that is only the verb says nothing, however it's punctuated ("Reply.", "Follow-up!").
 VERB_TITLES = {re.sub(r"[\W_]", "", verb) for verb in REQUIRED_ARTIFACTS}
-URL = re.compile(r"https?://[^\s<>]+")
+URL = re.compile(r"https?://[^\s<>]+", re.IGNORECASE)
 TRAILING_PUNCTUATION = ".,;:!?)]'\""
 
 
