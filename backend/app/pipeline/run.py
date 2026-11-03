@@ -5,6 +5,7 @@ optional monthly AI cap (§5.3) does too, with one warning per month."""
 import logging
 from datetime import UTC, datetime
 
+from anthropic import APIError
 from mcp import Client
 from pydantic import ValidationError
 
@@ -15,7 +16,7 @@ from app.pipeline.minimize import minimize
 from app.pipeline.propose import forward_candidates, propose
 from app.pipeline.rules import apply_rule, matching_rule
 from app.pipeline.validate import ask_owner_job, to_job
-from app.plugins.calls import InvalidCursor, SyncError, call_plugin
+from app.plugins.calls import MessageNotFound, call_plugin
 from app.services.ai_provider import AIProposalError, AIProvider
 from mailbox_contract import MessageDetail
 
@@ -26,7 +27,8 @@ async def process_pending(owner_id: str, plugin_id: str, client: Client, provide
     """Every inbox message of this plugin still without its job, oldest first, including any a crash
     left behind. Returns how many were processed; one failure doesn't stop the rest."""
     pending = Message.find(
-        Message.owner_id == owner_id, Message.plugin_id == plugin_id, Message.folder == "inbox", {"pipeline_done": False}
+        Message.owner_id == owner_id, Message.plugin_id == plugin_id, Message.folder == "inbox",
+        {"pipeline_done": {"$ne": True}},  # also documents stored before the field existed
     )
     processed = 0
     for message in await pending.sort("date").to_list():
@@ -38,31 +40,47 @@ async def process_pending(owner_id: str, plugin_id: str, client: Client, provide
     return processed
 
 
-async def process(message: Message, client: Client, provider: AIProvider, cap: int | None) -> Job:
+async def process(message: Message, client: Client, provider: AIProvider, cap: int | None) -> Job | None:
+    """The message's job, made once. Transient failures (plugin or AI down) raise and leave it pending."""
     assert message.id is not None, "only stored messages are processed"
-    existing = await Job.find_one(Job.owner_id == message.owner_id, Job.message_ids == message.id)
-    job = existing or await decide(message, client, provider, cap)
-    if existing is None:
-        await job.insert()
+    job = await Job.find_one(Job.owner_id == message.owner_id, Job.message_ids == message.id)
+    if job is None:
+        job = await decide(message, client, provider, cap)
+        if job is not None:
+            job.requires_approval = message.first_pass
+            await job.insert()
     message.pipeline_done = True
     await message.save()
     return job
 
 
-async def decide(message: Message, client: Client, provider: AIProvider, cap: int | None) -> Job:
+async def decide(message: Message, client: Client, provider: AIProvider, cap: int | None) -> Job | None:
+    """None when the message left the mailbox before its turn: nothing to do."""
     try:
         answer = await call_plugin(message.plugin_id, client, "get_message", {"ref": message.ref})
+    except MessageNotFound:
+        return None
+    try:
         text = MessageDetail.model_validate(answer).text
-    except (SyncError, InvalidCursor, TimeoutError, ValidationError) as error:
-        return ask_owner_job(message, [f"couldn't read the message: {error}"], [])
+    except ValidationError as error:
+        return ask_owner_job(message, [f"couldn't read the message: {error.error_count()} invalid fields"], [])
     rule = await matching_rule(message.owner_id, message)
+    suggested = [rule.verb] if rule else []
     if not await take_ai_call(cap):
-        return ask_owner_job(message, ["the monthly AI cap is reached"], [rule.verb] if rule else [])
+        return ask_owner_job(message, ["the monthly AI cap is reached"], suggested)
     try:
         proposal = await propose(message, text, provider, fixed_verb=rule.verb if rule else None)
     except AIProposalError:
-        return ask_owner_job(message, ["the AI gave no usable proposal"], [rule.verb] if rule else [])
+        return ask_owner_job(message, ["the AI gave no usable proposal"], suggested)
+    except APIError:
+        await refund_ai_call()  # an outage isn't a used call; the message waits for the next pass
+        raise
     return to_job(message, apply_rule(proposal, rule), minimize(text, message.subject), await forward_candidates(message.owner_id))
+
+
+async def refund_ai_call() -> None:
+    month = datetime.now(UTC).strftime("%Y-%m")
+    await AiUsage.get_pymongo_collection().update_one({"month": month, "calls": {"$gt": 0}}, {"$inc": {"calls": -1}})
 
 
 async def take_ai_call(cap: int | None) -> bool:

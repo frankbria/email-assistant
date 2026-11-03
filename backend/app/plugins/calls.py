@@ -16,6 +16,10 @@ class SyncError(Exception):
     """A plugin call failed; the message says which plugin, which tool and why."""
 
 
+class MessageNotFound(SyncError):
+    """The plugin has no such message any more (it left the mailbox)."""
+
+
 class InvalidCursor(Exception):
     """The plugin no longer accepts the stored cursor (e.g. the folder was rebuilt)."""
 
@@ -34,4 +38,6 @@ def tool_failure(plugin_id: str, tool: str, result: CallToolResult) -> InvalidCu
     error = ToolError.model_validate(result.structured_content)
     if error.code == ErrorCode.INVALID_CURSOR:
         return InvalidCursor(error.message)
+    if error.code == ErrorCode.NOT_FOUND:
+        return MessageNotFound(f"{plugin_id}: {tool}: {error.message}")
     return SyncError(f"{plugin_id}: {tool} failed: {error.message}")

@@ -2,7 +2,10 @@
 # ask-owner job. Reference IMAP plugin on GreenMail, real MongoDB; the AI is the repo's FakeAIProvider.
 import logging
 
+import httpx
+
 import pytest
+from anthropic import APIConnectionError
 
 from app.models.ai_usage import AiUsage
 from app.models.job import Job
@@ -25,6 +28,16 @@ def meeting() -> Proposal:
         needs_owner=False, verb="reply", title="Ana asks to meet Thursday about the Q4 budget",
         evidence=["Could we meet Thursday at 3pm"], options=["Yes", "No", "Later"], confidence=0.9,
     )
+
+
+async def stored_message(ref: str) -> Message:
+    message = Message.model_validate({
+        "owner_id": OWNER, "plugin_id": "reference-imap", "ref": ref, "message_id": ref,
+        "sender": {"email": "a@example.com"}, "to": [], "cc": [], "date": "2026-11-02T12:00:00Z",
+        "subject": "Vanished", "snippet": "",
+    })
+    await message.insert()
+    return message
 
 
 async def jobs() -> list[Job]:
@@ -107,18 +120,55 @@ async def test_when_the_ai_fails_the_owner_is_asked(test_db, mailbox: Mailbox):
     assert (job.ask_owner, job.problems, job.title) == (True, ["the AI gave no usable proposal"], "Q4 budget")
 
 
-async def test_a_message_the_plugin_can_no_longer_read_goes_to_the_owner(test_db, mailbox: Mailbox):
+async def test_a_message_gone_from_the_mailbox_is_done_without_a_job(test_db, mailbox: Mailbox):
+    """The plugin says not_found: it left the mailbox before its turn, so there's nothing to do."""
     await add_owner(test_db)
-    await Message.model_validate({
-        "owner_id": OWNER, "plugin_id": "reference-imap", "ref": "<gone@x>", "message_id": "<gone@x>",
-        "sender": {"email": "a@example.com"}, "to": [], "cc": [], "date": "2026-11-02T12:00:00Z",
-        "subject": "Vanished", "snippet": "",
-    }).insert()
+    await stored_message("<gone@x>")
+
+    await run_pass(test_db, mailbox, FakeAIProvider(result=meeting()))
+
+    assert await jobs() == []
+    assert [message.pipeline_done for message in await Message.find_all().to_list()] == [True]
+
+
+async def test_a_message_stored_before_the_pipeline_existed_is_processed(test_db, mailbox: Mailbox):
+    """Documents from before this field existed lack pipeline_done entirely."""
+    await add_owner(test_db)
+    ref = mailbox.deliver(sender="ana@example.com", subject="Q4 budget", body=BODY)
+    async with connected(reference_imap_plugin(mailbox)) as registry:
+        await SyncEngine(registry, test_db["user"], poll_seconds=60).sync_all()  # sync only, no pipeline
+    await Message.find_all().update({"$unset": {"pipeline_done": ""}})
 
     await run_pass(test_db, mailbox, FakeAIProvider(result=meeting()))
 
     [job] = await jobs()
-    assert job.ask_owner and job.problems[0].startswith("couldn't read the message")
+    assert not job.ask_owner and ref
+
+
+async def test_an_ai_outage_costs_nothing_and_the_message_waits_for_the_next_pass(test_db, mailbox: Mailbox):
+    await add_owner(test_db)
+    mailbox.deliver(sender="ana@example.com", subject="Q4 budget", body=BODY)
+    outage = APIConnectionError(request=httpx.Request("POST", "https://api.anthropic.com/v1/messages"))
+
+    await run_pass(test_db, mailbox, FakeAIProvider(error=outage), cap=5)
+
+    assert await jobs() == []
+    assert [message.pipeline_done for message in await Message.find_all().to_list()] == [False]
+    assert [usage.calls for usage in await AiUsage.find_all().to_list()] == [0]
+    await run_pass(test_db, mailbox, FakeAIProvider(result=meeting()), cap=5)
+    assert [job.ask_owner for job in await jobs()] == [False]
+
+
+async def test_first_connect_mail_becomes_a_job_that_needs_the_owners_approval(test_db, mailbox: Mailbox):
+    """Spec §5.3: every first-pass decision is `ask`, even for verbs set to autonomous."""
+    await add_owner(test_db)
+    mailbox.deliver(sender="ana@example.com", subject="Q4 budget", body=BODY)
+    provider = FakeAIProvider(result=meeting())
+    await run_pass(test_db, mailbox, provider)
+    mailbox.deliver(sender="ana@example.com", subject="Q4 budget again", body=BODY)
+    await run_pass(test_db, mailbox, provider)
+
+    assert [(job.ask_owner, job.requires_approval) for job in await jobs()] == [(False, True), (False, False)]
 
 
 async def test_a_crash_after_the_job_was_stored_never_makes_a_second_job(test_db, mailbox: Mailbox):
