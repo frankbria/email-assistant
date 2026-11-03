@@ -168,6 +168,25 @@ describe('Job queue actions', () => {
     expect(within(card).getByText('Friday works for me.')).toBeInTheDocument()
   })
 
+  it('a dated job can move its due date, so an expired follow-up does not reopen at once', async () => {
+    const followUp = cardWith({ verb: 'follow_up', due: '2026-11-01T09:00:00.000Z' })
+    const card = await renderQueue(followUp)
+    mockFetch.mockResolvedValueOnce(Response.json({ ...followUp.job, due: '2026-11-10T09:00:00.000Z', edited: true }))
+
+    await userEvent.click(within(card).getByRole('button', { name: 'Edit' }))
+    const due = within(card).getByLabelText('Due')
+    await userEvent.clear(due)
+    await userEvent.type(due, '2026-11-10T09:00')
+    await userEvent.click(within(card).getByRole('button', { name: 'Save' }))
+
+    await waitFor(() => expect(mockFetch).toHaveBeenCalledTimes(2))
+    expect(requestTo(1)).toEqual({
+      url: expect.stringContaining('/api/v1/jobs/job-1'),
+      method: 'PATCH',
+      body: { due: new Date('2026-11-10T09:00').toISOString() },
+    })
+  })
+
   it('only makes web links clickable, since the link comes from inbound mail', async () => {
     const card = await renderQueue(
       cardWith({ title: 'Pay the invoice', artifacts: { ...jobCard.job.artifacts, link: 'https://pay.example/invoice' } }),

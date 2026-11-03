@@ -44,6 +44,7 @@ function editableFields(job: Job): (keyof JobEdit)[] {
   if (job.verb === 'forward') fields.push('forward_to')
   if (job.artifacts.link !== null) fields.push('link')
   if (job.artifacts.options.length > 0) fields.push('options')
+  if (job.due !== null) fields.push('due')
   return fields
 }
 
@@ -78,6 +79,7 @@ function EditForm({ job, onSaved, onCancel }: { job: Job; onSaved: (job: Job) =>
   const [forwardTo, setForwardTo] = useState(job.artifacts.forward_to ?? '')
   const [link, setLink] = useState(job.artifacts.link ?? '')
   const [options, setOptions] = useState(job.artifacts.options.join('\n'))
+  const [due, setDue] = useState(job.due === null ? '' : localDateTime(job.due))
   const [saving, setSaving] = useState(false)
 
   async function save(event: FormEvent<HTMLFormElement>) {
@@ -87,6 +89,7 @@ function EditForm({ job, onSaved, onCancel }: { job: Job; onSaved: (job: Job) =>
       ...(fields.includes('forward_to') && { forward_to: forwardTo }),
       ...(fields.includes('link') && { link }),
       ...(fields.includes('options') && { options: options.split('\n').map((option) => option.trim()).filter(Boolean) }),
+      ...(fields.includes('due') && due !== '' && { due: new Date(due).toISOString() }),
     }
     setSaving(true)
     try {
@@ -121,6 +124,12 @@ function EditForm({ job, onSaved, onCancel }: { job: Job; onSaved: (job: Job) =>
         <label className="flex flex-col gap-1 font-medium">
           Options, one per line
           <textarea className={TEXT_AREA} rows={3} value={options} onChange={(event) => setOptions(event.target.value)} />
+        </label>
+      )}
+      {fields.includes('due') && (
+        <label className="flex flex-col gap-1 font-medium">
+          Due
+          <Input type="datetime-local" className={TOUCH_TARGET} value={due} onChange={(event) => setDue(event.target.value)} />
         </label>
       )}
       <div className="flex flex-wrap gap-2">
@@ -251,4 +260,10 @@ export function JobCard({ card, onReplaced, onRemoved }: JobCardProps) {
 // The link comes from inbound mail, so a javascript: or data: URL must never become clickable.
 function isWebLink(link: string): boolean {
   return URL.canParse(link) && ['http:', 'https:'].includes(new URL(link).protocol)
+}
+
+// datetime-local inputs take local wall-clock time without a zone
+function localDateTime(isoTimestamp: string): string {
+  const moment = new Date(isoTimestamp)
+  return new Date(moment.getTime() - moment.getTimezoneOffset() * 60_000).toISOString().slice(0, 16)
 }
