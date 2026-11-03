@@ -2,6 +2,7 @@
 references it is final (done or dismissed), and only by a verified move. Anything short of that
 reopens the job with an error naming the plugin (AC-1.3)."""
 
+import asyncio
 from typing import Literal
 
 from beanie import PydanticObjectId
@@ -34,14 +35,21 @@ async def finish(job_id: PydanticObjectId, outcome: Outcome, plugins: PluginRegi
     assert job is not None
     try:
         errors = await archive_settled_messages(job, plugins)
+    except asyncio.CancelledError:  # a BaseException: interrupted, it must still end retryable
+        await asyncio.shield(reopen(job_id, outcome, ["finishing was interrupted, so the message is still in the inbox"]))
+        raise
     except Exception as error:  # whatever broke, the job must not stay final while its mail is in the inbox
         errors = [f"archiving failed ({error}), so the message is still in the inbox"]
     if errors:
-        reopen = {"$set": {"state": "open", "error": "; ".join(errors)}}
-        await Job.find(Job.id == job_id, Job.state == outcome).update(reopen)
+        await reopen(job_id, outcome, errors)
     refreshed = await Job.get(job_id)
     assert refreshed is not None
     return refreshed
+
+
+async def reopen(job_id: PydanticObjectId, outcome: Outcome, errors: list[str]) -> None:
+    """Back to open with what went wrong, unless something else changed the job meanwhile."""
+    await Job.find(Job.id == job_id, Job.state == outcome).update({"$set": {"state": "open", "error": "; ".join(errors)}})
 
 
 async def archive_settled_messages(job: Job, plugins: PluginRegistry) -> list[str]:

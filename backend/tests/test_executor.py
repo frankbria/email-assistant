@@ -1,6 +1,7 @@
 # Archive-on-done (spec §10.3, AC-1.3, AC-2.1): a message is archived only when every job referencing it
 # is final, and only with a verified move. Reference IMAP plugin on GreenMail, the fake plugin for an
 # unverified move, real MongoDB.
+import asyncio
 from datetime import UTC, datetime
 
 import pytest
@@ -120,3 +121,21 @@ async def test_a_job_reopened_with_an_error_isnt_closed_as_handled_elsewhere(tes
 
     reloaded = await Job.get(job.id)
     assert closed == 0 and reloaded is not None and reloaded.state == "open"
+
+
+async def test_an_interrupted_finish_reopens_the_job(test_db, monkeypatch):
+    """E.g. the owner's request is cancelled mid-archive: the job must stay retryable."""
+    monkeypatch.setenv("FAKE_MODE_ARCHIVE", "slow")
+    monkeypatch.setenv("FAKE_MODE_INBOX", "present")
+    job = await job_over(await stored("fake", "r1"))
+    plugin = fake_plugin("fake", {"FAKE_ARCHIVE": "FAKE_MODE_ARCHIVE", "FAKE_INBOX_CONTAINS": "FAKE_MODE_INBOX"})
+    async with connected(plugin) as registry:
+        finishing = asyncio.create_task(finish(job.id, "done", registry))
+        await asyncio.sleep(1)  # claimed and waiting on the archive
+        finishing.cancel()
+        with pytest.raises(asyncio.CancelledError):
+            await finishing
+
+    reloaded = await Job.get(job.id)
+    assert reloaded is not None and reloaded.state == "open"
+    assert reloaded.error == "finishing was interrupted, so the message is still in the inbox"
