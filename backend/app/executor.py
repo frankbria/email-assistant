@@ -232,17 +232,21 @@ async def missing_answer(job: Job) -> str | None:
     outside the app count."""
     original = await Message.get(job.message_ids[0])
     assert original is not None
+    correspondent = original.sender.email
+    to_them = {"$regex": f"^{re.escape(correspondent)}$", "$options": "i"}
+    # The owner's turns: threaded to the original, or later mail to the correspondent (a reply to their answer
+    # threads to the answer, not the original).
     replies = await Message.find(
-        Message.owner_id == job.owner_id, Message.folder == "sent", Message.in_reply_to == original.message_id
+        Message.owner_id == job.owner_id, Message.folder == "sent",
+        {"$or": [{"in_reply_to": original.message_id}, {"to.email": to_them, "date": {"$gte": original.date}}]},
     ).to_list()
     since = max([original.date, *(reply.date for reply in replies)])
-    correspondent = original.sender.email
     answered = await Message.find(
         Message.owner_id == job.owner_id, Message.folder == "inbox", Message.id != original.id,
         {"date": {"$gt": since}},  # after the owner's latest reply: an earlier exchange doesn't count
         {"$or": [
             {"in_reply_to": {"$in": [reply.message_id for reply in replies if reply.message_id]}},
-            {"sender.email": {"$regex": f"^{re.escape(correspondent)}$", "$options": "i"}},
+            {"sender.email": to_them},
         ]},
     ).exists()
     return None if answered else f"No answer from {correspondent} to “{original.subject}” since {since:%Y-%m-%d}"

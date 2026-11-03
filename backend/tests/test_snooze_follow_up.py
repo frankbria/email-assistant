@@ -184,3 +184,17 @@ async def test_an_answer_to_an_earlier_reply_doesnt_resolve_a_later_one(test_db)
     await wake_due(OWNER, PluginRegistry(), now=DUE + timedelta(minutes=1))
 
     assert await state(job) == ("open", "No answer from ana@example.com to “Contract” since 2026-11-04")
+
+
+async def test_the_owners_latest_turn_in_a_back_and_forth_is_the_one_awaiting_an_answer(test_db):
+    """original → reply → answer → reply to that answer (threaded to the answer, not the original)."""
+    original = await message("<m@x>", "ana@example.com")
+    await message("<reply1@frank>", "frank@example.com", folder="sent", in_reply_to="<m@x>", to="ana@example.com", date=NOV_2 + timedelta(hours=1))
+    await message("<answer1@ana>", "ana@example.com", in_reply_to="<reply1@frank>", date=NOV_2 + timedelta(days=1))
+    await message("<reply2@frank>", "frank@example.com", folder="sent", in_reply_to="<answer1@ana>", to="Ana@Example.com", date=NOV_2 + timedelta(days=2))
+    job = await job_over(original, "follow_up")
+
+    await defer(job.id)
+    await wake_due(OWNER, PluginRegistry(), now=DUE + timedelta(minutes=1))
+
+    assert await state(job) == ("open", "No answer from ana@example.com to “Contract” since 2026-11-04")
