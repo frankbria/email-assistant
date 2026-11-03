@@ -15,6 +15,7 @@ from pymongo.asynchronous.collection import AsyncCollection
 from app.models.job import Job
 from app.models.message import Message
 from app.models.sync_cursor import SyncCursor
+from app.executor import wake_due
 from app.pipeline.run import process_pending
 from app.plugins.calls import InvalidCursor, SyncError, call_plugin, refs_in_inbox
 from app.plugins.registry import PluginRegistry
@@ -173,6 +174,10 @@ class SyncEngine:
             return  # nobody has signed up yet, so there is no one to sync for
         for plugin_id, client in list(self.plugins.clients.items()):
             await self._sync_plugin(str(owner["_id"]), plugin_id, client)
+        try:  # snoozes and follow-ups whose date has come
+            await wake_due(str(owner["_id"]), self.plugins, datetime.now(UTC))
+        except Exception:
+            logger.exception("Waking due jobs failed; retrying next pass")
 
     async def _sync_plugin(self, owner_id: str, plugin_id: str, client: Client) -> None:
         """Inbox, then sent, then the pipeline: each separately, so one failing never holds up the others."""

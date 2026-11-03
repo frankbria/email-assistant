@@ -178,3 +178,57 @@ async def send(job: Job, plugins: PluginRegistry, body: str | None, forward_to: 
         arguments = {"to": [{"email": forward_to}], "subject": forward_subject(message.subject), "body_text": f"{text}\n\n{quoted}"}
     result = SendResult.model_validate(await call_plugin(message.plugin_id, client, "send", arguments))
     return None if result.ok else f"{message.plugin_id} didn't send it"
+
+
+async def defer(job_id: PydanticObjectId, until: datetime | None = None) -> Job:
+    """Hides a snooze or an approved follow-up until its date (`until`, else the date the AI extracted)."""
+    job = await Job.get(job_id)
+    if job is None or job.verb not in ("snooze", "follow_up"):
+        raise ValueError(f"only snooze and follow-up jobs wait for a date; job {job_id} isn't one")
+    when = until or job.due
+    if when is None:
+        raise ValueError(f"job {job_id} needs a date to wait for")
+    claimed = await Job.find(Job.id == job_id, Job.state == "open").update({"$set": {"state": "snoozed", "due": when, "reminder": None}})
+    if not claimed.modified_count:
+        raise JobNotOpen(f"job {job_id} isn't open")
+    deferred = await Job.get(job_id)
+    assert deferred is not None
+    return deferred
+
+
+async def wake_due(owner_id: str, plugins: PluginRegistry, now: datetime) -> int:
+    """Brings back every snoozed job whose date has come. A follow-up that got its answer is done instead
+    (archive-on-done); one that didn't comes back with a reminder. Returns how many woke."""
+    woken = 0
+    for job in await Job.find(Job.owner_id == owner_id, Job.state == "snoozed", {"due": {"$lte": now}}).to_list():
+        assert job.id is not None
+        reminder = await missing_answer(job) if job.verb == "follow_up" else None
+        claimed = await Job.find(Job.id == job.id, Job.state == "snoozed").update({"$set": {"state": "open", "reminder": reminder}})
+        if not claimed.modified_count:
+            continue  # the owner acted on it meanwhile
+        woken += 1
+        if job.verb == "follow_up" and reminder is None:  # answered: nothing left to remind about
+            await finish(job.id, "done", plugins)
+    return woken
+
+
+async def missing_answer(job: Job) -> str | None:
+    """The reminder to show when nobody answered; None when the correspondent answered the owner's reply
+    (threaded, or any newer mail from them). The owner's reply is found in the synced sent folder, so replies sent
+    outside the app count."""
+    original = await Message.get(job.message_ids[0])
+    assert original is not None
+    replies = await Message.find(
+        Message.owner_id == job.owner_id, Message.folder == "sent", Message.in_reply_to == original.message_id
+    ).to_list()
+    since = max([original.date, *(reply.date for reply in replies)])
+    correspondent = original.sender.email
+    answered = await Message.find(
+        Message.owner_id == job.owner_id, Message.folder == "inbox", Message.id != original.id,
+        {"$or": [
+            {"in_reply_to": {"$in": [reply.message_id for reply in replies if reply.message_id]}},
+            {"sender.email": {"$regex": f"^{re.escape(correspondent)}$", "$options": "i"}, "date": {"$gt": since}},
+        ]},
+    ).exists()
+    return None if answered else f"No answer from {correspondent} since {since:%Y-%m-%d}"
+
