@@ -170,3 +170,17 @@ async def test_a_date_without_a_timezone_is_taken_as_utc(test_db):
     await wake_due(OWNER, PluginRegistry(), now=DUE + timedelta(minutes=1))
 
     assert early[0] == "snoozed" and (await state(job))[0] == "open"
+
+
+async def test_an_answer_to_an_earlier_reply_doesnt_resolve_a_later_one(test_db):
+    """Reply, answer, reply again: the follow-up is about the last reply."""
+    original = await message("<m@x>", "ana@example.com")
+    await message("<reply1@frank>", "frank@example.com", folder="sent", in_reply_to="<m@x>", date=NOV_2 + timedelta(hours=1))
+    await message("<answer1@ana>", "ana.phone@example.net", in_reply_to="<reply1@frank>", date=NOV_2 + timedelta(days=1))
+    await message("<reply2@frank>", "frank@example.com", folder="sent", in_reply_to="<m@x>", date=NOV_2 + timedelta(days=2))
+    job = await job_over(original, "follow_up")
+
+    await defer(job.id)
+    await wake_due(OWNER, PluginRegistry(), now=DUE + timedelta(minutes=1))
+
+    assert await state(job) == ("open", "No answer from ana@example.com to “Contract” since 2026-11-04")

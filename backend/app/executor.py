@@ -239,9 +239,10 @@ async def missing_answer(job: Job) -> str | None:
     correspondent = original.sender.email
     answered = await Message.find(
         Message.owner_id == job.owner_id, Message.folder == "inbox", Message.id != original.id,
+        {"date": {"$gt": since}},  # after the owner's latest reply: an earlier exchange doesn't count
         {"$or": [
             {"in_reply_to": {"$in": [reply.message_id for reply in replies if reply.message_id]}},
-            {"sender.email": {"$regex": f"^{re.escape(correspondent)}$", "$options": "i"}, "date": {"$gt": since}},
+            {"sender.email": {"$regex": f"^{re.escape(correspondent)}$", "$options": "i"}},
         ]},
     ).exists()
     return None if answered else f"No answer from {correspondent} to “{original.subject}” since {since:%Y-%m-%d}"
