@@ -26,3 +26,7 @@ __pycache__/
 
 # Local plugin config (copy of backend/plugins.example.yaml)
 backend/plugins.yaml
+
+# Editor swap and lock files (vim, nano), e.g. ..env.swp next to an open .env
+*.swp
+*.swo
