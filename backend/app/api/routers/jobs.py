@@ -119,6 +119,8 @@ async def approve_job(
     acted = await acting(actions.get(job.verb, lambda: finish(job_id, "done", plugins, verb=job.verb)))
     if acted.state in ("done", "snoozed"):
         # The owner's tap is the `ask` path whatever the verb's level; never_auto verbs say so.
+        # shortcut: a DB failure after the action and before these writes loses this one streak tick and label (the job
+        # is final, so a retry gets 409); make them part of the executor's claim if history (#78) needs them exact.
         level: PermissionLevel = "never_auto" if await level_for(owner_id, job.verb) == "never_auto" else "ask"
         await Job.find(Job.id == job_id, Job.state == acted.state).update({"$set": {"permission_level": level}})
         await record_approval(owner_id, job.verb, edited=acted.edited)

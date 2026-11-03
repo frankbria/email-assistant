@@ -36,7 +36,7 @@ beforeAll(async () => {
       return
     }
     requests.push({ method: request.method ?? '', url, authorization: request.headers.authorization, body })
-    const isList = request.method === 'GET' && (url.startsWith('/api/v1/jobs') || url.startsWith('/api/v1/email/spam'))
+    const isList = request.method === 'GET' && url.startsWith('/api/v1/jobs')
     response.end(JSON.stringify(isList ? [] : { enable_spam_filtering: true }))
   })
   await new Promise<void>((resolve) => server.listen(0, '127.0.0.1', resolve))
@@ -55,17 +55,12 @@ beforeEach(() => {
 
 async function callEveryService() {
   const jobs = await import('@/services/jobsService')
-  const email = await import('@/services/emailService')
   const settings = await import('@/services/settingsService')
   await jobs.fetchJobs()
   await jobs.editJob('job-1', { draft: 'Thanks', options: ['Tue', 'Wed'] })
   await jobs.approveJob('job-1', 'ana@example.com')
   await jobs.chooseVerb('job-1', 'snooze')
   await jobs.dismissJob('job-1')
-  await email.fetchSpamEmails()
-  await email.markNotSpam('email-1')
-  await email.archiveSpam('email-1')
-  await email.createEmail({ subject: 'Hi', sender: 'ana@example.com', body: 'Hello' })
   await settings.fetchUserSettings()
   await settings.updateUserSettings({ enable_spam_filtering: false })
 }
@@ -74,7 +69,7 @@ describe('frontend → FastAPI requests', () => {
   it('carry the Better Auth JWT and never a user_id', async () => {
     await callEveryService()
 
-    expect(requests).toHaveLength(11)
+    expect(requests).toHaveLength(7)
     for (const request of requests) {
       expect(request.authorization, `${request.method} ${request.url}`).toBe('Bearer test-jwt')
       expect(request.url).not.toMatch(/user_id/)

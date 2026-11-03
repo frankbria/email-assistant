@@ -1,7 +1,7 @@
 // frontend/src/app/page.tsx
 'use client'
 
-import { useEffect, useState, useCallback, useRef } from 'react'
+import { useEffect, useState, useCallback } from 'react'
 import { JobCardSkeleton } from '@/components/JobCardSkeleton'
 import { EmptyState } from '@/components/EmptyState'
 import { ErrorBoundary } from '@/components/ErrorBoundary'
@@ -9,12 +9,9 @@ import { ErrorBanner } from '@/components/ErrorBanner'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { showToast } from '@/utils/toast'
 import type { JobCard } from '@/types/api'
-import SpamAlertCard from '@/components/SpamAlertCard'
-import { fetchSpamEmails, markNotSpam, archiveSpam } from '@/services/emailService'
 import { fetchJobs } from '@/services/jobsService'
-import { SpamEmail } from '@/types/email'
 
-function JobList({ onLoadJobs }: { onLoadJobs: (loadJobsFn: () => Promise<void>) => void }) {
+function JobList() {
   const [jobCards, setJobCards] = useState<JobCard[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
@@ -38,8 +35,7 @@ function JobList({ onLoadJobs }: { onLoadJobs: (loadJobsFn: () => Promise<void>)
     // shortcut: the mount fetch sets loading state synchronously (one extra render); #75 builds the full job queue here.
     // eslint-disable-next-line react-hooks/set-state-in-effect -- see shortcut above
     loadJobs()
-    onLoadJobs(loadJobs)
-  }, [loadJobs, onLoadJobs])
+  }, [loadJobs])
 
   if (loading) {
     return (
@@ -89,66 +85,11 @@ function JobList({ onLoadJobs }: { onLoadJobs: (loadJobsFn: () => Promise<void>)
 }
 
 export default function Page() {
-  const [spamEmails, setSpamEmails] = useState<SpamEmail[]>([])
-  // Create a ref to the loadJobs function that can be accessed from the spam handlers
-  const loadJobsRef = useRef<() => Promise<void>>(null)
-
-  useEffect(() => {
-    async function loadSpam() {
-      const emails = await fetchSpamEmails()
-      setSpamEmails(emails)
-    }
-    loadSpam()
-  }, [])
-
-  const handleMarkNotSpam = async (id: string) => {
-    try {
-      await markNotSpam(id)
-      setSpamEmails(prev => prev.filter(email => email.id !== id))
-      showToast.success("Marked as not spam")
-      
-      // Refresh the job list to display the newly unmarked email as a job
-      if (loadJobsRef.current) {
-        // Brief delay to allow backend processing
-        setTimeout(() => {
-          if (loadJobsRef.current) {
-            loadJobsRef.current()
-          }
-        }, 500)
-      }
-    } catch {
-      showToast.error("Failed to mark as not spam")
-    }
-  }
-
-  const handleArchiveSpam = async (id: string) => {
-    try {
-      await archiveSpam(id)
-      setSpamEmails(prev => prev.filter(email => email.id !== id))
-      showToast.success("Archived spam email")
-    } catch {
-      showToast.error("Failed to archive spam email")
-    }
-  }
-  
-  // Create a function that gets the loadJobs function from the JobList component
-  const setLoadJobsFunction = useCallback((loadJobsFn: () => Promise<void>) => {
-    loadJobsRef.current = loadJobsFn
-  }, [])
-
   return (
     <ErrorBoundary>
       <div className="flex flex-col h-screen">
         <div className="overflow-auto flex-1">
-          <JobList onLoadJobs={setLoadJobsFunction} />
-        </div>
-
-        <div className="fixed bottom-0 left-0 right-0 bg-yellow-100 text-yellow-800 p-4 shadow-md z-50">
-          <SpamAlertCard
-            flaggedEmails={spamEmails}
-            onMarkNotSpam={handleMarkNotSpam}
-            onArchiveSpam={handleArchiveSpam}
-          />
+          <JobList />
         </div>
       </div>
     </ErrorBoundary>
