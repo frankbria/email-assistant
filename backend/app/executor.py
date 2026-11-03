@@ -188,8 +188,6 @@ async def defer(job_id: PydanticObjectId, until: datetime | None = None) -> Job:
     when = until or job.due
     if when is None:
         raise ValueError(f"job {job_id} needs a date to wait for")
-    if when.tzinfo is None:
-        when = when.replace(tzinfo=UTC)  # as MongoDB stores dates: a date without a zone is UTC
     claimed = await Job.find(Job.id == job_id, Job.state == "open").update({"$set": {"state": "snoozed", "due": when, "reminder": None}})
     if not claimed.modified_count:
         raise JobNotOpen(f"job {job_id} isn't open")
