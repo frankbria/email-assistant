@@ -9,7 +9,7 @@ from pydantic import BaseModel, Field
 from pymongo import ASCENDING, IndexModel
 
 Verb = Literal["reply", "forward", "digest", "snooze", "follow_up", "todo", "archive_noise", "unsubscribe"]
-JobState = Literal["open", "snoozed", "done", "dismissed", "failed", "handled_elsewhere"]
+JobState = Literal["open", "sending", "snoozed", "done", "dismissed", "failed", "handled_elsewhere"]
 PermissionLevel = Literal["autonomous", "ask", "never_auto"]
 
 

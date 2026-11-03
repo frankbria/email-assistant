@@ -11,11 +11,11 @@ from mcp import Client
 from mcp.shared.exceptions import MCPError
 from pydantic import ValidationError
 
-from app.models.job import Job
+from app.models.job import Job, JobState
 from app.models.message import Message
 from app.plugins.calls import InvalidCursor, SyncError, call_plugin, refs_in_inbox
 from app.plugins.registry import PluginRegistry
-from mailbox_contract import MoveResult
+from mailbox_contract import MessageDetail, MoveResult, SendResult
 
 Outcome = Literal["done", "dismissed"]
 # A message waits for these to be final; handled_elsewhere jobs' mail already left the inbox.
@@ -26,10 +26,13 @@ class JobNotOpen(Exception):
     """Only an open job can be finished (it may have been finished or handled elsewhere already)."""
 
 
-async def finish(job_id: PydanticObjectId, outcome: Outcome, plugins: PluginRegistry) -> Job:
-    """Done (the action succeeded, or a todo's owner tapped done) or dismissed; then archive what's settled."""
+async def finish(
+    job_id: PydanticObjectId, outcome: Outcome, plugins: PluginRegistry, claim_from: tuple[JobState, ...] = ("open",)
+) -> Job:
+    """Done (the action succeeded, or a todo's owner tapped done) or dismissed; then archive what's settled.
+    `claim_from`: execute() finishes a job it already holds as `sending`."""
     # Out of `open` before any archive, so a sync pass can't close it as handled elsewhere meanwhile.
-    claimed = await Job.find(Job.id == job_id, Job.state == "open").update({"$set": {"state": outcome, "error": None}})
+    claimed = await Job.find(Job.id == job_id, In(Job.state, list(claim_from))).update({"$set": {"state": outcome, "error": None}})
     if not claimed.modified_count:
         raise JobNotOpen(f"job {job_id} isn't open")
     try:  # everything after the claim: any failure must end with the job reopened, never stuck final
@@ -86,3 +89,55 @@ async def archive(message: Message, client: Client | None) -> str | None:
     if not (result.ok and result.verified):
         return f"{plugin_id} couldn't confirm the archive, so the message is still in the inbox"
     return None
+
+
+async def execute(
+    job_id: PydanticObjectId, plugins: PluginRegistry, body: str | None = None, forward_to: str | None = None
+) -> Job:
+    """The owner approved a reply or forward: send it from the account that received the mail, then
+    finish the job (archive-on-done). A failed send leaves the job `failed` and the mail in the inbox
+    (AC-2.2); calling this again retries. `body` is the owner's edited text, else the draft."""
+    job = await Job.get(job_id)
+    if job is None or job.verb not in ("reply", "forward"):
+        raise ValueError(f"only reply and forward jobs send; job {job_id} isn't one")
+    # Out of open/failed first, so a sync pass can't close it as handled elsewhere mid-send.
+    claimed = await Job.find(Job.id == job_id, In(Job.state, ["open", "failed"])).update({"$set": {"state": "sending", "error": None}})
+    if not claimed.modified_count:
+        raise JobNotOpen(f"job {job_id} isn't open or failed")
+    try:
+        problem = await send(job, plugins, body, forward_to)
+    except Exception as error:  # whatever broke, the job must end retryable, never stuck sending
+        problem = str(error)
+    if problem is None:
+        return await finish(job_id, "done", plugins, claim_from=("sending",))
+    # shortcut: a send that succeeded but whose answer was lost (timeout) is retried as failed, so it can go
+    # twice; fix with an idempotency key once the contract's send takes one.
+    await Job.find(Job.id == job_id, Job.state == "sending").update({"$set": {"state": "failed", "error": f"send failed — retry: {problem}"}})
+    failed = await Job.get(job_id)
+    assert failed is not None
+    return failed
+
+
+async def send(job: Job, plugins: PluginRegistry, body: str | None, forward_to: str | None) -> str | None:
+    """Sends the job's message; what went wrong, or None."""
+    message = await Message.get(job.message_ids[0])
+    assert message is not None
+    client = plugins.clients.get(message.plugin_id)
+    if client is None:
+        return f"{message.plugin_id} isn't connected"
+    text = body or job.artifacts.draft or ""
+    if job.verb == "reply":
+        subject = message.subject if message.subject.lower().startswith("re:") else f"Re: {message.subject}"
+        arguments: dict[str, object] = {"to": [{"email": message.sender.email}], "subject": subject, "body_text": text,
+                                        "in_reply_to_ref": message.ref}
+    else:
+        recipient = forward_to or job.artifacts.forward_to
+        if not recipient:
+            return "choose who to forward it to"
+        original = MessageDetail.model_validate(await call_plugin(message.plugin_id, client, "get_message", {"ref": message.ref}))
+        quoted = (f"---------- Forwarded message ---------\nFrom: {original.sender.email}\nDate: {original.date.isoformat()}\n"
+                  f"Subject: {original.subject}\n\n{original.text}")
+        arguments = {"to": [{"email": recipient}], "subject": f"Fwd: {message.subject}", "body_text": f"{text}\n\n{quoted}"}
+    result = SendResult.model_validate(await call_plugin(message.plugin_id, client, "send", arguments))
+    return None if result.ok else f"{message.plugin_id} didn't send it"
+
