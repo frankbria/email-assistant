@@ -7,6 +7,7 @@ from app.models.assistant_task import AssistantTask
 from app.models.user_settings import UserSettings
 from app.models.job import Job
 from app.models.message import Message
+from app.models.rule import Rule
 from app.models.sync_cursor import SyncCursor
 from beanie import init_beanie
 from app.api.routers import connections, email, tasks, settings
@@ -55,7 +56,7 @@ async def init_db(settings: Settings | None = None):
     )
     await init_beanie(
         database=client[settings.current_mongodb_db],
-        document_models=[EmailMessage, AssistantTask, UserSettings, Message, Job, SyncCursor],
+        document_models=[EmailMessage, AssistantTask, UserSettings, Message, Job, SyncCursor, Rule],
         allow_index_dropping=True,
     )
 
