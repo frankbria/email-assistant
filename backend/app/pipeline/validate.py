@@ -57,14 +57,18 @@ def grounding_problems(proposal: Proposal, body: str) -> list[str]:
 def injection_problems(proposal: Proposal, body: str, forward_history: Sequence[str]) -> list[str]:
     """Links must come from the email (never invented); recipients only from the owner's history."""
     found = []
-    # As written, or without trailing prose punctuation: "(see https://x/a)." vs ".../Function_(math)".
-    links = {form for url in URL.findall(body) for form in (url, url.rstrip(TRAILING_PUNCTUATION))}
-    if proposal.link and proposal.link not in links:  # a whole link, not a prefix of a longer one
+    if proposal.link and not any(whole_link(proposal.link, url) for url in URL.findall(body)):
         found.append(f"link not in the email: {proposal.link}")
     history = {address.strip().lower() for address in forward_history}
     if proposal.forward_to and proposal.forward_to.strip().lower() not in history:
         found.append(f"forward recipient not from history: {proposal.forward_to}")
     return found
+
+
+def whole_link(link: str, url: str) -> bool:
+    """The email's URL, less at most some trailing punctuation: ".../Function_(math))." gives
+    ".../Function_(math)", while "https://trusted.example" is no part of "https://trusted.example.evil.test"."""
+    return url.startswith(link) and all(character in TRAILING_PUNCTUATION for character in url[len(link) :])
 
 
 def present(value: object) -> bool:
