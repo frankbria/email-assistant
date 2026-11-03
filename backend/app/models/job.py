@@ -17,6 +17,7 @@ class Artifacts(BaseModel):
     """What the job saves the owner (spec §8 step 5); a deadline is the job's `due`."""
 
     draft: str | None = None
+    forward_to: str | None = None
     options: list[str] = Field(default_factory=list)
     link: str | None = None
     digest: str | None = None
@@ -33,6 +34,10 @@ class Job(Document):
     state: JobState = "open"
     message_ids: list[PydanticObjectId] = Field(min_length=1)
     permission_level: PermissionLevel | None = None  # the level it ran under, once acted on
+    # An ask-owner card (§8.5, §10.2): no valid proposal, so the owner picks; never a guess.
+    ask_owner: bool = False
+    suggested_verbs: list[Verb] = Field(default_factory=list)
+    problems: list[str] = Field(default_factory=list)  # why validation sent it to the owner
     created_at: datetime = Field(default_factory=lambda: datetime.now(UTC))
 
     class Settings:
