@@ -1,6 +1,7 @@
 """Per-verb permissions (spec §4 table, §9): one level per verb, kept in a readable permissions.yaml that
 stays in sync with the stored settings. A level above a verb's ceiling is rejected with the reason."""
 
+import asyncio
 import hashlib
 import logging
 import os
@@ -34,6 +35,11 @@ CEILINGS: dict[str, tuple[PermissionLevel, str]] = {
     "unsubscribe": ("never_auto", "links in email are untrusted"),
 }
 
+
+# Every write of the settings rewrites them whole, so writers take turns or one drops the other's change.
+# shortcut: an in-process lock serializes one backend process (the app runs one); switch to per-verb atomic
+# updates if the API ever runs several workers.
+settings_writes = asyncio.Lock()
 
 PROMOTION_AFTER = 10  # spec §9 [Call]: approvals in a row, with no edits, before promotion is offered
 
@@ -102,11 +108,13 @@ async def stored_settings(owner_id: str) -> PermissionSettings:
 
 async def set_levels(owner_id: str, levels: dict[str, PermissionLevel], path: Path) -> None:
     """The settings screen's change: validated like the file, stored, then written to the file."""
-    settings = await stored_settings(owner_id)
-    settings.levels |= validated(levels.items())
-    settings.updated_at = datetime.now(UTC)
-    await settings.save()  # stored first: a file that can't be written never loses the change
-    await write_file(settings, path)
+    checked = validated(levels.items())
+    async with settings_writes:
+        settings = await stored_settings(owner_id)
+        settings.levels |= checked
+        settings.updated_at = datetime.now(UTC)
+        await settings.save()  # stored first: a file that can't be written never loses the change
+        await write_file(settings, path)
 
 
 def digest(text: str) -> str:
@@ -130,21 +138,22 @@ async def write_file(settings: PermissionSettings, path: Path) -> None:
 async def sync_permissions_file(owner_id: str, path: Path) -> None:
     """Each pass: an edited file updates the store (or is rejected, keeping the store and saying why);
     a missing or empty file (a truncated write) is written from the store, never read as all defaults."""
-    settings = await stored_settings(owner_id)
-    text = path.read_text() if path.exists() else ""
-    if settings.write_pending or not text.strip():  # the store is newer than the file: never read it back
-        await write_file(settings, path)
-        return
-    if digest(text) == settings.file_hash:
-        return  # compared by content: an edit in the same clock tick still counts
-    try:
-        settings.levels = parse_permissions(text)
-        settings.file_error = None
-    except (PermissionsRejected, yaml.YAMLError) as error:
-        settings.file_error = str(error)
-        logger.error("permissions.yaml was rejected, keeping the current settings: %s", error)
-    settings.file_hash, settings.updated_at = digest(text), datetime.now(UTC)
-    await settings.save()
+    async with settings_writes:
+        settings = await stored_settings(owner_id)
+        text = path.read_text() if path.exists() else ""
+        if settings.write_pending or not text.strip():  # the store is newer than the file: never read it back
+            await write_file(settings, path)
+            return
+        if digest(text) == settings.file_hash:
+            return  # compared by content: an edit in the same clock tick still counts
+        try:
+            settings.levels = parse_permissions(text)
+            settings.file_error = None
+        except (PermissionsRejected, yaml.YAMLError) as error:
+            settings.file_error = str(error)
+            logger.error("permissions.yaml was rejected, keeping the current settings: %s", error)
+        settings.file_hash, settings.updated_at = digest(text), datetime.now(UTC)
+        await settings.save()
 
 
 class ApprovalStreak(Document):

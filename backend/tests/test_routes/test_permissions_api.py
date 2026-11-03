@@ -1,5 +1,6 @@
 # Permissions on the settings screen (spec §9, AC-K.3 UI half, AC-K.4): the API the screen uses, and the
 # promotion offer after 10 unedited approvals in a row. Real MongoDB; a temporary permissions.yaml.
+import asyncio
 from pathlib import Path
 
 import pytest
@@ -7,7 +8,7 @@ import yaml
 
 from app.api.routers.permissions import permissions_path
 from app.main import app
-from app.permissions import PROMOTION_AFTER, PermissionSettings, level_for, promotion_offers, record_approval
+from app.permissions import PROMOTION_AFTER, PermissionSettings, level_for, promotion_offers, record_approval, set_levels
 from tests.utils.auth import OWNER_ID
 
 
@@ -108,3 +109,21 @@ async def test_an_offer_made_moot_by_a_manual_promotion_doesnt_come_back_after_a
     downgraded = await async_client.put("/api/v1/permissions/reply", json={"level": "ask"})
 
     assert downgraded.json()["promotions"] == []
+
+
+
+
+async def test_overlapping_changes_both_survive(test_db, tmp_path: Path):
+    """Each change rewrites all the settings (two settings pages, or a page and the file sync); neither may drop
+    the other. Whether two overlap depends on timing, so several rounds flip both verbs."""
+    path = tmp_path / "permissions.yaml"
+    for raised in (True, False, True, False, True):
+        expected = ("autonomous", "never_auto") if raised else ("ask", "ask")
+        await asyncio.gather(
+            set_levels(OWNER_ID, {"archive_noise": expected[0]}, path),
+            set_levels(OWNER_ID, {"snooze": expected[1]}, path),
+        )
+
+        written = yaml.safe_load(path.read_text())
+        assert (await level_for(OWNER_ID, "archive_noise"), await level_for(OWNER_ID, "snooze")) == expected
+        assert (written["archive_noise"], written["snooze"]) == expected
