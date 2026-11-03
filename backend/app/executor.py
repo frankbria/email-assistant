@@ -31,9 +31,9 @@ async def finish(job_id: PydanticObjectId, outcome: Outcome, plugins: PluginRegi
     claimed = await Job.find(Job.id == job_id, Job.state == "open").update({"$set": {"state": outcome, "error": None}})
     if not claimed.modified_count:
         raise JobNotOpen(f"job {job_id} isn't open")
-    job = await Job.get(job_id)
-    assert job is not None
-    try:
+    try:  # everything after the claim: any failure must end with the job reopened, never stuck final
+        job = await Job.get(job_id)
+        assert job is not None
         errors = await archive_settled_messages(job, plugins)
     except asyncio.CancelledError:  # a BaseException: interrupted, it must still end retryable
         await asyncio.shield(reopen(job_id, outcome, ["finishing was interrupted, so the message is still in the inbox"]))
