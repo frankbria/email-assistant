@@ -188,6 +188,8 @@ async def defer(job_id: PydanticObjectId, until: datetime | None = None) -> Job:
     when = until or job.due
     if when is None:
         raise ValueError(f"job {job_id} needs a date to wait for")
+    if when.tzinfo is None:
+        when = when.replace(tzinfo=UTC)  # as MongoDB stores dates: a date without a zone is UTC
     claimed = await Job.find(Job.id == job_id, Job.state == "open").update({"$set": {"state": "snoozed", "due": when, "reminder": None}})
     if not claimed.modified_count:
         raise JobNotOpen(f"job {job_id} isn't open")
@@ -197,19 +199,33 @@ async def defer(job_id: PydanticObjectId, until: datetime | None = None) -> Job:
 
 
 async def wake_due(owner_id: str, plugins: PluginRegistry, now: datetime) -> int:
-    """Brings back every snoozed job whose date has come. A follow-up that got its answer is done instead
-    (archive-on-done); one that didn't comes back with a reminder. Returns how many woke."""
+    """Brings back every snoozed job whose date has come: a snooze reopens; a follow-up that got its answer
+    is done (archive-on-done), one that didn't reopens with a reminder. Open reminders are re-checked each
+    pass, so an answer arriving late (or missed by a sync that failed that pass) resolves them. One broken
+    job never stops the rest. Returns how many woke."""
     woken = 0
-    for job in await Job.find(Job.owner_id == owner_id, Job.state == "snoozed", {"due": {"$lte": now}}).to_list():
-        assert job.id is not None
-        reminder = await missing_answer(job) if job.verb == "follow_up" else None
-        claimed = await Job.find(Job.id == job.id, Job.state == "snoozed").update({"$set": {"state": "open", "reminder": reminder}})
-        if not claimed.modified_count:
-            continue  # the owner acted on it meanwhile
-        woken += 1
-        if job.verb == "follow_up" and reminder is None:  # answered: nothing left to remind about
-            await finish(job.id, "done", plugins)
+    due = await Job.find(Job.owner_id == owner_id, Job.state == "snoozed", {"due": {"$lte": now}}).to_list()
+    reminded = await Job.find(Job.owner_id == owner_id, Job.state == "open", Job.verb == "follow_up", {"reminder": {"$ne": None}}).to_list()
+    for job in [*due, *reminded]:
+        try:
+            woken += await wake(job, plugins)
+        except JobNotOpen:
+            pass  # the owner acted on it meanwhile
+        except Exception:  # e.g. its message is gone: log it and keep waking the others
+            logger.exception("Waking job %s failed; retrying next pass", job.id)
     return woken
+
+
+async def wake(job: Job, plugins: PluginRegistry) -> int:
+    assert job.id is not None
+    reminder = await missing_answer(job) if job.verb == "follow_up" else None
+    if job.verb == "follow_up" and reminder is None:  # answered: done, straight from where it waits
+        await finish(job.id, "done", plugins, claim_from=(job.state,))
+        return 1
+    if job.state == "open":
+        return 0  # a reminder still without an answer: it stays as it is
+    claimed = await Job.find(Job.id == job.id, Job.state == "snoozed").update({"$set": {"state": "open", "reminder": reminder}})
+    return claimed.modified_count
 
 
 async def missing_answer(job: Job) -> str | None:
@@ -230,5 +246,5 @@ async def missing_answer(job: Job) -> str | None:
             {"sender.email": {"$regex": f"^{re.escape(correspondent)}$", "$options": "i"}, "date": {"$gt": since}},
         ]},
     ).exists()
-    return None if answered else f"No answer from {correspondent} since {since:%Y-%m-%d}"
+    return None if answered else f"No answer from {correspondent} to “{original.subject}” since {since:%Y-%m-%d}"
 

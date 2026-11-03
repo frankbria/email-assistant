@@ -115,7 +115,8 @@ async def close_handled_elsewhere(owner_id: str, plugin_id: str, client: Client)
     (archived on a phone, moved by a filter), so the app never archives them again; a job shared with
     a copy in another inbox just lets go of the gone copy. Returns how many closed."""
     # A job reopened with an error (a finish that failed partway) stays for the owner to retry.
-    open_jobs = await Job.find(Job.owner_id == owner_id, Job.state == "open", {"error": None}).to_list()
+    # A follow-up waits for an answer, not for its mail to stay in the inbox (owners archive after replying).
+    open_jobs = await Job.find(Job.owner_id == owner_id, Job.state == "open", {"error": None}, Job.verb != "follow_up").to_list()
     referenced = list({message_id for job in open_jobs for message_id in job.message_ids})
     messages = await Message.find(In(Message.id, referenced), Message.plugin_id == plugin_id).to_list()
     present = await refs_in_inbox(plugin_id, client, [message.ref for message in messages])
