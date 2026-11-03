@@ -25,7 +25,8 @@ interface AskOwnerCardProps {
 export function AskOwnerCard({ card, onReplaced, onRemoved }: AskOwnerCardProps) {
   const { job, sender, subject } = card
   const [busy, setBusy] = useState(false)
-  const suggested = ACTIONS.filter(({ verb }) => job.suggested_verbs.includes(verb))
+  // the AI ranks its suggestions, so keep its order
+  const suggested = job.suggested_verbs.flatMap((verb) => ACTIONS.filter((action) => action.verb === verb))
   const others = ACTIONS.filter(({ verb }) => !job.suggested_verbs.includes(verb))
 
   async function act(action: () => Promise<Job>, failure: string) {
