@@ -11,7 +11,8 @@ import yaml
 from app.models.action_log import ActionLogEntry
 from app.models.job import Job
 from app.models.message import Message
-from app.permissions import PermissionSettings, PermissionsRejected, level_for, parse_permissions, set_levels, sync_permissions_file
+from app.models.rule import Rule
+from app.permissions import CEILINGS, PermissionSettings, PermissionsRejected, level_for, parse_permissions, set_levels, sync_permissions_file
 from app.pipeline.proposal import Proposal
 from app.sync import SyncEngine
 from tests.conformance.test_mailbox_conformance import reference_imap_plugin
@@ -227,6 +228,34 @@ async def test_list_mail_is_never_replied_to_autonomously(test_db, mailbox: Mail
 
     [job] = await Job.find(Job.owner_id == OWNER).to_list()
     assert (job.state, job.permission_level) == ("open", None)
+
+
+@pytest.mark.usefixtures("mail_server")
+@pytest.mark.parametrize("ceiling_lifted", [False, True])
+async def test_no_route_to_autonomy_unsubscribes_without_the_owners_tap(test_db, mailbox: Mailbox, tmp_path: Path, monkeypatch,
+                                                                         ceiling_lifted: bool):
+    """#90 AC: the file says autonomous, the store says so too (written past validation), a rule decides the stream
+    and the mail isn't first-connect mail; even with the ceiling lifted (as a later version might), a real pass
+    sends nothing and opens nothing, and the job waits for the owner's tap."""
+    if ceiling_lifted:
+        monkeypatch.setitem(CEILINGS, "unsubscribe", ("autonomous", "lifted for this test"))
+    await add_owner(test_db)
+    mailbox.create_folder("Archive")
+    leave = new_mailbox()
+    path = tmp_path / "permissions.yaml"
+    path.write_text("unsubscribe: autonomous\n")
+    await pipeline_pass(test_db, mailbox, path, proposal())
+    await PermissionSettings.find(PermissionSettings.owner_id == OWNER).update({"$set": {"levels.unsubscribe": "autonomous"}})
+    await Rule(owner_id=OWNER, match="list_id", value="<deals.shop.example>", verb="unsubscribe").insert()
+    mailbox.append("INBOX", sender="deals@shop.example", subject="Running shoes", body="30% off all running shoes",
+                   headers={"List-Id": "<deals.shop.example>", "List-Unsubscribe": f"<mailto:{leave.address}>, <https://shop.example/u>"})
+
+    await pipeline_pass(test_db, mailbox, path, proposal(verb="unsubscribe", title="Leave Shop deals"))
+
+    [job] = await Job.find(Job.owner_id == OWNER).to_list()
+    assert (job.verb, job.ask_owner, job.state, job.permission_level, job.sent_at) == ("unsubscribe", False, "open", None, None)
+    assert leave.messages("INBOX") == [] and len(mailbox.messages("INBOX")) == 1
+    assert await ActionLogEntry.find(ActionLogEntry.job_id == job.id).to_list() == []
 
 
 @pytest.mark.usefixtures("mail_server")

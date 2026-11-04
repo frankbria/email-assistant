@@ -109,8 +109,8 @@ async def act_if_autonomous(job: Job, plugins: PluginRegistry) -> None:
     shortcut: an autonomous digest still waits for the owner's tap, since nothing decides when a rolling digest is
     complete; finish it on a schedule (e.g. a daily digest) once owners ask for autonomous digests."""
     job_id = job.id
-    if job.ask_owner or job.requires_approval or job_id is None:
-        return
+    if job.ask_owner or job.requires_approval or job_id is None or job.verb == "unsubscribe":
+        return  # unsubscribe only ever on the owner's tap, whatever a permissions file or a lifted ceiling says
     if await level_for(job.owner_id, job.verb) != "autonomous":
         return
     # Read now, not only when the job was made: a recovered job predates any rule the owner taught since.

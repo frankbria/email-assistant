@@ -91,10 +91,10 @@ async def test_a_forward_without_a_recipient_the_owner_chose_sends_nothing(test_
     assert [m["Message-ID"] for m in received(mailbox)] == [ref]
 
 
-async def test_only_open_or_failed_reply_and_forward_jobs_execute(test_db, mailbox: Mailbox):
+async def test_only_open_or_failed_sending_jobs_execute(test_db, mailbox: Mailbox):
     job, _ = await job_for(mailbox, new_mailbox(), "todo", Artifacts(link="https://x.example"))
     async with connected(reference_imap_plugin(mailbox)) as registry:
-        with pytest.raises(ValueError, match="only reply and forward jobs send"):
+        with pytest.raises(ValueError, match="only reply, forward and unsubscribe jobs send"):
             await execute(job.id, registry, by="owner", level="ask")
         await Job.find(Job.id == job.id).update({"$set": {"verb": "reply", "state": "done"}})
         with pytest.raises(JobNotOpen):
