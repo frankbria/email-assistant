@@ -195,3 +195,21 @@ async def test_a_digest_is_only_finished_for_the_messages_the_owner_saw(async_cl
 
     assert unsaid.status_code == 422
     assert dismissed.status_code == 200 and len(mailbox.messages("Archive")) == 3
+
+
+async def test_copies_of_one_email_in_two_accounts_are_one_message_to_the_guard(async_client, test_db, mailbox, plugins):
+    """An ask-owner digest whose mail also arrived in another account still lets the owner choose an action."""
+    await add_owner(test_db, OWNER_ID)
+    mailbox.create_folder("Sent")
+    await sync_pass(test_db, plugins, FakeAIProvider(DIGEST))
+    mailbox.deliver(sender="news@garden.example", subject="Spring", body="This week in the garden: planting tips.")
+    await sync_pass(test_db, plugins, FakeAIProvider(DIGEST))
+    [job] = await Job.find_all().to_list()
+    original = await Message.get(job.message_ids[0])
+    copy = original.model_copy(update={"id": None, "plugin_id": "other-account"})
+    await copy.insert()
+    await Job.find(Job.id == job.id).update({"$set": {"ask_owner": True}, "$push": {"message_ids": copy.id}})
+
+    chosen = await async_client.patch(f"/api/v1/jobs/{job.id}", json={"options": ["a"]})
+
+    assert chosen.status_code == 200

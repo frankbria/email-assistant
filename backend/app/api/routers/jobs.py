@@ -90,7 +90,8 @@ async def owned(job_id: PydanticObjectId, owner_id: str) -> Job:
 async def for_one_message(job_id: PydanticObjectId, owner_id: str) -> Job:
     """Another action, a correction or an edit is about one message, while a digest's done archives all of them."""
     job = await owned(job_id, owner_id)
-    if job.verb == "digest" and len(job.message_ids) > 1:
+    # Copies of one email in several accounts are one message; only distinct emails make a digest speak for several.
+    if job.verb == "digest" and len(job.message_ids) > 1 and len(await Message.distinct("message_id", In(Message.id, job.message_ids))) > 1:
         raise HTTPException(status_code=409, detail="a digest speaks for several messages; approve or dismiss it, or archive them one by one")
     return job
 
