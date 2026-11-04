@@ -175,7 +175,8 @@ async def choose_action(
         logger.exception("Couldn't record the example for job %s", job_id)
     if choice.always:
         try:
-            await learn_rule(message, choice.verb)
+            # the card names the stream ("for <list or sender>"), so the rule keys on it, not on a broader rule
+            await learn_rule(message, choice.verb, correct_the_deciding_rule=False)
         except Exception:
             logger.exception("Couldn't learn the rule for job %s", job_id)
     return chosen

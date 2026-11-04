@@ -28,6 +28,7 @@ from app.models.rule import Rule
 from app.models.example import Example
 from app.permissions import ApprovalStreak, PermissionSettings
 from app.models.sync_cursor import SyncCursor
+from app.services.ai_provider import provider_for
 from tests.utils.auth import AUTH_BASE_URL, bearer_headers
 
 # Load environment variables
@@ -103,6 +104,16 @@ async def async_client():
     ) as client:
 
         yield client
+
+
+@pytest.fixture(autouse=True)
+def no_paid_ai_outside_integration_tests(request, monkeypatch):
+    """A test that reaches the real provider by mistake fails here as it would in CI, instead of quietly
+    making a paid call with the developer's key."""
+    if request.node.get_closest_marker("integration") is None:
+        monkeypatch.delenv("ANTHROPIC_API_KEY", raising=False)
+        provider_for.cache_clear()  # a client built with the key in an earlier test would still hold it
+    yield
 
 
 # ---------------------

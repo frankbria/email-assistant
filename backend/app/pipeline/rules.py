@@ -23,10 +23,10 @@ async def matching_rule(owner_id: str, message: Message) -> Rule | None:
     return None
 
 
-async def learn_rule(message: Message, verb: Verb) -> None:
-    """The owner's verb for the message's stream from now on. The rule that decided this message is the one
-    corrected; with none, the stream matching_rule checks first gets a new one, so it decides next time."""
-    decided = await matching_rule(message.owner_id, message)
+async def learn_rule(message: Message, verb: Verb, *, correct_the_deciding_rule: bool = True) -> None:
+    """The owner's verb for the message's stream from now on. A correction fixes the rule that decided this message;
+    otherwise (or with none) the stream matching_rule checks first gets the rule, so it decides next time."""
+    decided = await matching_rule(message.owner_id, message) if correct_the_deciding_rule else None
     keys = [(decided.match, decided.value)] if decided else stream_keys(message)
     if not keys:
         return

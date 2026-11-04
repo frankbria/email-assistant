@@ -2,16 +2,19 @@
 # sender/list" also teaches a rule, effective on the next message from that stream.
 # Real MongoDB; GreenMail + the reference IMAP plugin; FakeAIProvider; a real SyncEngine pass.
 import logging
+from collections.abc import Iterator
 
 import pytest
 from beanie import PydanticObjectId
 
+from app.main import app
 from app.models.example import Example
 from app.models.job import Artifacts, Job
 from app.models.message import Message
 from app.models.rule import Rule
 from app.permissions import PermissionSettings
 from app.pipeline.proposal import Proposal
+from app.services.ai_provider import get_ai_provider
 from tests.test_routes.test_corrections_api import DEALS, SHOP, newest_job, rules, sync_pass
 from tests.test_routes.test_jobs_api import QUESTION, job_from
 from tests.test_sync.test_inbox_sync import add_owner
@@ -35,6 +38,15 @@ class UnsureAI(FakeAIProvider):
         return await super().propose(prompt, schema)
 
 
+@pytest.fixture
+def unsure_ai() -> Iterator[UnsureAI]:
+    """The same fake for the sync passes and for the API's /choose."""
+    provider = UnsureAI()
+    app.dependency_overrides[get_ai_provider] = lambda: provider
+    yield provider
+    app.dependency_overrides.pop(get_ai_provider)
+
+
 async def ask_owner_job_from_the_shop(test_db, mailbox, plugins, ai: FakeAIProvider) -> Job:
     await add_owner(test_db, OWNER_ID)
     mailbox.create_folder("Sent")  # the owner's voice is read from it
@@ -46,9 +58,9 @@ async def ask_owner_job_from_the_shop(test_db, mailbox, plugins, ai: FakeAIProvi
     return asked
 
 
-async def test_choosing_always_for_a_sender_decides_their_next_message_without_asking(async_client, test_db, mailbox, plugins):
+async def test_choosing_always_for_a_sender_decides_their_next_message_without_asking(async_client, test_db, mailbox, plugins, unsure_ai):
     """AC (#84): after "always" for sender S, the next message from S skips the ask-owner card and gets the chosen verb."""
-    ai = UnsureAI()
+    ai = unsure_ai
     asked = await ask_owner_job_from_the_shop(test_db, mailbox, plugins, ai)
 
     chosen = await async_client.post(f"/api/v1/jobs/{asked.id}/choose", json={"verb": "archive_noise", "always": True})
@@ -62,8 +74,8 @@ async def test_choosing_always_for_a_sender_decides_their_next_message_without_a
     assert (after.verb, after.ask_owner) == ("archive_noise", False)
 
 
-async def test_a_choice_without_always_is_an_example_but_not_a_rule(async_client, test_db, mailbox, plugins):
-    ai = UnsureAI()
+async def test_a_choice_without_always_is_an_example_but_not_a_rule(async_client, test_db, mailbox, plugins, unsure_ai):
+    ai = unsure_ai
     asked = await ask_owner_job_from_the_shop(test_db, mailbox, plugins, ai)
 
     chosen = await async_client.post(f"/api/v1/jobs/{asked.id}/choose", json={"verb": "archive_noise"})
@@ -99,6 +111,20 @@ async def test_always_on_a_list_message_teaches_a_rule_for_the_list(async_client
     assert await rules() == [("list_id", "deals.shop.example", "todo")]
 
 
+async def test_always_for_a_list_leaves_a_broader_sender_rule_alone(async_client, test_db, mailbox, plugins, ai):
+    """The checkbox names the list, so the rule keys on the list, even when a sender rule decided this message."""
+    ana = new_mailbox()
+    job = await job_from(ana, mailbox, "todo", ask_owner=True, suggested_verbs=["todo"])
+    await Message.find(Message.id == job.message_ids[0]).update({"$set": {"list_id": "Garden deals <Deals.Shop.Example>"}})
+    await Rule(owner_id=OWNER_ID, match="sender", value=ana.address.lower(), verb="reply").insert()
+    ai.result = Proposal(needs_owner=False, verb="todo", title="Book the Thursday meeting room", evidence=[QUESTION],
+                         link="https://rooms.example", confidence=0.9)
+
+    await async_client.post(f"/api/v1/jobs/{job.id}/choose", json={"verb": "todo", "always": True})
+
+    assert sorted(await rules()) == [("list_id", "deals.shop.example", "todo"), ("sender", ana.address.lower(), "reply")]
+
+
 async def test_the_queue_says_which_list_a_card_s_mail_came_from(async_client, test_db, mailbox):
     job = await job_from(new_mailbox(), mailbox, "todo", ask_owner=True)
     await job_from(new_mailbox(), mailbox, "todo")
@@ -112,18 +138,21 @@ async def test_the_queue_says_which_list_a_card_s_mail_came_from(async_client, t
 async def test_a_lesson_that_fails_to_store_still_returns_the_chosen_job(async_client, test_db, mailbox, plugins, ai, caplog):
     ana = new_mailbox()
     job = await job_from(ana, mailbox, "todo", ask_owner=True, suggested_verbs=["todo"])
-    # A stored rule for the sender that can't be read: learning the rule fails, as a broken collection does.
-    await Rule.get_pymongo_collection().insert_one({"owner_id": OWNER_ID, "match": "sender", "value": ana.address.lower(), "verb": "not a verb"})
     ai.result = Proposal(needs_owner=False, verb="todo", title="Book the Thursday meeting room", evidence=[QUESTION],
                          link="https://rooms.example", confidence=0.9)
-
-    with caplog.at_level(logging.ERROR, logger="app.api.routers.jobs"):
-        response = await async_client.post(f"/api/v1/jobs/{job.id}/choose", json={"verb": "todo", "always": True})
+    examples = Example.get_pymongo_collection().name
+    # MongoDB itself refuses every example write, as a full disk or a broken collection would.
+    await test_db.command("collMod", examples, validator={"source": {"$in": []}}, validationAction="error")
+    try:
+        with caplog.at_level(logging.ERROR, logger="app.api.routers.jobs"):
+            response = await async_client.post(f"/api/v1/jobs/{job.id}/choose", json={"verb": "todo", "always": True})
+    finally:
+        await test_db.command("collMod", examples, validator={})
 
     assert response.status_code == 200 and response.json()["verb"] == "todo"
-    assert "Couldn't learn the rule" in caplog.text
-    # the lessons stand apart: a rule that can't be learned still leaves the example
-    assert await Example.find_all().count() == 1
+    assert "Couldn't record the example" in caplog.text
+    # the lessons stand apart: an example that can't be stored still leaves the rule the owner asked for
+    assert await rules() == [("sender", ana.address.lower(), "todo")]
 
 
 async def test_a_choice_that_isnt_made_teaches_nothing(async_client, test_db, mailbox, plugins, ai):
