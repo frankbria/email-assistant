@@ -28,8 +28,8 @@ PATTERNS = [
         rf"(?<![\w@.-])(?:https?://|www\.){URL_REST}|{DOMAIN}[a-z]{{2,}}/{URL_REST}|{DOMAIN}(?:{BARE_TLDS})\b(?![.-]?\w)",
         re.IGNORECASE,
     )),
-    # Card numbers in groups of four, IBANs, and any long run of digits (account, card, reference).
-    ("ACCOUNT", re.compile(r"\b\d{4}(?:[ -]\d{4}){2,3}\b|\b[A-Z]{2}\d{2}[A-Z0-9]{10,30}\b|\b\d{8,19}\b")),
+    # Card numbers in groups of four or American Express's 4-6-5, IBANs, and any long run of digits.
+    ("ACCOUNT", re.compile(r"\b\d{4}(?:[ -]\d{4}){2,3}\b|\b\d{4}[ -]\d{6}[ -]\d{5}\b|\b[A-Z]{2}\d{2}[A-Z0-9]{10,30}\b|\b\d{8,19}\b")),
     # Only digits right after a word that names a code ("code is 482913", "PIN: 1234"), and never part of a date.
     ("CODE", re.compile(r"\b(?:code|passcode|OTP|PIN)\b(?:\s*(?:is|was|[:=#])\s*|\s+)(\d{4,8})(?![\w/.-]?\d)", re.IGNORECASE)),
     # International (+44 20 7946 0958), North American ((555) 123-4567) or national with a trunk 0 (020 7946 0958);
@@ -95,7 +95,7 @@ class Redaction:
                 return placeholder  # it was in the mail itself
             if placeholder not in self.values:
                 raise AIProposalError(f"the AI answered with an unknown placeholder {placeholder}")
-            return self.values[placeholder]
+            return self.restore(self.values[placeholder])  # a URL's value can hold the EMAIL_n issued before it
 
         return PLACEHOLDER.sub(value, text)
 

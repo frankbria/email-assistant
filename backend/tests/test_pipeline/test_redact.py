@@ -117,3 +117,19 @@ def test_a_placeholder_the_ai_made_up_is_refused_rather_than_shown_to_the_owner(
     assert redaction.restore("PERSON_4 EMAIL_1") == "PERSON_4 a@x.example"
     with pytest.raises(AIProposalError):
         redaction.restore("Hi PERSON_9")
+
+
+def test_an_american_express_number_in_its_four_six_five_groups_is_redacted():
+    redacted = Redaction([]).redact("Card: 3782 822463 10005, or 3782-822463-10005.")
+
+    assert "822463" not in redacted and "10005" not in redacted
+
+
+def test_a_link_that_carries_an_email_address_is_restored_whole():
+    """The email is replaced first, so the link's placeholder stands for text holding EMAIL_n: both must come back."""
+    link = "https://example.com/pay?email=ana@example.com"
+    redaction = Redaction([])
+    redacted = redaction.redact(f"Pay here: {link}")
+
+    assert "ana@example.com" not in redacted
+    assert redaction.restore(redacted) == f"Pay here: {link}"
