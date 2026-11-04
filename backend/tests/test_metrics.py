@@ -173,3 +173,14 @@ async def test_a_run_leaves_another_runs_scratch_database_alone(tmp_path: Path):
     finally:
         await other.drop_database(another_run.name)
         await other.close()
+
+
+async def test_emails_without_a_message_id_are_each_their_own_email():
+    """The IMAP plugin reports a missing Message-ID as "": those emails must not be held out together."""
+    first, second = line("Weekly deals #1", "archive_noise"), line("Weekly deals #2", "archive_noise")
+    first["message_id"] = second["message_id"] = ""
+    ai = BySubject({"Weekly deals #1": noise("deals #1"), "Weekly deals #2": noise("deals #2")})
+
+    await evaluate([first, second], ai)
+
+    assert 'subject "Weekly deals #2"' in ai.prompts[0] and 'subject "Weekly deals #1"' in ai.prompts[1]

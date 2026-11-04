@@ -71,8 +71,10 @@ def message_of(line: Line, message_id: PydanticObjectId) -> Message:
 async def evaluate(lines: Sequence[Line], provider: AIProvider) -> list[Job]:
     """The pipeline's decision on each line after calibration corrections, in order. One AI call per line."""
     # One id per email: holding a line out holds out every reaction to it (a re-run calibration repeats emails).
-    ids = {line["message_id"]: PydanticObjectId() for line in lines}
-    messages = [message_of(line, ids[line["message_id"]]) for line in lines]
+    # A missing Message-ID ("" from IMAP) says nothing about sameness, so each such line is its own email.
+    keys = [line["message_id"].strip() or f"line {number}" for number, line in enumerate(lines)]
+    ids = {key: PydanticObjectId() for key in keys}
+    messages = [message_of(line, ids[key]) for line, key in zip(lines, keys)]
     for message, line in zip(messages, lines):
         await record_example(message, line["text"], line["owner_verb"], "calibration")
     jobs = []
