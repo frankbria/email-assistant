@@ -1,11 +1,14 @@
 # backend/app/services/ai_provider.py
 from functools import lru_cache
+from collections.abc import Callable
 from typing import Protocol, TypeVar
 
 from anthropic import AsyncAnthropic
 from pydantic import BaseModel
 
-from app.config import get_settings
+from app.auth import OwnerId
+from app.config import AIProviderName
+from app.models.user_settings import settings_for
 
 SchemaT = TypeVar("SchemaT", bound=BaseModel)
 
@@ -46,10 +49,16 @@ class AnthropicProvider:
         return response.parsed_output
 
 
-# One provider (and HTTP connection pool) per process, like get_settings().
+PROVIDERS: dict[AIProviderName, Callable[[str], AIProvider]] = {"anthropic": AnthropicProvider}
+
+
+# One provider (and HTTP connection pool) per provider and model, like get_settings().
 @lru_cache
-def get_ai_provider() -> AIProvider:
-    settings = get_settings()
-    if settings.ai_provider == "anthropic":
-        return AnthropicProvider(settings.ai_model)
-    raise ValueError(f"Unknown AI provider: {settings.ai_provider}")
+def provider_for(name: AIProviderName, model: str) -> AIProvider:
+    return PROVIDERS[name](model)
+
+
+async def get_ai_provider(owner_id: OwnerId) -> AIProvider:
+    """The owner's chosen provider and model, read on every call so a change applies without a restart."""
+    settings = await settings_for(owner_id)
+    return provider_for(settings.ai_provider, settings.ai_model)

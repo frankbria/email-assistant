@@ -68,7 +68,7 @@ def test_no_route_accepts_a_user_id(method, path, operation):
 
 
 def test_valid_token_identifies_the_owner(anonymous_client):
-    response = anonymous_client.get("/api/v1/settings/email", headers=bearer_headers("owner-a"))
+    response = anonymous_client.get("/api/v1/settings", headers=bearer_headers("owner-a"))
 
     assert response.status_code == 200
     assert response.json()["user_id"] == "owner-a"
@@ -76,7 +76,7 @@ def test_valid_token_identifies_the_owner(anonymous_client):
 
 def test_user_id_query_param_cannot_switch_user(anonymous_client):
     response = anonymous_client.get(
-        "/api/v1/settings/email?user_id=someone-else", headers=bearer_headers("owner-a")
+        "/api/v1/settings?user_id=someone-else", headers=bearer_headers("owner-a")
     )
 
     assert response.json()["user_id"] == "owner-a"
@@ -94,6 +94,6 @@ def test_user_id_query_param_cannot_switch_user(anonymous_client):
 )
 def test_bad_token_is_401(anonymous_client, token):
     response = anonymous_client.get(
-        "/api/v1/settings/email", headers={"Authorization": f"Bearer {token}"}
+        "/api/v1/settings", headers={"Authorization": f"Bearer {token}"}
     )
     assert response.status_code == 401

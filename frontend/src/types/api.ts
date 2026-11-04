@@ -9,11 +9,14 @@ export interface MongoDocument {
   id?: string
 }
 
-export interface UserSettings {
-  user_id: string;
-  enable_spam_filtering: boolean;
-  enable_auto_categorization: boolean;
-  skip_low_priority_emails: boolean;
+export type AIProviderName = 'anthropic' // matches the backend's AIProviderName
+
+// The settings screen's choices; until the owner saves, each is the server's env default.
+export interface AssistantSettings {
+  ai_provider: AIProviderName
+  ai_model: string
+  poll_seconds: number
+  first_connect_days: number
 }
 
 export type DiagnosisKind =

@@ -140,7 +140,7 @@ async def test_an_undone_archive_stays_in_the_inbox_through_the_next_sync(async_
     [archive_entry] = await history(async_client)
     await async_client.post(f"/api/v1/history/{archive_entry['_id']}/undo")
 
-    await SyncEngine(plugins, test_db["user"], poll_seconds=60, provider=FakeAIProvider()).sync_all()
+    await SyncEngine(plugins, test_db["user"], poll_seconds=60, ai_provider_for=FakeAIProvider()).sync_all()
 
     assert len(mailbox.messages("INBOX")) == 1 and mailbox.messages("Archive") == []
     assert [entry["action"] for entry in await history(async_client)] == ["restored", "archived"]

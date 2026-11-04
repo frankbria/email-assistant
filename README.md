@@ -74,6 +74,7 @@ npm run dev
 ## 🧱 Key Features (Sprint 1)
 - API endpoints for email-task management:
   - `GET /api/v1/jobs` and the job actions (approve, edit, choose another action, dismiss); see `backend/README.md`
+  - `GET/PUT /api/v1/settings`: AI provider and model, poll interval, first-connect window
 - Bottom navigation bar with active tab highlighting for main app sections
 - Mobile-first, touch-friendly design and persistent MongoDB storage
 

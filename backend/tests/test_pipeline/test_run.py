@@ -46,7 +46,7 @@ async def jobs() -> list[Job]:
 
 async def run_pass(test_db, mailbox: Mailbox, provider: FakeAIProvider, cap: int | None = None) -> None:
     async with connected(reference_imap_plugin(mailbox)) as registry:
-        await SyncEngine(registry, test_db["user"], poll_seconds=60, provider=provider, ai_monthly_cap=cap).sync_all()
+        await SyncEngine(registry, test_db["user"], poll_seconds=60, ai_provider_for=provider, ai_monthly_cap=cap).sync_all()
 
 
 async def test_a_new_message_flows_end_to_end_to_a_job(test_db, mailbox: Mailbox):

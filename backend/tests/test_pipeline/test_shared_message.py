@@ -44,7 +44,7 @@ async def test_the_same_mail_in_two_accounts_is_one_job_archived_in_both_when_do
     message_id = deliver_to_both(home, work, "Invoice 4471")
     provider = FakeAIProvider(result=todo())
     async with connected(reference_imap_plugin(home, HOME), reference_imap_plugin(work, WORK)) as registry:
-        await SyncEngine(registry, test_db["user"], poll_seconds=60, provider=provider).sync_all()
+        await SyncEngine(registry, test_db["user"], poll_seconds=60, ai_provider_for=provider).sync_all()
         [job] = await Job.find(Job.owner_id == OWNER).to_list()
         copies = await Message.find(Message.message_id == message_id).to_list()
         finished = await finish(job.id, "done", registry, by="owner", level="ask")
@@ -62,14 +62,14 @@ async def test_a_copy_arriving_after_its_job_was_done_is_archived_at_once(test_d
     home, work = new_mailbox(), new_mailbox()
     provider = FakeAIProvider(result=todo())
     async with connected(reference_imap_plugin(home, HOME), reference_imap_plugin(work, WORK)) as registry:
-        await SyncEngine(registry, test_db["user"], poll_seconds=60, provider=provider).sync_all()  # first passes, empty
+        await SyncEngine(registry, test_db["user"], poll_seconds=60, ai_provider_for=provider).sync_all()  # first passes, empty
     message_id = deliver_to_both(home, work, "Invoice 4471")
     async with connected(reference_imap_plugin(home, HOME)) as registry:
-        await SyncEngine(registry, test_db["user"], poll_seconds=60, provider=provider).sync_all()
+        await SyncEngine(registry, test_db["user"], poll_seconds=60, ai_provider_for=provider).sync_all()
         [job] = await Job.find(Job.owner_id == OWNER).to_list()
         await finish(job.id, "done", registry, by="owner", level="ask")
     async with connected(reference_imap_plugin(home, HOME), reference_imap_plugin(work, WORK)) as registry:
-        await SyncEngine(registry, test_db["user"], poll_seconds=60, provider=provider).sync_all()
+        await SyncEngine(registry, test_db["user"], poll_seconds=60, ai_provider_for=provider).sync_all()
 
     [shared] = await Job.find(Job.owner_id == OWNER).to_list()
     assert len(shared.message_ids) == 2 and (shared.state, shared.error) == ("done", None)
@@ -85,11 +85,11 @@ async def test_a_first_connect_copy_is_never_archived_on_another_accounts_decisi
     message_id = deliver_to_both(home, work, "Invoice 4471")
     provider = FakeAIProvider(result=todo())
     async with connected(reference_imap_plugin(home, HOME)) as registry:
-        await SyncEngine(registry, test_db["user"], poll_seconds=60, provider=provider).sync_all()
+        await SyncEngine(registry, test_db["user"], poll_seconds=60, ai_provider_for=provider).sync_all()
         [done] = await Job.find(Job.owner_id == OWNER).to_list()
         await finish(done.id, "done", registry, by="owner", level="ask")
     async with connected(reference_imap_plugin(home, HOME), reference_imap_plugin(work, WORK)) as registry:
-        await SyncEngine(registry, test_db["user"], poll_seconds=60, provider=provider).sync_all()  # work: first connect
+        await SyncEngine(registry, test_db["user"], poll_seconds=60, ai_provider_for=provider).sync_all()  # work: first connect
 
     jobs = await Job.find(Job.owner_id == OWNER).sort("created_at").to_list()
     assert [(job.state, job.requires_approval, len(job.message_ids)) for job in jobs] == [("done", True, 1), ("open", True, 1)]
@@ -100,10 +100,10 @@ async def test_a_first_connect_copy_joining_an_open_job_makes_it_need_approval(t
     await add_owner(test_db)
     home, work = new_mailbox(), new_mailbox()
     async with connected(reference_imap_plugin(home, HOME)) as registry:
-        await SyncEngine(registry, test_db["user"], poll_seconds=60, provider=FakeAIProvider(result=todo())).sync_all()  # home: past first pass
+        await SyncEngine(registry, test_db["user"], poll_seconds=60, ai_provider_for=FakeAIProvider(result=todo())).sync_all()  # home: past first pass
     deliver_to_both(home, work, "Invoice 4471")
     async with connected(reference_imap_plugin(home, HOME), reference_imap_plugin(work, WORK)) as registry:
-        await SyncEngine(registry, test_db["user"], poll_seconds=60, provider=FakeAIProvider(result=todo())).sync_all()
+        await SyncEngine(registry, test_db["user"], poll_seconds=60, ai_provider_for=FakeAIProvider(result=todo())).sync_all()
 
     [job] = await Job.find(Job.owner_id == OWNER).to_list()
     assert (job.state, len(job.message_ids), job.requires_approval) == ("open", 2, True)
@@ -147,7 +147,7 @@ async def test_one_copy_handled_elsewhere_keeps_the_job_open_for_the_other(test_
     home, work = new_mailbox(), new_mailbox()
     message_id = deliver_to_both(home, work, "Invoice 4471")
     async with connected(reference_imap_plugin(home, HOME), reference_imap_plugin(work, WORK)) as registry:
-        await SyncEngine(registry, test_db["user"], poll_seconds=60, provider=FakeAIProvider(result=todo())).sync_all()
+        await SyncEngine(registry, test_db["user"], poll_seconds=60, ai_provider_for=FakeAIProvider(result=todo())).sync_all()
         work_copy = await Message.find_one(Message.plugin_id == WORK)
         home.move(message_id, "Archive")
         await close_handled_elsewhere(OWNER, HOME, registry.clients[HOME])
@@ -167,11 +167,11 @@ async def test_a_copy_attached_to_a_finished_job_is_archived_even_after_a_crash(
     home, work = new_mailbox(), new_mailbox()
     message_id = deliver_to_both(home, work, "Invoice 4471")
     async with connected(reference_imap_plugin(home, HOME), reference_imap_plugin(work, WORK)) as registry:
-        await SyncEngine(registry, test_db["user"], poll_seconds=60, provider=FakeAIProvider(result=todo())).sync_all()
+        await SyncEngine(registry, test_db["user"], poll_seconds=60, ai_provider_for=FakeAIProvider(result=todo())).sync_all()
         [job] = await Job.find(Job.owner_id == OWNER).to_list()
         await Job.find(Job.id == job.id).update({"$set": {"state": "done"}})  # finished, but the work copy wasn't archived
         await Message.find(Message.plugin_id == WORK).update({"$set": {"pipeline_done": False}})
-        await SyncEngine(registry, test_db["user"], poll_seconds=60, provider=FakeAIProvider(result=todo())).sync_all()
+        await SyncEngine(registry, test_db["user"], poll_seconds=60, ai_provider_for=FakeAIProvider(result=todo())).sync_all()
 
     assert work.messages("INBOX") == [] and [m["Message-ID"] for m in work.messages("Archive")] == [message_id]
 
