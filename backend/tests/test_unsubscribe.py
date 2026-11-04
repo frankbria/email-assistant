@@ -20,6 +20,7 @@ def header(value: str) -> list[Header]:
     ("<javascript:alert(1)>, <mailto:leave@shop.example>", "mailto:leave@shop.example"),
     ("<http://shop.example/u>, <mailto:leave@shop.example>", "mailto:leave@shop.example"),  # plain http isn't offered
     ("<https://shop.example@internal.example/u>", None),  # credentials hide the real host
+    ("<https://shop.example:99999/u>, <mailto:leave@shop.example>", "mailto:leave@shop.example"),  # port out of range
     ("<data:text/html,hi>, <ftp://shop.example/u>", None),
     ("<mailto:a@shop.example,b@shop.example>", None),
     ("https://shop.example/u", None),  # not in angle brackets: not RFC 2369

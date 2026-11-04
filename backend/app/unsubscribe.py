@@ -39,8 +39,14 @@ def is_https(target: str) -> bool:
     """Credentials (https://shop.example@internal.example/) would hide the real host from the owner."""
     try:
         parts = urlsplit(target)
-        return parts.scheme.lower() == "https" and bool(parts.hostname) and parts.username is None and not CONTROL.search(target)
-    except ValueError:  # e.g. an unbalanced IPv6 bracket
+        return (
+            parts.scheme.lower() == "https"
+            and bool(parts.hostname)
+            and parts.port != -1  # reading port checks it; the browser rejects an out-of-range one
+            and parts.username is None
+            and not CONTROL.search(target)
+        )
+    except ValueError:  # e.g. an unbalanced IPv6 bracket, or a port out of range
         return False
 
 
