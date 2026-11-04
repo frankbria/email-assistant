@@ -298,20 +298,114 @@ describe('Job queue actions', () => {
     expect(await screen.findByText('Plugin not connected')).toBeInTheDocument()
     expect(screen.getByText('Answer the project update')).toBeInTheDocument()
   })
+})
 
-  it('an ask-owner card shows its problems and offers no approval', async () => {
-    const card = await renderQueue(cardWith({ ask_owner: true, problems: ['The AI could not tell what Ana wants'] }))
+const askOwner = cardWith({
+  verb: 'reply',
+  title: 'Q4 budget',
+  evidence: [],
+  ask_owner: true,
+  suggested_verbs: ['reply', 'todo'],
+  problems: ['the AI gave no usable proposal'],
+})
 
-    expect(within(card).getByText('The AI could not tell what Ana wants')).toBeInTheDocument()
-    expect(within(card).queryByRole('button', { name: 'Approve' })).not.toBeInTheDocument()
-    expect(within(card).getByRole('button', { name: 'Other action' })).toBeInTheDocument()
+describe('Ask-owner card', () => {
+  beforeEach(() => {
+    vi.clearAllMocks()
   })
 
-  it('an ask-owner card can choose its own proposed verb, since approval needs a choice first', async () => {
-    const card = await renderQueue(cardWith({ verb: 'reply', ask_owner: true, problems: ['Unsure'] }))
+  it('asks the owner what to do, with the gist, the problems and a button per suggested verb', async () => {
+    const card = await renderQueue(askOwner)
 
-    await userEvent.click(within(card).getByRole('button', { name: 'Other action' }))
+    expect(within(card).getByRole('heading', { name: 'What do you want to do with this?' })).toBeInTheDocument()
+    expect(within(card).getByText(/teammate@company\.com - Project Update/)).toBeInTheDocument()
+    expect(within(card).getByText('Q4 budget')).toBeInTheDocument()
+    expect(within(card).getByText('the AI gave no usable proposal')).toBeInTheDocument()
+    expect(within(card).getByRole('button', { name: 'Reply' })).toBeInTheDocument()
+    expect(within(card).getByRole('button', { name: 'To-do' })).toBeInTheDocument()
+    expect(within(card).queryByRole('button', { name: 'Approve' })).not.toBeInTheDocument()
+    expect(within(card).getByRole('button', { name: 'Dismiss' })).toBeInTheDocument()
+  })
 
-    expect(await screen.findByRole('menuitem', { name: 'Reply' })).toBeInTheDocument()
+  it('shows the first evidence quote when the job carries one', async () => {
+    const card = await renderQueue({ ...askOwner, job: { ...askOwner.job, evidence: ['Can we cut travel?', 'Second quote'] } })
+
+    expect(within(card).getByText('Can we cut travel?')).toBeInTheDocument()
+    expect(within(card).queryByText('Second quote')).not.toBeInTheDocument()
+  })
+
+  it('a choice that comes back failed stays in the queue', async () => {
+    const card = await renderQueue(askOwner)
+    mockFetch.mockResolvedValueOnce(Response.json({ ...askOwner.job, state: 'failed', problems: ['Still unsure'] }))
+
+    await userEvent.click(within(card).getByRole('button', { name: 'Reply' }))
+
+    expect(await screen.findByText('Still unsure')).toBeInTheDocument()
+  })
+
+  it('picking a suggested verb turns the card into the proposed job', async () => {
+    const card = await renderQueue(askOwner)
+    mockFetch.mockResolvedValueOnce(
+      Response.json({
+        ...askOwner.job,
+        ask_owner: false,
+        suggested_verbs: [],
+        problems: [],
+        title: 'Answer the Q4 budget question',
+        artifacts: { ...askOwner.job.artifacts, draft: 'Yes, travel can go.' },
+      }),
+    )
+
+    await userEvent.click(within(card).getByRole('button', { name: 'Reply' }))
+
+    const proposed = await screen.findByRole('article', { name: 'Answer the Q4 budget question' })
+    expect(within(proposed).getByText('Yes, travel can go.')).toBeInTheDocument()
+    expect(within(proposed).getByRole('button', { name: 'Approve' })).toBeInTheDocument()
+    expect(requestTo(1)).toMatchObject({ method: 'POST', body: { verb: 'reply' } })
+    expect(requestTo(1).url).toMatch(/\/api\/v1\/jobs\/job-1\/choose$/)
+  })
+
+  it('"Something else" lists the verbs that were not suggested', async () => {
+    const card = await renderQueue(askOwner)
+
+    await userEvent.click(within(card).getByRole('button', { name: 'Something else' }))
+
+    const offered = (await screen.findAllByRole('menuitem')).map((item) => item.textContent)
+    expect(offered).toEqual(['Forward', 'Digest', 'Snooze', 'Follow up', 'Archive as noise', 'Unsubscribe'])
+  })
+
+  it('a choice that still needs the owner shows its new problems', async () => {
+    const card = await renderQueue(askOwner)
+    mockFetch.mockResolvedValueOnce(
+      Response.json({ ...askOwner.job, verb: 'snooze', suggested_verbs: ['snooze'], problems: ['the monthly AI cap is reached'] }),
+    )
+
+    await userEvent.click(within(card).getByRole('button', { name: 'Something else' }))
+    await userEvent.click(await screen.findByRole('menuitem', { name: 'Snooze' }))
+
+    expect(await within(card).findByText('the monthly AI cap is reached')).toBeInTheDocument()
+    expect(within(card).queryByText('the AI gave no usable proposal')).not.toBeInTheDocument()
+    expect(within(card).getByRole('button', { name: 'Snooze' })).toBeInTheDocument()
+  })
+
+  it('a failed choice shows the reason and keeps the card', async () => {
+    const card = await renderQueue(askOwner)
+    mockFetch.mockResolvedValueOnce(Response.json({ detail: 'Plugin not connected' }, { status: 409 }))
+
+    await userEvent.click(within(card).getByRole('button', { name: 'To-do' }))
+
+    expect(await screen.findByText('Plugin not connected')).toBeInTheDocument()
+    expect(within(card).getByRole('heading', { name: 'What do you want to do with this?' })).toBeInTheDocument()
+    expect(within(card).getByRole('button', { name: 'To-do' })).toBeEnabled()
+  })
+
+  it('dismissing an ask-owner job removes its card', async () => {
+    const card = await renderQueue(askOwner)
+    mockFetch.mockResolvedValueOnce(Response.json({ ...askOwner.job, state: 'dismissed' }))
+
+    await userEvent.click(within(card).getByRole('button', { name: 'Dismiss' }))
+
+    await waitFor(() => expect(screen.queryByRole('article', { name: 'Q4 budget' })).not.toBeInTheDocument())
+    expect(requestTo(1).url).toMatch(/\/api\/v1\/jobs\/job-1\/dismiss$/)
   })
 })

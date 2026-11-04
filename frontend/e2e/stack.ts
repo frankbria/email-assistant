@@ -67,10 +67,12 @@ export function resetDatabase(): void {
   seedScript('reset')
 }
 
-export function seedJob(verb: 'reply' | 'forward', options: { draft?: string; forwardTo?: string } = {}): SeededJob {
+// askOwner: the problem that leaves the choice to the owner, with `verb` the one suggested
+export function seedJob(verb: 'reply' | 'forward', options: { draft?: string; forwardTo?: string; askOwner?: string } = {}): SeededJob {
   const args: string[] = [verb]
   if (options.draft) args.push('--draft', options.draft)
   if (options.forwardTo) args.push('--forward-to', options.forwardTo)
+  if (options.askOwner) args.push('--ask-owner', options.askOwner)
   const job: SeededJob = JSON.parse(seedScript('job', ...args))
   return job
 }
