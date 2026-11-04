@@ -160,3 +160,8 @@ export interface HistoryCard {
   sender: { name: string | null; email: string }
   subject: string
 }
+
+export interface FilteredCard extends HistoryCard {
+  rationale: string | null
+  restorable: boolean
+}

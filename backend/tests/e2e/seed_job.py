@@ -3,6 +3,7 @@
     uv run python -m tests.e2e.seed_job reset
     uv run python -m tests.e2e.seed_job job reply --draft "Thursday works."   # prints the job as JSON
     uv run python -m tests.e2e.seed_job job reply --ask-owner "the AI gave no usable proposal"
+    uv run python -m tests.e2e.seed_job job archive_noise --noise-rationale "A promotional mailing"
     uv run python -m tests.e2e.seed_job inbox <address>                       # prints its mail as JSON
 
 A job is seeded the way test_jobs_api.job_from makes one: a sender really mails the owner's GreenMail
@@ -46,7 +47,7 @@ async def reset() -> None:
     await client.close()
 
 
-async def seed_job(verb: str, draft: str | None, forward_to: str | None, ask_owner: str | None) -> dict[str, str]:
+async def seed_job(verb: str, draft: str | None, forward_to: str | None, ask_owner: str | None, noise_rationale: str | None) -> dict[str, str]:
     """`ask_owner`: the problem that sends the job to the owner, with `verb` as its one suggestion, as ask_owner_job makes it."""
     client = await connect()
     owner = await client[get_settings().current_mongodb_db]["user"].find_one({}, {"_id": 1})
@@ -68,7 +69,7 @@ async def seed_job(verb: str, draft: str | None, forward_to: str | None, ask_own
     await message.insert()
     assert message.id is not None
     job = Job(owner_id=str(owner["_id"]), verb=verb, title=title, evidence=[QUESTION],
-              artifacts=Artifacts(draft=draft, forward_to=forward_to), message_ids=[message.id],
+              artifacts=Artifacts(draft=draft, forward_to=forward_to, noise_rationale=noise_rationale), message_ids=[message.id],
               ask_owner=ask_owner is not None, suggested_verbs=[verb] if ask_owner else [], problems=[ask_owner] if ask_owner else [])
     await job.insert()
     await client.close()
@@ -84,16 +85,17 @@ def main() -> None:
     commands = parser.add_subparsers(dest="command", required=True)
     commands.add_parser("reset")
     job = commands.add_parser("job")
-    job.add_argument("verb", choices=["reply", "forward"])
+    job.add_argument("verb", choices=["reply", "forward", "archive_noise"])
     job.add_argument("--draft")
     job.add_argument("--forward-to")
     job.add_argument("--ask-owner", metavar="PROBLEM")
+    job.add_argument("--noise-rationale")
     commands.add_parser("inbox").add_argument("address")
     arguments = parser.parse_args()
     if arguments.command == "reset":
         asyncio.run(reset())
     elif arguments.command == "job":
-        print(json.dumps(asyncio.run(seed_job(arguments.verb, arguments.draft, arguments.forward_to, arguments.ask_owner))))
+        print(json.dumps(asyncio.run(seed_job(arguments.verb, arguments.draft, arguments.forward_to, arguments.ask_owner, arguments.noise_rationale))))
     else:
         print(json.dumps(inbox(arguments.address)))
 

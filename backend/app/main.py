@@ -12,7 +12,7 @@ from app.models.example import Example
 from app.permissions import ApprovalStreak, PermissionSettings
 from app.models.sync_cursor import SyncCursor
 from beanie import init_beanie
-from app.api.routers import connections, history, jobs, permissions, settings
+from app.api.routers import connections, filtered, history, jobs, permissions, settings
 from app.middleware import setup_cors
 from app.config import get_settings, Settings
 from pymongo import AsyncMongoClient
@@ -139,6 +139,7 @@ setup_cors(app)
 # Include routers
 app.include_router(jobs.router)
 app.include_router(history.router)
+app.include_router(filtered.router)
 app.include_router(settings.router)  # router already has prefix in its definition
 app.include_router(connections.router)
 app.include_router(permissions.router)
