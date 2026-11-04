@@ -40,7 +40,7 @@ async def test_an_approved_reply_goes_threaded_to_the_sender_and_the_mail_is_arc
     ana = new_mailbox()
     job, ref = await job_for(mailbox, ana, "reply", Artifacts(options=["Thursday works.", "Can't make it."]))
     async with connected(reference_imap_plugin(mailbox)) as registry:
-        executed = await execute(job.id, registry, body="Thursday at 3 works. See you then!")
+        executed = await execute(job.id, registry, body="Thursday at 3 works. See you then!", by="owner", level="ask")
 
     [reply] = received(ana)
     assert (executed.state, executed.error) == ("done", None)
@@ -54,12 +54,12 @@ async def test_a_reply_whose_send_fails_stays_open_to_retry_and_isnt_archived(te
     ana = new_mailbox()
     job, ref = await job_for(mailbox, ana, "reply", Artifacts(draft="Thursday works."))
     async with connected(reference_imap_plugin(mailbox, **CANT_SEND)) as registry:
-        failed = await execute(job.id, registry)
+        failed = await execute(job.id, registry, by="owner", level="ask")
 
     assert failed.state == "failed" and failed.error is not None and failed.error.startswith("send failed — retry")
     assert [m["Message-ID"] for m in received(mailbox)] == [ref] and received(ana) == []
     async with connected(reference_imap_plugin(mailbox)) as registry:
-        retried = await execute(job.id, registry)
+        retried = await execute(job.id, registry, by="owner", level="ask")
     assert (retried.state, retried.error) == ("done", None) and len(received(ana)) == 1
 
 
@@ -67,7 +67,7 @@ async def test_an_approved_forward_carries_the_original_to_the_confirmed_recipie
     ana, legal = new_mailbox(), new_mailbox()
     job, ref = await job_for(mailbox, ana, "forward", Artifacts(draft="Can you check this?", forward_to="someone@else.example"))
     async with connected(reference_imap_plugin(mailbox)) as registry:
-        executed = await execute(job.id, registry, forward_to=legal.address)
+        executed = await execute(job.id, registry, forward_to=legal.address, by="owner", level="ask")
 
     [forward] = received(legal)
     assert executed.state == "done" and forward["Subject"] == "Fwd: Q4 budget"
@@ -80,7 +80,7 @@ async def test_a_forward_without_a_recipient_the_owner_chose_sends_nothing(test_
     """The AI's suggestion alone isn't the owner's confirmation (forward is never autonomous)."""
     job, ref = await job_for(mailbox, new_mailbox(), "forward", Artifacts(draft="FYI", forward_to="legal@example.com"))
     async with connected(reference_imap_plugin(mailbox)) as registry:
-        failed = await execute(job.id, registry)
+        failed = await execute(job.id, registry, by="owner", level="ask")
 
     assert (failed.state, failed.error) == ("failed", "send failed — retry: choose who to forward it to")
     assert [m["Message-ID"] for m in received(mailbox)] == [ref]
@@ -90,10 +90,10 @@ async def test_only_open_or_failed_reply_and_forward_jobs_execute(test_db, mailb
     job, _ = await job_for(mailbox, new_mailbox(), "todo", Artifacts(link="https://x.example"))
     async with connected(reference_imap_plugin(mailbox)) as registry:
         with pytest.raises(ValueError, match="only reply and forward jobs send"):
-            await execute(job.id, registry)
+            await execute(job.id, registry, by="owner", level="ask")
         await Job.find(Job.id == job.id).update({"$set": {"verb": "reply", "state": "done"}})
         with pytest.raises(JobNotOpen):
-            await execute(job.id, registry, body="hi")
+            await execute(job.id, registry, body="hi", by="owner", level="ask")
 
 
 @pytest.mark.parametrize("body", ["", "   "])
@@ -102,7 +102,7 @@ async def test_an_empty_reply_is_never_sent(test_db, mailbox: Mailbox, body: str
     ana = new_mailbox()
     job, _ = await job_for(mailbox, ana, "reply", Artifacts(draft="Thursday works."))
     async with connected(reference_imap_plugin(mailbox)) as registry:
-        failed = await execute(job.id, registry, body=body)
+        failed = await execute(job.id, registry, body=body, by="owner", level="ask")
 
     assert (failed.state, failed.error) == ("failed", "send failed — retry: write the reply first") and received(ana) == []
 
@@ -120,9 +120,9 @@ async def test_a_send_that_went_through_is_never_repeated_when_only_the_archive_
     job = Job(owner_id=OWNER, verb="reply", title="t", artifacts=Artifacts(draft="Yes!"), message_ids=[message.id])
     await job.insert()
     async with connected(reference_imap_plugin(owner)) as registry:
-        first = await execute(job.id, registry)
+        first = await execute(job.id, registry, by="owner", level="ask")
         owner.create_folder("Archive")
-        retried = await execute(job.id, registry)
+        retried = await execute(job.id, registry, by="owner", level="ask")
 
     assert first.state == "open" and first.error is not None and first.sent_at is not None
     assert (retried.state, retried.error) == ("done", None)
@@ -140,7 +140,7 @@ async def test_an_interrupted_send_ends_retryable(test_db, monkeypatch):
     job = Job(owner_id=OWNER, verb="reply", title="t", artifacts=Artifacts(draft="Yes"), message_ids=[message.id])
     await job.insert()
     async with connected(fake_plugin("fake", {"FAKE_SEND": "FAKE_MODE_SEND"})) as registry:
-        sending = asyncio.create_task(execute(job.id, registry))
+        sending = asyncio.create_task(execute(job.id, registry, by="owner", level="ask"))
         await asyncio.sleep(1)
         sending.cancel()
         with pytest.raises(asyncio.CancelledError):
@@ -156,7 +156,7 @@ async def test_a_send_claim_left_by_a_crashed_process_can_be_retried(test_db, ma
     stale = datetime.now(UTC) - timedelta(minutes=30)
     await Job.find(Job.id == job.id).update({"$set": {"state": "sending", "sending_since": stale}})
     async with connected(reference_imap_plugin(mailbox)) as registry:
-        executed = await execute(job.id, registry)
+        executed = await execute(job.id, registry, by="owner", level="ask")
 
     assert executed.state == "done" and len(received(ana)) == 1
 

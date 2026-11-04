@@ -1,38 +1,26 @@
 # The jobs API behind the job queue (spec §10.1, §10.2): list the owner's open jobs; approve, edit, choose another
 # action, dismiss. Real MongoDB; GreenMail + the reference IMAP plugin for sends and archives; FakeAIProvider.
-from collections.abc import AsyncIterator, Iterator
+from collections.abc import Iterator
 from datetime import UTC, datetime, timedelta
 
 import pytest
 from beanie import PydanticObjectId
 from beanie.operators import In
 
-from app.api.routers.jobs import plugin_registry
 from app.executor import STALE_SENDING, JobNotOpen, defer, execute, finish
 from app.main import app
 from app.models.job import Artifacts, Job, JobState, Verb
 from app.models.message import Message
 from app.permissions import ApprovalStreak
 from app.pipeline.proposal import Proposal
-from app.plugins.registry import PluginRegistry
 from app.services.ai_provider import get_ai_provider
-from tests.conformance.test_mailbox_conformance import reference_imap_plugin
-from tests.test_sync.test_inbox_sync import PLUGIN, connected
+from tests.test_sync.test_inbox_sync import PLUGIN
 from tests.utils.auth import OWNER_ID, bearer_headers
 from tests.utils.fakes import FakeAIProvider
 from tests.utils.mail_server import Mailbox, new_mailbox
 
 pytestmark = pytest.mark.usefixtures("mail_server")
 QUESTION = "Could we meet Thursday at 3pm?"
-
-
-@pytest.fixture
-async def plugins(mailbox: Mailbox) -> AsyncIterator[PluginRegistry]:
-    mailbox.create_folder("Archive")
-    async with connected(reference_imap_plugin(mailbox)) as registry:
-        app.dependency_overrides[plugin_registry] = lambda: registry
-        yield registry
-    app.dependency_overrides.pop(plugin_registry)
 
 
 @pytest.fixture
@@ -257,11 +245,11 @@ async def test_an_approval_never_carries_out_an_action_chosen_since_the_owner_sa
     await snooze.set({"ask_owner": True})
 
     with pytest.raises(JobNotOpen):
-        await finish(todo.id, "done", plugins, verb="todo")
+        await finish(todo.id, "done", plugins, verb="todo", by="owner", level="ask")
     with pytest.raises(JobNotOpen):
-        await execute(reply.id, plugins)
+        await execute(reply.id, plugins, by="owner", level="ask")
     with pytest.raises(JobNotOpen):
-        await defer(snooze.id)
+        await defer(snooze.id, by="owner", level="ask")
 
     states = [job.state for job in await Job.find(In(Job.id, [todo.id, reply.id, snooze.id])).to_list()]
     assert states == ["open"] * 3 and len(mailbox.messages("INBOX")) == 3 and ana.messages("INBOX") == []

@@ -92,6 +92,11 @@ backend/
 - `POST /api/v1/jobs/{id}/choose` - Choose another action: `{"verb": ...}` re-runs the proposal for that verb
 - `POST /api/v1/jobs/{id}/dismiss` - Dismiss the job and archive its mail
 
+### History
+
+- `GET /api/v1/history` - Every action the app or the owner took, newest first: action, job, messages, by `app`/`owner`, permission level, result, whether it can be undone (with each one's sender and subject)
+- `POST /api/v1/history/{id}/undo` - Undo an archive (restore the mail to the inbox, verified, logged as its own `restored` entry); 409 for a send ("can't be unsent"), anything else, or an entry already undone
+
 ## 🧪 Running Tests
 
 ```bash

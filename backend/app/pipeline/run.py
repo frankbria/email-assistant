@@ -13,7 +13,7 @@ from pydantic import ValidationError
 from beanie.operators import In, NotIn
 from pymongo import ReturnDocument
 
-from app.executor import STALE_SENDING, JobNotOpen, archive, defer, execute, finish, reopen
+from app.executor import STALE_SENDING, ArchiveFailed, JobNotOpen, archive, defer, execute, finish, record, reopen
 from app.models.ai_usage import AiUsage
 from app.models.job import Job, Verb
 from app.models.message import Message
@@ -89,8 +89,8 @@ async def act_if_autonomous(job: Job, plugins: PluginRegistry) -> None:
     """Spec §9: an `autonomous` verb acts without a tap; `ask` and `never_auto` wait for the owner. An
     ask-owner card or first-connect mail (§5.3) always waits. A reply acts only with a draft, only to the
     original sender (execute never adds recipients), and never to a list (it would post to everyone) or a
-    no-reply address. forward, todo and unsubscribe can't be autonomous. The level is recorded only once
-    the action took effect.
+    no-reply address. forward, todo and unsubscribe can't be autonomous. The executor records the level
+    once the action took effect.
     shortcut: digest waits for the owner until digests group mail (#88)."""
     job_id = job.id
     if job.ask_owner or job.requires_approval or job_id is None:
@@ -98,22 +98,19 @@ async def act_if_autonomous(job: Job, plugins: PluginRegistry) -> None:
     if await level_for(job.owner_id, job.verb) != "autonomous":
         return
     actions: dict[str, Callable[[], Awaitable[Job]]] = {
-        "archive_noise": lambda: finish(job_id, "done", plugins, verb="archive_noise"),
-        "snooze": lambda: defer(job_id),
-        "follow_up": lambda: defer(job_id),
+        "archive_noise": lambda: finish(job_id, "done", plugins, verb="archive_noise", by="app", level="autonomous"),
+        "snooze": lambda: defer(job_id, by="app", level="autonomous"),
+        "follow_up": lambda: defer(job_id, by="app", level="autonomous"),
     }
     if job.verb == "reply" and job.artifacts.draft and await safe_to_reply(job):
-        actions["reply"] = lambda: execute(job_id, plugins)
+        actions["reply"] = lambda: execute(job_id, plugins, by="app", level="autonomous")
     action = actions.get(job.verb)
     if action is None:
         return
     try:
-        acted = await action()
+        await action()
     except (JobNotOpen, ValueError) as error:  # the owner got there first, or it can't act (e.g. no date)
         logger.info("Job %s wasn't acted on autonomously: %s", job_id, error)
-        return
-    if acted.state in ("done", "snoozed"):
-        await Job.find(Job.id == job_id, Job.state == acted.state).update({"$set": {"permission_level": "autonomous"}})
 
 
 async def safe_to_reply(job: Job) -> bool:
@@ -153,9 +150,14 @@ async def attach_copy(job: Job, message: Message) -> Job:
 async def archive_late_copy(job: Job, message: Message, client: Client) -> None:
     """A copy that joined a finished job is archived like the rest were (a no-op once it's out of the
     inbox, so a crash here is retried safely); if that fails, the job reopens with the error."""
-    problem = await archive(message, client)
-    if problem and job.id is not None and job.state in ("done", "dismissed"):
-        await reopen(job.id, "done" if job.state == "done" else "dismissed", [problem])
+    assert job.id is not None and message.id is not None
+    try:
+        if await archive(message, client):
+            await record(job.owner_id, job.id, "archived", [message.id], "app", job.permission_level, undoable=True)
+    except ArchiveFailed as problem:
+        await record(job.owner_id, job.id, "archived", [message.id], "app", job.permission_level, str(problem))
+        if job.state in ("done", "dismissed"):
+            await reopen(job.id, "done" if job.state == "done" else "dismissed", [str(problem)])
 
 
 async def decide(message: Message, client: Client, provider: AIProvider, cap: int | None, chosen: Verb | None = None) -> Job:

@@ -4,13 +4,14 @@ from fastapi import FastAPI
 from contextlib import asynccontextmanager
 from app.models.user_settings import UserSettings
 from app.models.job import Job
+from app.models.action_log import ActionLogEntry
 from app.models.message import Message
 from app.models.ai_usage import AiUsage
 from app.models.rule import Rule
 from app.permissions import ApprovalStreak, PermissionSettings
 from app.models.sync_cursor import SyncCursor
 from beanie import init_beanie
-from app.api.routers import connections, jobs, permissions, settings
+from app.api.routers import connections, history, jobs, permissions, settings
 from app.middleware import setup_cors
 from app.config import get_settings, Settings
 from pymongo import AsyncMongoClient
@@ -57,7 +58,7 @@ async def init_db(settings: Settings | None = None):
     )
     await init_beanie(
         database=client[settings.current_mongodb_db],
-        document_models=[UserSettings, Message, Job, SyncCursor, Rule, AiUsage, PermissionSettings, ApprovalStreak],
+        document_models=[UserSettings, Message, Job, SyncCursor, Rule, AiUsage, PermissionSettings, ApprovalStreak, ActionLogEntry],
         allow_index_dropping=True,
     )
 
@@ -132,6 +133,7 @@ setup_cors(app)
 
 # Include routers
 app.include_router(jobs.router)
+app.include_router(history.router)
 app.include_router(settings.router)  # router already has prefix in its definition
 app.include_router(connections.router)
 app.include_router(permissions.router)

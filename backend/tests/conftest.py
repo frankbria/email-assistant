@@ -20,6 +20,7 @@ from fastapi.testclient import TestClient
 from app.main import app
 from app.models.user_settings import UserSettings
 from app.models.job import Job
+from app.models.action_log import ActionLogEntry
 from app.models.message import Message
 from app.models.ai_usage import AiUsage
 from app.models.rule import Rule
@@ -59,7 +60,7 @@ async def test_db():
 
     db = client[test_db_name]
 
-    document_models = [UserSettings, Message, Job, SyncCursor, Rule, AiUsage, PermissionSettings, ApprovalStreak]
+    document_models = [UserSettings, Message, Job, SyncCursor, Rule, AiUsage, PermissionSettings, ApprovalStreak, ActionLogEntry]
     await init_beanie(
         database=db, document_models=document_models, allow_index_dropping=True
     )
