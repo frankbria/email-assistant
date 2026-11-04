@@ -57,6 +57,30 @@ async def test_a_message_archived_outside_the_app_closes_its_job_on_the_next_pol
     assert [str(m["Message-ID"]) for m in mailbox.messages("INBOX")] == [still_there]
 
 
+async def test_a_digest_lets_go_of_each_newsletter_archived_elsewhere_and_closes_when_none_remain(test_db, mailbox: Mailbox):
+    """A digest spans distinct messages: one read and archived on a phone leaves the digest open for the rest."""
+    await add_owner(test_db)
+    refs = [mailbox.deliver(sender=f"news{n}@example.com", subject=f"Newsletter {n}", body="x") for n in range(3)]
+    async with connected(reference_imap_plugin(mailbox)) as registry:
+        engine = SyncEngine(registry, test_db["user"], poll_seconds=60)
+        await engine.sync_all()
+        messages = {message.message_id: message for message in await Message.find_all().to_list()}
+        digest = Job(owner_id=OWNER, verb="digest", title="Low-priority mail to skim", artifacts=Artifacts(digest="a\nb\nc"),
+                     message_ids=[messages[ref].id for ref in refs])
+        await digest.insert()
+        mailbox.move(refs[0], "Archive")
+
+        await engine.sync_all()
+        one_gone = await Job.get(digest.id)
+        for ref in refs[1:]:
+            mailbox.move(ref, "Archive")
+        await engine.sync_all()
+
+    assert one_gone is not None and one_gone.state == "open"
+    assert one_gone.message_ids == [messages[ref].id for ref in refs[1:]]
+    assert await state_of(digest) == "handled_elsewhere"
+
+
 async def test_only_this_plugins_messages_with_open_jobs_are_checked(test_db, caplog):
     """The fake plugin has no `inbox_contains`, so any call to it would fail the pass."""
     await add_owner(test_db)

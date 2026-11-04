@@ -16,7 +16,7 @@ from app.plugins.registry import PluginRegistry
 from app.sync import close_handled_elsewhere
 from tests.conformance.test_mailbox_conformance import reference_imap_plugin
 from tests.test_sync.test_inbox_sync import OWNER, PLUGIN, connected, fake_plugin
-from tests.utils.mail_server import Mailbox
+from tests.utils.mail_server import Mailbox, new_mailbox
 
 pytestmark = pytest.mark.usefixtures("mail_server")
 
@@ -191,3 +191,46 @@ async def test_an_interrupted_undo_releases_its_claim(test_db, monkeypatch):
 
     reloaded = await ActionLogEntry.get(entry.id)
     assert reloaded is not None and reloaded.undone is False
+
+
+async def archived_once_each(*message_ids: PydanticObjectId) -> bool:
+    entries = await ActionLogEntry.find(ActionLogEntry.action == "archived").to_list()
+    logged = [message_id for entry in entries for message_id in entry.message_ids]
+    return sorted(logged) == sorted(message_ids)
+
+
+async def test_a_digest_that_fails_partway_archives_each_message_once_on_retry(test_db, mailbox: Mailbox):
+    """The first try archives what it can and reopens; the retry archives only what is left."""
+    work = new_mailbox()
+    refs = [mailbox.deliver(sender=f"news{n}@example.com", subject=f"Newsletter {n}", body="x") for n in range(2)]
+    late_ref = work.deliver(sender="news@example.com", subject="Newsletter", body="x")
+    for account in (mailbox, work):
+        account.create_folder("Archive")
+    messages = [*[await stored(PLUGIN, ref) for ref in refs], await stored("work-imap", late_ref)]
+    message_ids = [message.id for message in messages if message.id is not None]
+    digest = Job(owner_id=OWNER, verb="digest", title="Skim", artifacts=Artifacts(digest="a\nb\nc"), message_ids=message_ids)
+    await digest.insert()
+    async with connected(reference_imap_plugin(mailbox)) as registry:  # the work account isn't connected yet
+        failed = await finish(digest.id, "done", registry, by="owner", level="ask")
+    async with connected(reference_imap_plugin(mailbox), reference_imap_plugin(work, "work-imap")) as registry:
+        retried = await finish(digest.id, "done", registry, by="owner", level="ask")
+
+    assert (failed.state, failed.error) == ("open", "work-imap isn't connected, so the message is still in the inbox")
+    assert (retried.state, retried.error) == ("done", None)
+    assert subjects(mailbox, "INBOX") == [] and sorted(subjects(mailbox, "Archive")) == sorted(refs)
+    assert subjects(work, "INBOX") == [] and subjects(work, "Archive") == [late_ref]
+    assert await archived_once_each(*message_ids)
+
+
+async def test_two_jobs_over_one_message_finishing_at_once_archive_it_once(test_db, mailbox: Mailbox):
+    """Both are final, so either may archive it; only one does, and neither reopens."""
+    ref = mailbox.deliver(sender="a@example.com", subject="Invoice", body="Pay invoice 4471")
+    mailbox.create_folder("Archive")
+    message = await stored(PLUGIN, ref)
+    pay, file = await job_over(message), await job_over(message, verb="archive_noise")
+    async with connected(reference_imap_plugin(mailbox)) as registry:
+        finished = await asyncio.gather(*(finish(job.id, "done", registry, by="owner", level="ask") for job in (pay, file)))
+
+    assert [(job.state, job.error) for job in finished] == [("done", None), ("done", None)]
+    assert subjects(mailbox, "INBOX") == [] and subjects(mailbox, "Archive") == [ref]
+    assert message.id is not None and await archived_once_each(message.id)

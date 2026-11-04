@@ -109,6 +109,36 @@ describe('Open jobs page', () => {
     expect(await screen.findByText(/Ana Lima - Project Update/)).toBeInTheDocument()
   })
 
+  it('shows a digest as its message count with one line per message', async () => {
+    const digest: JobCard = {
+      ...jobCard,
+      job: {
+        ...jobCard.job,
+        verb: 'digest',
+        title: 'Low-priority mail to skim',
+        message_ids: ['m1', 'm2', 'm3'],
+        artifacts: {
+          ...jobCard.job.artifacts,
+          digest: 'Garden News: Spring planting.\nCooking Weekly: Three soups.\nCycling Digest: A new trail.',
+        },
+      },
+    }
+    mockFetch.mockResolvedValueOnce(Response.json([digest]))
+
+    await act(async () => {
+      renderPage()
+    })
+
+    const card = await screen.findByRole('article', { name: 'Low-priority mail to skim' })
+    expect(within(card).getByText('3 messages')).toBeInTheDocument()
+    expect(within(card).queryByText(/Project Update/)).not.toBeInTheDocument()
+    expect(within(card).getAllByRole('listitem').map((item) => item.textContent)).toEqual([
+      'Garden News: Spring planting.',
+      'Cooking Weekly: Three soups.',
+      'Cycling Digest: A new trail.',
+    ])
+  })
+
   it('shows the empty state when there are no open jobs', async () => {
     mockFetch.mockResolvedValueOnce(Response.json([]))
 

@@ -52,6 +52,11 @@ function editableFields(job: Job): (keyof JobEdit)[] {
   return fields
 }
 
+// A digest speaks for all its mail, not only the first message the card's sender and subject come from.
+function messageCount(count: number): string {
+  return count === 1 ? '1 message' : `${count} messages`
+}
+
 function Artifacts({ job }: { job: Job }) {
   const { draft, options, digest, link, noise_rationale } = job.artifacts
   return (
@@ -64,7 +69,13 @@ function Artifacts({ job }: { job: Job }) {
           ))}
         </ul>
       )}
-      {digest && <p className="whitespace-pre-wrap">{digest}</p>}
+      {digest && (
+        <ul className="list-disc space-y-1 pl-5">
+          {digest.split('\n').map((line, index) => (
+            <li key={index}>{line}</li>
+          ))}
+        </ul>
+      )}
       {link && (isWebLink(link) ? (
         <a href={link} target="_blank" rel="noreferrer" className="break-all text-primary underline">
           {link}
@@ -182,7 +193,7 @@ export function JobCard({ card, onReplaced, onRemoved }: JobCardProps) {
       <CardHeader>
         <CardTitle id={titleId}>{job.title}</CardTitle>
         <CardDescription className="break-words">
-          {sender.name ?? sender.email} - {subject}
+          {job.verb === 'digest' ? messageCount(job.message_ids.length) : `${sender.name ?? sender.email} - ${subject}`}
         </CardDescription>
       </CardHeader>
       <CardContent className="space-y-3 text-sm">

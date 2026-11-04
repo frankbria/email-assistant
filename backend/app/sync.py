@@ -116,8 +116,8 @@ async def sync_folder(
 
 async def close_handled_elsewhere(owner_id: str, plugin_id: str, client: Client) -> int:
     """Close the open jobs over this plugin's messages that left the inbox outside the app
-    (archived on a phone, moved by a filter), so the app never archives them again; a job shared with
-    a copy in another inbox just lets go of the gone copy. Returns how many closed."""
+    (archived on a phone, moved by a filter), so the app never archives them again; a job over several messages
+    (copies in other inboxes, or a digest's other mail) just lets go of the gone ones. Returns how many closed."""
     # A job reopened with an error (a finish that failed partway) stays for the owner to retry.
     # A follow-up waits for an answer, not for its mail to stay in the inbox (owners archive after replying).
     open_jobs = await Job.find(Job.owner_id == owner_id, Job.state == "open", {"error": None}, Job.verb != "follow_up").to_list()
@@ -131,7 +131,7 @@ async def close_handled_elsewhere(owner_id: str, plugin_id: str, client: Client)
         unchanged = Job.find(Job.id == job.id, Job.state == "open", {"error": None})
         if all(message_id in gone for message_id in job.message_ids):
             closed += (await unchanged.update({"$set": {"state": "handled_elsewhere"}})).modified_count
-        else:  # a copy still waits in another inbox (spec §5.3): the job stays open for it
+        else:  # a copy in another inbox (spec §5.3), or a digest's other mail, still waits: the job stays open for it
             await unchanged.update({"$pull": {"message_ids": {"$in": list(gone)}}})
     return closed
 
