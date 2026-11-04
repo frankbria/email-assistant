@@ -2,24 +2,20 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { render, screen, waitFor, fireEvent } from '@testing-library/react';
 import SettingsForm from 'components/SettingsForm';
 import * as service from 'services/settingsService';
+import { SettingsRejected } from 'services/settingsService';
 import * as toast from 'utils/toast';
 import React from 'react';
 
-const mockSettings = {
-  user_id: 'default_user',
-  enable_spam_filtering: true,
-  enable_auto_categorization: false,
-  skip_low_priority_emails: false,
+const current = {
+  ai_provider: 'anthropic' as const,
+  ai_model: 'claude-opus-5-5',
+  poll_seconds: 120,
+  first_connect_days: 14,
 };
 
 describe('SettingsForm', () => {
   beforeEach(() => {
     vi.resetAllMocks();
-    // Mock clipboard API
-    Object.defineProperty(navigator, 'clipboard', {
-      value: { writeText: vi.fn().mockResolvedValue(undefined) },
-      configurable: true,
-    });
   });
 
   it('shows loading state initially', () => {
@@ -28,29 +24,55 @@ describe('SettingsForm', () => {
     expect(screen.getByText(/loading settings/i)).toBeInTheDocument();
   });
 
-  it('renders settings after fetch', async () => {
-    vi.spyOn(service, 'fetchUserSettings').mockResolvedValue(mockSettings);
+  it('renders the four settings with their current values', async () => {
+    vi.spyOn(service, 'fetchUserSettings').mockResolvedValue(current);
     render(<SettingsForm />);
-    expect(await screen.findByText(/email settings/i)).toBeInTheDocument();
-    expect(screen.getByText(/spam filtering/i)).toBeInTheDocument();
-    expect(screen.getByText(/auto-categorization/i)).toBeInTheDocument();
-    expect(screen.getByText(/skip low-priority emails/i)).toBeInTheDocument();
+
+    expect(await screen.findByLabelText(/ai provider/i)).toHaveValue('anthropic');
+    expect(screen.getByLabelText(/^model/i)).toHaveValue('claude-opus-5-5');
+    expect(screen.getByLabelText(/poll interval/i)).toHaveValue(120);
+    expect(screen.getByLabelText(/first-connect window/i)).toHaveValue(14);
+    expect(screen.queryByText(/spam filtering/i)).not.toBeInTheDocument();
   });
 
-  it('toggles a setting and shows success toast', async () => {
-    vi.spyOn(service, 'fetchUserSettings').mockResolvedValue(mockSettings);
-    const updateSpy = vi.spyOn(service, 'updateUserSettings').mockResolvedValue({
-      ...mockSettings,
-      enable_spam_filtering: false,
-    });
+  it('saves the edited settings and shows a success toast', async () => {
+    vi.spyOn(service, 'fetchUserSettings').mockResolvedValue(current);
+    const saveSpy = vi.spyOn(service, 'updateUserSettings').mockResolvedValue({ ...current, poll_seconds: 30 });
     const toastSpy = vi.spyOn(toast.showToast, 'success');
     render(<SettingsForm />);
-    const spamToggle = await screen.findByLabelText(/spam filtering/i);
-    fireEvent.click(spamToggle);
+
+    fireEvent.change(await screen.findByLabelText(/poll interval/i), { target: { value: '30' } });
+    fireEvent.click(screen.getByRole('button', { name: /save/i }));
+
     await waitFor(() => {
-      expect(updateSpy).toHaveBeenCalledWith({ enable_spam_filtering: false });
-      expect(toastSpy).toHaveBeenCalledWith(expect.stringMatching(/settings updated/i));
+      expect(saveSpy).toHaveBeenCalledWith({ ...current, poll_seconds: 30 });
+      expect(toastSpy).toHaveBeenCalledWith(expect.stringMatching(/settings saved/i));
     });
+  });
+
+  it('locks the fields while a save is pending, so the response cannot overwrite newer edits', async () => {
+    vi.spyOn(service, 'fetchUserSettings').mockResolvedValue(current);
+    vi.spyOn(service, 'updateUserSettings').mockReturnValue(new Promise(() => {}));
+    render(<SettingsForm />);
+
+    fireEvent.click(await screen.findByRole('button', { name: /save/i }));
+
+    expect(await screen.findByLabelText(/model/i)).toBeDisabled();
+    expect(screen.getByLabelText(/poll interval/i)).toBeDisabled();
+  });
+
+  it("shows the server's validation error under the field it is about", async () => {
+    vi.spyOn(service, 'fetchUserSettings').mockResolvedValue(current);
+    vi.spyOn(service, 'updateUserSettings').mockRejectedValue(
+      new SettingsRejected({ poll_seconds: 'Input should be greater than or equal to 5' }),
+    );
+    render(<SettingsForm />);
+
+    fireEvent.change(await screen.findByLabelText(/poll interval/i), { target: { value: '1' } });
+    fireEvent.click(screen.getByRole('button', { name: /save/i }));
+
+    expect(await screen.findByRole('alert')).toHaveTextContent(/greater than or equal to 5/i);
+    expect(screen.getByLabelText(/poll interval/i)).toHaveAttribute('aria-invalid', 'true');
   });
 
   it('shows error toast on fetch failure', async () => {
@@ -61,25 +83,15 @@ describe('SettingsForm', () => {
       expect(toastSpy).toHaveBeenCalledWith(expect.stringMatching(/fetch failed/i));
     });
   });
-  it('shows error toast and allows retry on update failure', async () => {
-    vi.spyOn(service, 'fetchUserSettings').mockResolvedValue(mockSettings);
+
+  it('shows error toast when saving fails', async () => {
+    vi.spyOn(service, 'fetchUserSettings').mockResolvedValue(current);
     vi.spyOn(service, 'updateUserSettings').mockRejectedValue(new Error('Update failed'));
     const toastSpy = vi.spyOn(toast.showToast, 'error');
     render(<SettingsForm />);
-    const spamToggle = await screen.findByLabelText(/spam filtering/i);
-    fireEvent.click(spamToggle);
+    fireEvent.click(await screen.findByRole('button', { name: /save/i }));
     await waitFor(() => {
       expect(toastSpy).toHaveBeenCalledWith(expect.stringMatching(/update failed/i));
     });
-  });
-
-  it('shows no forwarding mailbox or forwarding setup (forwarding ingestion removed)', async () => {
-    vi.spyOn(service, 'fetchUserSettings').mockResolvedValue(mockSettings);
-    render(<SettingsForm />);
-    await screen.findByRole('heading', { name: /email settings/i });
-
-    expect(screen.queryByText(/your mailbox address/i)).not.toBeInTheDocument();
-    expect(screen.queryByText(/how to setup/i)).not.toBeInTheDocument();
-    expect(screen.queryByTitle('Copy to clipboard')).not.toBeInTheDocument();
   });
 });

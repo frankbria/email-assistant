@@ -14,6 +14,7 @@ REMOVED_PATHS = [
     "/api/v1/email/spam",
     "/api/v1/email/{email_id}/not-spam",
     "/api/v1/email/{email_id}/archive",
+    "/api/v1/settings/email",
 ]
 
 

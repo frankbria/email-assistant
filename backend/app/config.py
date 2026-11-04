@@ -3,13 +3,16 @@
 from pydantic import Field
 from pydantic_settings import BaseSettings
 from functools import lru_cache
-from typing import List
+from typing import List, Literal
 import os
 from dotenv import load_dotenv
 import sys
 
 # Load environment variables
 load_dotenv()
+
+# The AI providers this build supports; the owner picks one on the settings screen.
+AIProviderName = Literal["anthropic"]
 
 
 class Settings(BaseSettings):
@@ -33,8 +36,9 @@ class Settings(BaseSettings):
     better_auth_url: str = "http://localhost:3200"
     better_auth_jwks_url_override: str | None = Field(default=None, alias="BETTER_AUTH_JWKS_URL")
 
-    # AI provider (env AI_PROVIDER / AI_MODEL); the Anthropic key is ANTHROPIC_API_KEY.
-    ai_provider: str = "anthropic"
+    # The defaults until the owner chooses on the settings screen (env AI_PROVIDER / AI_MODEL, SYNC_POLL_SECONDS,
+    # FIRST_CONNECT_DAYS). The Anthropic key is ANTHROPIC_API_KEY and never leaves the env.
+    ai_provider: AIProviderName = "anthropic"
     ai_model: str = "claude-opus-5-5"
 
     # How often each plugin's inbox is polled (env SYNC_POLL_SECONDS); a push polls sooner.

@@ -102,10 +102,11 @@ async def lifespan(app: FastAPI):
             client[settings.current_mongodb_db]["user"],
             settings.sync_poll_seconds,
             settings.first_connect_days,
-            provider=get_ai_provider(),
+            ai_provider_for=get_ai_provider,
             ai_monthly_cap=settings.ai_monthly_cap,
             permissions_file=Path(settings.permissions_file),
         )
+        app.state.sync = sync  # the settings API wakes it when the poll interval changes
         sync_task = asyncio.create_task(sync.run())
         yield
     finally:

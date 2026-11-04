@@ -17,6 +17,7 @@ from app.plugins import calls
 from app.config import Settings
 from app.models.message import Message
 from app.models.sync_cursor import SyncCursor
+from app.models.user_settings import UserSettings
 from app.plugins.config import PluginConfig, StdioTransport
 from app.plugins.registry import PluginRegistry
 from app.sync import SyncEngine, SyncError, store_page, sync_folder
@@ -183,6 +184,16 @@ async def test_the_first_connect_window_is_configurable(test_db, mailbox: Mailbo
     older = mailbox.append("INBOX", sender="a@example.com", subject="15 days", body="x", received=days_ago(15))
     async with connected(reference_imap_plugin(mailbox)) as registry:
         await SyncEngine(registry, test_db["user"], poll_seconds=60, first_connect_days=16).sync_all()
+
+    assert await stored_message_ids() == [older]
+
+
+async def test_the_owners_saved_first_connect_window_overrides_the_default(test_db, mailbox: Mailbox):
+    await add_owner(test_db)
+    await UserSettings(user_id=OWNER, first_connect_days=16).insert()
+    older = mailbox.append("INBOX", sender="a@example.com", subject="15 days", body="x", received=days_ago(15))
+    async with connected(reference_imap_plugin(mailbox)) as registry:
+        await SyncEngine(registry, test_db["user"], poll_seconds=60, first_connect_days=14).sync_all()
 
     assert await stored_message_ids() == [older]
 

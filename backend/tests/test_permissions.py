@@ -88,7 +88,7 @@ def proposal(**changes: object) -> Proposal:
 
 async def pipeline_pass(test_db, mailbox: Mailbox, path: Path, result: Proposal) -> None:
     async with connected(reference_imap_plugin(mailbox)) as registry:
-        await SyncEngine(registry, test_db["user"], poll_seconds=60, provider=FakeAIProvider(result=result),
+        await SyncEngine(registry, test_db["user"], poll_seconds=60, ai_provider_for=FakeAIProvider(result=result),
                          permissions_file=path).sync_all()
 
 

@@ -97,6 +97,11 @@ backend/
 - `GET /api/v1/history` - Every action the app or the owner took, newest first: action, job, messages, by `app`/`owner`, permission level, result, whether it can be undone (with each one's sender and subject)
 - `POST /api/v1/history/{id}/undo` - Undo an archive (restore the mail to the inbox, verified, logged as its own `restored` entry); 409 for a send ("can't be unsent"), anything else, or an entry already undone
 
+### Settings
+
+- `GET /api/v1/settings` - The owner's AI provider, model, poll interval (seconds) and first-connect window (days); the env values (`AI_PROVIDER`, `AI_MODEL`, `SYNC_POLL_SECONDS`, `FIRST_CONNECT_DAYS`) until the owner saves their own. The API key stays in the env and is never returned
+- `PUT /api/v1/settings` - Save all four; 422 for an unsupported provider, an empty model, a poll interval outside 5 s–1 day or a window outside 1–365 days. A new poll interval applies from the next pass, and the provider and model from the next AI call, without a restart
+
 ## 🧪 Running Tests
 
 ```bash

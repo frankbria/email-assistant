@@ -10,6 +10,8 @@ type RecordedRequest = { method: string; url: string; authorization: string | un
 const requests: RecordedRequest[] = []
 let signedIn = true
 let tokenEndpointBroken = false
+let rejectSettings = false
+let rejectSettingsWithReason: string | null = null
 let server: Server
 
 function readBody(request: IncomingMessage): Promise<string> {
@@ -36,6 +38,16 @@ beforeAll(async () => {
       return
     }
     requests.push({ method: request.method ?? '', url, authorization: request.headers.authorization, body })
+    if (rejectSettingsWithReason !== null) {
+      response.statusCode = 422 // an HTTPException, not request validation
+      response.end(JSON.stringify({ detail: rejectSettingsWithReason }))
+      return
+    }
+    if (rejectSettings) {
+      response.statusCode = 422 // FastAPI's validation error shape
+      response.end(JSON.stringify({ detail: [{ loc: ['body', 'poll_seconds'], msg: 'Input should be greater than or equal to 5', type: 'greater_than_equal' }] }))
+      return
+    }
     const isList = request.method === 'GET' && url.startsWith('/api/v1/jobs')
     response.end(JSON.stringify(isList ? [] : { enable_spam_filtering: true }))
   })
@@ -51,6 +63,8 @@ beforeEach(() => {
   requests.length = 0
   signedIn = true
   tokenEndpointBroken = false
+  rejectSettings = false
+  rejectSettingsWithReason = null
 })
 
 async function callEveryService() {
@@ -62,8 +76,10 @@ async function callEveryService() {
   await jobs.chooseVerb('job-1', 'snooze')
   await jobs.dismissJob('job-1')
   await settings.fetchUserSettings()
-  await settings.updateUserSettings({ enable_spam_filtering: false })
+  await settings.updateUserSettings(CHOSEN)
 }
+
+const CHOSEN = { ai_provider: 'anthropic' as const, ai_model: 'claude-opus-5-5', poll_seconds: 60, first_connect_days: 14 }
 
 describe('frontend → FastAPI requests', () => {
   it('carry the Better Auth JWT and never a user_id', async () => {
@@ -95,6 +111,38 @@ describe('frontend → FastAPI requests', () => {
     ])
   })
 
+  it('hit the settings endpoint with GET and a whole-settings PUT', async () => {
+    const settings = await import('@/services/settingsService')
+
+    await settings.fetchUserSettings()
+    await settings.updateUserSettings(CHOSEN)
+
+    expect(requests.map(({ method, url, body }) => ({ method, url, body }))).toEqual([
+      { method: 'GET', url: '/api/v1/settings', body: '' },
+      { method: 'PUT', url: '/api/v1/settings', body: JSON.stringify(CHOSEN) },
+    ])
+  })
+
+  it("turn the server's validation errors into errors per field", async () => {
+    rejectSettings = true
+    const settings = await import('@/services/settingsService')
+
+    const failure = await settings.updateUserSettings({ ...CHOSEN, poll_seconds: 1 }).catch((error: unknown) => error)
+
+    expect(failure).toBeInstanceOf(settings.SettingsRejected)
+    expect(failure).toMatchObject({ fieldErrors: { poll_seconds: 'Input should be greater than or equal to 5' } })
+  })
+
+  it('show the server reason for a 422 that is not field validation', async () => {
+    rejectSettingsWithReason = 'settings are locked'
+    const settings = await import('@/services/settingsService')
+
+    const failure = await settings.updateUserSettings(CHOSEN).catch((error: unknown) => error)
+
+    expect(failure).not.toBeInstanceOf(settings.SettingsRejected)
+    expect(failure).toMatchObject({ message: 'settings are locked' })
+  })
+
   it('are not sent at all without a session', async () => {
     signedIn = false
     const settings = await import('@/services/settingsService')
@@ -107,7 +155,7 @@ describe('frontend → FastAPI requests', () => {
     tokenEndpointBroken = true
     const { apiFetch, NotSignedInError } = await import('@/services/apiClient')
 
-    const failure = await apiFetch('/api/v1/settings/email').catch((error: unknown) => error)
+    const failure = await apiFetch('/api/v1/settings').catch((error: unknown) => error)
 
     expect(failure).toBeInstanceOf(Error)
     expect(failure).not.toBeInstanceOf(NotSignedInError)

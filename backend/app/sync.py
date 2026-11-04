@@ -5,6 +5,7 @@ outside the app."""
 import asyncio
 import contextlib
 import logging
+from collections.abc import Awaitable, Callable
 from pathlib import Path
 from datetime import UTC, datetime, timedelta
 from typing import Literal
@@ -16,6 +17,7 @@ from pymongo.asynchronous.collection import AsyncCollection
 from app.models.job import Job
 from app.models.message import Message
 from app.models.sync_cursor import SyncCursor
+from app.models.user_settings import UserSettings
 from app.executor import wake_due
 from app.permissions import sync_permissions_file
 from app.pipeline.run import process_pending
@@ -135,7 +137,8 @@ async def close_handled_elsewhere(owner_id: str, plugin_id: str, client: Client)
 
 
 class SyncEngine:
-    """Polls every connected plugin each interval; a push from any plugin starts a pass early."""
+    """Polls every connected plugin each interval; a push from any plugin, or a settings change, starts a pass early.
+    `poll_seconds` and `first_connect_days` apply until the owner saves their own on the settings screen."""
 
     def __init__(
         self,
@@ -143,7 +146,7 @@ class SyncEngine:
         users: AsyncCollection[dict[str, object]],
         poll_seconds: float,
         first_connect_days: int = FIRST_CONNECT_DAYS,
-        provider: AIProvider | None = None,
+        ai_provider_for: Callable[[str], Awaitable[AIProvider]] | None = None,
         ai_monthly_cap: int | None = None,
         permissions_file: Path | None = None,
     ) -> None:
@@ -151,7 +154,7 @@ class SyncEngine:
         self.users = users
         self.poll_seconds = poll_seconds
         self.first_connect_days = first_connect_days
-        self.provider = provider  # None: sync only, no jobs (e.g. tests of sync alone)
+        self.ai_provider_for = ai_provider_for  # the owner's provider; None: sync only, no jobs (e.g. tests of sync alone)
         self.ai_monthly_cap = ai_monthly_cap
         self.permissions_file = permissions_file  # None: the stored settings alone (e.g. tests of sync alone)
         self.wake = asyncio.Event()
@@ -162,38 +165,57 @@ class SyncEngine:
             while True:
                 self.wake.clear()
                 self._listen_for_push()
+                poll_seconds = self.poll_seconds
                 try:
-                    await self.sync_all()
+                    poll_seconds = await self.sync_all()
                 except Exception:  # e.g. MongoDB briefly unreachable: the next pass retries
                     logger.exception("Sync pass failed; retrying next pass")
                 with contextlib.suppress(TimeoutError):
-                    async with asyncio.timeout(self.poll_seconds):
+                    async with asyncio.timeout(poll_seconds):
                         await self.wake.wait()
         finally:
             await self._stop_listeners()
 
-    async def sync_all(self) -> None:
+    async def sync_all(self) -> float:
+        """One pass; returns the seconds to the next, read from the owner's settings each pass so a change applies
+        without a restart."""
         # Better Auth's `user` collection holds exactly one document: the owner.
         owner = await self.users.find_one({}, {"_id": 1})
         if owner is None:
-            return  # nobody has signed up yet, so there is no one to sync for
+            return self.poll_seconds  # nobody has signed up yet, so there is no one to sync for
+        owner_id = str(owner["_id"])
+        # Mail sync must not depend on reading settings: on a failure use the defaults, and leave mail pending.
+        try:
+            saved = await UserSettings.find_one(UserSettings.user_id == owner_id)
+        except Exception:
+            logger.exception("Reading the owner's settings failed; using the defaults this pass")
+            saved = None
+        window_days = saved.first_connect_days if saved else self.first_connect_days
+        try:
+            provider = await self.ai_provider_for(owner_id) if self.ai_provider_for is not None else None
+        except Exception:
+            logger.exception("Choosing the AI provider failed; new mail stays pending until the next pass")
+            provider = None
         if self.permissions_file is not None:
             try:  # before the pipeline, so an edited permissions.yaml applies to this pass's mail
-                await sync_permissions_file(str(owner["_id"]), self.permissions_file)
+                await sync_permissions_file(owner_id, self.permissions_file)
             except Exception:
                 logger.exception("Syncing permissions.yaml failed; retrying next pass")
-        sent_synced = [await self._sync_plugin(str(owner["_id"]), plugin_id, client) for plugin_id, client in list(self.plugins.clients.items())]
+        sent_synced = [await self._sync_plugin(owner_id, plugin_id, client, window_days, provider) for plugin_id, client in list(self.plugins.clients.items())]
         # Outgoing history is current only if every enabled account is connected and its sent folder synced.
         accounts_up = all(state.status in ("connected", "disabled") for state in self.plugins.states.values())
         try:  # snoozes and follow-ups whose date has come; follow-ups only with current outgoing history
-            await wake_due(str(owner["_id"]), self.plugins, datetime.now(UTC), check_follow_ups=accounts_up and all(sent_synced))
+            await wake_due(owner_id, self.plugins, datetime.now(UTC), check_follow_ups=accounts_up and all(sent_synced))
         except Exception:
             logger.exception("Waking due jobs failed; retrying next pass")
+        return saved.poll_seconds if saved else self.poll_seconds
 
-    async def _sync_plugin(self, owner_id: str, plugin_id: str, client: Client) -> bool:
+    async def _sync_plugin(
+        self, owner_id: str, plugin_id: str, client: Client, window_days: int, provider: AIProvider | None
+    ) -> bool:
         """Inbox, then sent, then the pipeline: each separately, so one failing never holds up the others."""
         try:
-            new_messages = await sync_folder(owner_id, plugin_id, client, window_days=self.first_connect_days)
+            new_messages = await sync_folder(owner_id, plugin_id, client, window_days=window_days)
             handled_elsewhere = await close_handled_elsewhere(owner_id, plugin_id, client)
         except Exception:
             logger.exception("Sync of plugin %s failed; retrying next pass", plugin_id)
@@ -204,13 +226,13 @@ class SyncEngine:
             logger.info("Plugin %s: %d jobs handled elsewhere", plugin_id, handled_elsewhere)
         sent_synced = True
         try:  # before the pipeline, so proposals see the owner's latest voice and forwards
-            await sync_folder(owner_id, plugin_id, client, folder="sent", window_days=self.first_connect_days)
+            await sync_folder(owner_id, plugin_id, client, folder="sent", window_days=window_days)
         except Exception:
             logger.exception("Sync of plugin %s's sent folder failed; retrying next pass", plugin_id)
             sent_synced = False
-        if self.provider is not None:
+        if provider is not None:
             try:
-                await process_pending(owner_id, plugin_id, client, self.provider, self.ai_monthly_cap, self.plugins)
+                await process_pending(owner_id, plugin_id, client, provider, self.ai_monthly_cap, self.plugins)
             except Exception:  # pending mail stays pending: the next pass picks it up
                 logger.exception("Pipeline for plugin %s failed; retrying next pass", plugin_id)
         return sent_synced
