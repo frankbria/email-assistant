@@ -29,14 +29,14 @@ PATTERNS = [
         rf"(?<![\w@.-])(?:https?://|www\.){URL_REST}|{DOMAIN}[a-z]{{2,}}/{URL_REST}|{DOMAIN}(?:{BARE_TLDS})\b(?![.-]?\w)",
         re.IGNORECASE,
     )),
-    # Card numbers in groups of four or American Express's 4-6-5, IBANs, and any long run of digits.
-    ("ACCOUNT", re.compile(r"\b\d{4}(?:[ -]\d{4}){2,3}\b|\b\d{4}[ -]\d{6}[ -]\d{5}\b|\b[A-Z]{2}\d{2}[A-Z0-9]{10,30}\b|\b\d{8,19}\b")),
+    # IBANs (whole, also in groups of four) before card numbers (groups of four, or Amex 4-6-5) and long digit runs.
+    ("ACCOUNT", re.compile(r"\b[A-Z]{2}\d{2}(?: ?[A-Z0-9]{4}){2,7}(?: ?[A-Z0-9]{1,3})?\b|\b\d{4}(?:[ -]\d{4}){2,3}\b|\b\d{4}[ -]\d{6}[ -]\d{5}\b|\b\d{8,19}\b")),
     # Only digits right after a word that names a code ("code is 482913", "PIN: 1234"), and never part of a date.
     ("CODE", re.compile(r"\b(?:code|passcode|OTP|PIN)\b(?:\s+(?:is|was))?\s*[:=#]?\s*(\d{4,8})(?![\w/.-]?\d)", re.IGNORECASE)),
     # International (+44 20 7946 0958), North American ((555) 123-4567) or national with a trunk 0 (020 7946 0958);
     # PHONE_DIGITS keeps dates (05.12.2026) out.
     ("PHONE", re.compile(
-        r"\+\d{1,3}(?:[ .-]?\(?\d{2,4}\)?){2,5}(?!\w)|(?<![\w+])(?:\(\d{3}\) ?|\d{3}[ .-]?)\d{3}[ .-]?\d{4}(?!\w)"
+        r"\+\d{1,3}(?:[ .-]?\(?\d{1,4}\)?){2,7}(?!\w)|(?<![\w+])(?:\(\d{3}\) ?|\d{3}[ .-]?)\d{3}[ .-]?\d{4}(?!\w)"
         r"|(?<![\w+.-])0\d{1,4}(?:[ .-]?\d{2,4}){2,4}(?![\w.-]?\d)"
     )),
 ]

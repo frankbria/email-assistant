@@ -159,3 +159,15 @@ def test_a_link_ending_in_a_balanced_parenthesis_is_kept_whole():
 @pytest.mark.parametrize("wording", ["code is: 482913", "code was = 482913", "PIN: 482913", "OTP 482913", "passcode is 482913"])
 def test_a_one_time_code_is_redacted_however_it_is_introduced(wording: str):
     assert "482913" not in Redaction([]).redact(f"Your {wording}.")
+
+
+def test_an_international_number_with_single_digit_groups_is_redacted():
+    redacted = Redaction([]).redact("Call me on +33 6 12 34 56 78 tomorrow.")
+
+    assert "12 34 56 78" not in redacted and "PHONE_1" in redacted
+
+
+def test_an_iban_written_in_groups_of_four_is_redacted_whole():
+    redacted = Redaction([]).redact("IBAN: GB82 WEST 1234 5698 7654 32, thanks.")
+
+    assert redacted == "IBAN: ACCOUNT_1, thanks."
