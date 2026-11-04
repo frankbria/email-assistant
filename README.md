@@ -43,9 +43,9 @@ Think: a 1950s secretary triaging your morning mail. The full design is in
 v1 is in progress; see the [open issues](https://github.com/frankbria/email-assistant/issues).
 
 - **Done:** Proton plugin, the `mailbox/1` contract, sync, the AI pipeline, the job queue, ask-owner, all v1
-  verbs, rules and examples, History with undo, Filtered view, settings and permissions, sign-in.
-- **Next:** calibration and quality metrics, the Gmail plugin, the redacted-cloud privacy mode, and the v1
-  release gate.
+  verbs, rules and examples, History with undo, Filtered view, settings and permissions, sign-in, calibration and
+  quality metrics, the Gmail plugin, and the redacted-cloud privacy mode (a settings toggle).
+- **Next:** the v1 release gate.
 
 ---
 
