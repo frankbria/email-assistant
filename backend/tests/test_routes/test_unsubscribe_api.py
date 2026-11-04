@@ -1,0 +1,111 @@
+# Unsubscribe (spec §4: never_auto, "links in email are untrusted", #90): the List-Unsubscribe target is shown to
+# the owner and acted on only on their tap; a mailto goes out through the owner's mailbox to exactly its one address,
+# an https link is opened by the owner's browser, never by the server. Real MongoDB; GreenMail + the reference IMAP
+# plugin. The AC half (no unsubscribe without a tap, whatever the permissions) is in tests/test_permissions.py.
+from datetime import UTC, datetime
+
+import pytest
+
+from app.models.action_log import ActionLogEntry
+from app.models.job import Artifacts, Job
+from app.models.message import Message
+from tests.test_routes.test_jobs_api import archived, job_from
+from tests.test_sync.test_inbox_sync import PLUGIN
+from tests.utils.auth import OWNER_ID
+from tests.utils.mail_server import Mailbox, new_mailbox
+
+pytestmark = pytest.mark.usefixtures("mail_server")
+
+
+async def unsubscribe_job(mailbox: Mailbox, list_unsubscribe: str) -> Job:
+    """A proposed unsubscribe over real list mail in the owner's inbox carrying `list_unsubscribe`."""
+    ref = mailbox.append("INBOX", sender="deals@shop.example", subject="Running shoes", body="30% off all running shoes",
+                         headers={"List-Unsubscribe": list_unsubscribe})
+    message = Message.model_validate({
+        "owner_id": OWNER_ID, "plugin_id": PLUGIN, "ref": ref, "message_id": ref, "sender": {"email": "deals@shop.example"},
+        "to": [{"email": mailbox.address}], "cc": [], "date": datetime.now(UTC), "subject": "Running shoes", "snippet": "",
+    })
+    await message.insert()
+    assert message.id is not None
+    job = Job(owner_id=OWNER_ID, verb="unsubscribe", title="Leave Shop deals", evidence=["30% off all running shoes"],
+              artifacts=Artifacts(noise_rationale="Bulk promotions"), message_ids=[message.id])
+    await job.insert()
+    return job
+
+
+async def still_open(job: Job) -> bool:
+    stored = await Job.get(job.id)
+    return stored is not None and (stored.state, stored.sent_at) == ("open", None)
+
+
+async def test_a_mailto_target_is_shown_then_sent_to_exactly_that_address_on_the_owners_tap(async_client, test_db, mailbox, plugins):
+    leave = new_mailbox()
+    target = f"mailto:{leave.address}?subject=unsubscribe%20deals"
+    job = await unsubscribe_job(mailbox, f"<{target}>")
+
+    shown = await async_client.get(f"/api/v1/jobs/{job.id}/unsubscribe")
+    approved = await async_client.post(f"/api/v1/jobs/{job.id}/approve", json={"unsubscribe_target": shown.json()["target"]})
+
+    assert shown.json() == {"target": target}
+    assert (approved.json()["state"], approved.json()["permission_level"]) == ("done", "never_auto")
+    [sent] = leave.messages("INBOX")
+    assert (sent["To"], sent["Cc"], sent["Subject"]) == (leave.address, None, "unsubscribe deals")
+    assert archived(mailbox)
+    logged = await ActionLogEntry.find(ActionLogEntry.job_id == job.id).sort("created_at").to_list()
+    assert [(entry.action, entry.by, entry.permission_level) for entry in logged] == [
+        ("sent", "owner", "never_auto"), ("archived", "owner", "never_auto")
+    ]
+
+
+async def test_an_https_target_is_returned_for_the_owners_browser_and_the_tap_finishes_the_job(async_client, test_db, mailbox, plugins):
+    """The server only hands the link over; it never requests it (see test_unsubscribe.py for the structural check)."""
+    leave = new_mailbox()
+    job = await unsubscribe_job(mailbox, f"<mailto:{leave.address}>, <https://shop.example/u?id=7>")
+
+    shown = await async_client.get(f"/api/v1/jobs/{job.id}/unsubscribe")
+    approved = await async_client.post(f"/api/v1/jobs/{job.id}/approve", json={"unsubscribe_target": shown.json()["target"]})
+
+    assert shown.json() == {"target": "https://shop.example/u?id=7"}  # https is preferred over mailto
+    assert (approved.json()["state"], approved.json()["permission_level"]) == ("done", "never_auto")
+    assert archived(mailbox) and leave.messages("INBOX") == [] and approved.json()["sent_at"] is None
+
+
+@pytest.mark.parametrize("confirmed", [None, "mailto:someone@else.example", "https://shop.example/u?id=7"])
+async def test_an_approval_acts_only_on_the_target_the_mail_names(async_client, test_db, mailbox, plugins, confirmed):
+    leave = new_mailbox()
+    job = await unsubscribe_job(mailbox, f"<mailto:{leave.address}>")
+
+    response = await async_client.post(f"/api/v1/jobs/{job.id}/approve", json={"unsubscribe_target": confirmed})
+
+    assert response.status_code == 422 and "confirm the unsubscribe target" in response.json()["detail"]
+    assert await still_open(job) and leave.messages("INBOX") == [] and len(mailbox.messages("INBOX")) == 1
+
+
+@pytest.mark.parametrize("header", [
+    "<mailto:{leave}?subject=hi%0D%0ABcc:%20{victim}>",
+    "<mailto:{leave}%0D%0ABcc:{victim}>",
+    "<mailto:{leave},{victim}>",
+    "<mailto:{leave}?cc={victim}>",
+    "<mailto:{leave}?bcc={victim}>",
+])
+async def test_a_mailto_that_injects_headers_or_adds_recipients_is_never_offered_or_sent(
+    async_client, test_db, mailbox, plugins, header
+):
+    leave, victim = new_mailbox(), new_mailbox()
+    value = header.format(leave=leave.address, victim=victim.address)
+    job = await unsubscribe_job(mailbox, value)
+
+    shown = await async_client.get(f"/api/v1/jobs/{job.id}/unsubscribe")
+    approved = await async_client.post(f"/api/v1/jobs/{job.id}/approve", json={"unsubscribe_target": value.strip("<>")})
+
+    assert shown.status_code == approved.status_code == 422
+    assert "names no safe way to unsubscribe" in shown.json()["detail"]
+    assert await still_open(job) and leave.messages("INBOX") == [] and victim.messages("INBOX") == []
+
+
+async def test_only_an_unsubscribe_job_has_a_target(async_client, test_db, mailbox, plugins):
+    job = await job_from(new_mailbox(), mailbox, "todo")
+
+    response = await async_client.get(f"/api/v1/jobs/{job.id}/unsubscribe")
+
+    assert response.status_code == 422 and "isn't an unsubscribe" in response.json()["detail"]

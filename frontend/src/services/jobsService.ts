@@ -40,6 +40,20 @@ export function approveJob(jobId: string, forwardTo?: string, messageIds?: strin
   return postJson(`/api/v1/jobs/${encodeURIComponent(jobId)}/approve`, { forward_to: forwardTo, message_ids: messageIds }, 'Failed to approve the job')
 }
 
+// The List-Unsubscribe target from the mail: untrusted, so the owner sees it in full before acting on it.
+export async function fetchUnsubscribeTarget(jobId: string): Promise<string> {
+  const { target } = await responseBody<{ target: string }>(
+    await apiFetch(`/api/v1/jobs/${encodeURIComponent(jobId)}/unsubscribe`),
+    'Failed to read the unsubscribe target'
+  )
+  return target
+}
+
+// `target`: what the owner was shown; the server acts only if the mail still names exactly it.
+export function approveUnsubscribe(jobId: string, target: string): Promise<Job> {
+  return postJson(`/api/v1/jobs/${encodeURIComponent(jobId)}/approve`, { unsubscribe_target: target }, 'Failed to unsubscribe')
+}
+
 export function chooseVerb(jobId: string, verb: Verb, always?: boolean): Promise<Job> {
   return postJson(`/api/v1/jobs/${encodeURIComponent(jobId)}/choose`, { verb, always }, 'Failed to choose the action')
 }

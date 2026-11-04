@@ -21,6 +21,7 @@ from app.models.job import Job, JobState, PermissionLevel, Verb
 from app.models.message import Message
 from app.plugins.calls import InvalidCursor, SyncError, call_plugin, refs_in_inbox
 from app.plugins.registry import PluginRegistry
+from app.unsubscribe import UnsubscribeMail, is_https, unsubscribe_mail, unsubscribe_target
 from mailbox_contract import MessageDetail, MoveResult, SendResult
 
 logger = logging.getLogger(__name__)
@@ -223,15 +224,16 @@ async def undo(entry: ActionLogEntry, plugins: PluginRegistry) -> ActionLogEntry
 
 async def execute(
     job_id: PydanticObjectId, plugins: PluginRegistry, body: str | None = None, forward_to: str | None = None,
-    *, by: Actor, level: PermissionLevel,
+    *, by: Actor, level: PermissionLevel, unsubscribe_request: UnsubscribeMail | None = None,
 ) -> Job:
-    """The owner approved a reply or forward: send it from the account that received the mail, then
-    finish the job (archive-on-done). A failed send leaves the job `failed` and the mail in the inbox
+    """The owner approved a reply, forward or unsubscribe email: send it from the account that received the mail,
+    then finish the job (archive-on-done). A failed send leaves the job `failed` and the mail in the inbox
     (AC-2.2); calling this again retries, and once it was sent a retry only archives. `body` is the
-    owner's text (None: the draft); `forward_to` is the recipient the owner confirmed."""
+    owner's text (None: the draft); `forward_to` is the recipient the owner confirmed; `unsubscribe_request` is the
+    mailto the owner confirmed (see unsubscribe)."""
     job = await Job.get(job_id)
-    if job is None or job.verb not in ("reply", "forward"):
-        raise ValueError(f"only reply and forward jobs send; job {job_id} isn't one")
+    if job is None or job.verb not in ("reply", "forward", "unsubscribe"):
+        raise ValueError(f"only reply, forward and unsubscribe jobs send; job {job_id} isn't one")
     now = datetime.now(UTC)
     # Still the verb read above: another action chosen meanwhile must not be sent as this one.
     claimable = {"_id": job_id, "verb": job.verb, "ask_owner": False, "$or": [
@@ -246,7 +248,7 @@ async def execute(
         raise JobNotOpen(f"job {job_id} isn't open or failed")
     job = Job.model_validate(claimed)  # as of the claim: an overlapping approval may have sent it meanwhile
     try:
-        problem = None if job.sent_at else await send(job, plugins, body, forward_to)
+        problem = None if job.sent_at else await send(job, plugins, body, forward_to, unsubscribe_request)
     except asyncio.CancelledError:  # a BaseException: interrupted, it must still end retryable
         await asyncio.shield(mark_failed(job_id, "interrupted before it finished"))
         raise
@@ -283,7 +285,9 @@ def forward_subject(subject: str) -> str:
     return subject if FORWARD_PREFIX.match(subject) else f"Fwd: {subject.strip() or '(no subject)'}"
 
 
-async def send(job: Job, plugins: PluginRegistry, body: str | None, forward_to: str | None) -> str | None:
+async def send(
+    job: Job, plugins: PluginRegistry, body: str | None, forward_to: str | None, unsubscribe_request: UnsubscribeMail | None
+) -> str | None:
     """Sends the job's message; what went wrong, or None."""
     message = await Message.get(job.message_ids[0])  # any copy: they share the sender and the content
     assert message is not None
@@ -296,6 +300,11 @@ async def send(job: Job, plugins: PluginRegistry, body: str | None, forward_to: 
             return "write the reply first"
         arguments: dict[str, object] = {"to": [{"email": message.sender.email}], "subject": reply_subject(message.subject),
                                         "body_text": text, "in_reply_to_ref": message.ref}
+    elif job.verb == "unsubscribe":
+        if unsubscribe_request is None:
+            return "confirm the unsubscribe target first"
+        arguments = {"to": [{"email": unsubscribe_request.address}], "subject": unsubscribe_request.subject,
+                     "body_text": unsubscribe_request.body}
     else:
         if not forward_to:  # never the AI's suggestion alone: a forward's recipient is the owner's call (§4)
             return "choose who to forward it to"
@@ -305,6 +314,38 @@ async def send(job: Job, plugins: PluginRegistry, body: str | None, forward_to: 
         arguments = {"to": [{"email": forward_to}], "subject": forward_subject(message.subject), "body_text": f"{text}\n\n{quoted}"}
     result = SendResult.model_validate(await call_plugin(message.plugin_id, client, "send", arguments))
     return None if result.ok else f"{message.plugin_id} didn't send it"
+
+
+async def unsubscribe(job_id: PydanticObjectId, plugins: PluginRegistry, confirmed_target: str | None, *, level: PermissionLevel) -> Job:
+    """The owner's tap on an unsubscribe job, so always `by` the owner (spec §4: never_auto). The target is read from
+    the mail again and must be the one the owner was shown: an https link was opened by their browser, so the job
+    only finishes; a mailto is sent to its one address."""
+    target = await unsubscribe_target_of(job_id, plugins)
+    if target != confirmed_target:
+        raise ValueError("confirm the unsubscribe target this mail names")
+    if is_https(target):
+        return await finish(job_id, "done", plugins, verb="unsubscribe", by="owner", level=level)
+    return await execute(job_id, plugins, by="owner", level=level, unsubscribe_request=unsubscribe_mail(target))
+
+
+async def unsubscribe_target_of(job_id: PydanticObjectId, plugins: PluginRegistry) -> str:
+    """The job's List-Unsubscribe target, read from the mail through its plugin; ValueError says why there's none."""
+    job = await Job.get(job_id)
+    if job is None or job.verb != "unsubscribe":
+        raise ValueError(f"job {job_id} isn't an unsubscribe")
+    message = await Message.get(job.message_ids[0])  # any copy: they share the headers
+    assert message is not None
+    client = plugins.clients.get(message.plugin_id)
+    if client is None:
+        raise ValueError(f"{message.plugin_id} isn't connected, so the mail can't be read")
+    try:
+        detail = MessageDetail.model_validate(await call_plugin(message.plugin_id, client, "get_message", {"ref": message.ref}))
+    except (SyncError, InvalidCursor, TimeoutError, ValidationError, MCPError, OSError) as error:
+        raise ValueError(f"{message.plugin_id} couldn't read the mail ({error})") from error
+    target = unsubscribe_target(detail.headers)
+    if target is None:
+        raise ValueError("this mail names no safe way to unsubscribe")
+    return target
 
 
 async def defer(job_id: PydanticObjectId, until: datetime | None = None, *, by: Actor, level: PermissionLevel) -> Job:

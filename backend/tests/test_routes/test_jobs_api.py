@@ -160,7 +160,7 @@ async def test_approving_a_todo_or_noise_finishes_it_and_archives_the_mail(async
 
 @pytest.mark.parametrize(("fields", "status", "detail"), [
     ({"verb": "todo", "ask_owner": True}, 409, "choose an action for this mail first"),
-    ({"verb": "unsubscribe"}, 422, "unsubscribing isn't available yet"),
+    ({"verb": "unsubscribe"}, 422, "names no safe way to unsubscribe"),  # this mail has no List-Unsubscribe
     ({"verb": "snooze"}, 422, "needs a date to wait for"),
     ({"verb": "todo", "state": "done"}, 409, "isn't open"),
 ])

@@ -15,7 +15,7 @@ from pydantic import BaseModel, Field, model_validator
 
 from app.auth import OwnerId
 from app.config import Settings, get_settings
-from app.executor import STALE_SENDING, JobNotOpen, defer, execute, finish
+from app.executor import STALE_SENDING, JobNotOpen, defer, execute, finish, unsubscribe, unsubscribe_target_of
 from app.models.job import Artifacts, Job, PermissionLevel, Verb
 from app.models.message import Message
 from app.permissions import level_for, record_approval
@@ -62,6 +62,7 @@ class Seen(BaseModel):
 
 class Approval(Seen):
     forward_to: str | None = None  # a forward's recipient as the owner confirmed it (never the AI's suggestion alone)
+    unsubscribe_target: str | None = None  # the target the owner was shown, and for an https link opened themselves
 
 
 class Choice(BaseModel):
@@ -147,9 +148,6 @@ async def approve_job(
     job = await owned(job_id, owner_id)
     if job.ask_owner:
         raise HTTPException(status_code=409, detail="choose an action for this mail first")
-    if job.verb == "unsubscribe":
-        # shortcut: no unsubscribe action yet; approving it acts once the List-Unsubscribe executor lands (#90).
-        raise HTTPException(status_code=422, detail="unsubscribing isn't available yet")
     messages = shown_messages(job, approval)
     level = await tapped_level(owner_id, job.verb)
     actions: dict[str, Callable[[], Awaitable[Job]]] = {
@@ -157,6 +155,7 @@ async def approve_job(
         "forward": lambda: execute(job_id, plugins, forward_to=approval.forward_to, by="owner", level=level),
         "snooze": lambda: defer(job_id, by="owner", level=level),
         "follow_up": lambda: defer(job_id, by="owner", level=level),
+        "unsubscribe": lambda: unsubscribe(job_id, plugins, approval.unsubscribe_target, level=level),
     }
     acted = await acting(actions.get(job.verb, lambda: finish(job_id, "done", plugins, verb=job.verb, by="owner", level=level, messages=messages)))
     if acted.state in ("done", "snoozed"):
@@ -164,6 +163,21 @@ async def approve_job(
         # a retry gets 409); move it into the executor if promotion offers ever need the streak exact.
         await record_approval(owner_id, job.verb, edited=acted.edited)
     return await owned(job_id, owner_id)
+
+
+class UnsubscribeTarget(BaseModel):
+    target: str  # an https link or a mailto, shown to the owner in full before they act on it
+
+
+@router.get("/{job_id}/unsubscribe", response_model=UnsubscribeTarget)
+async def show_unsubscribe_target(
+    job_id: PydanticObjectId, owner_id: OwnerId, plugins: PluginRegistry = Depends(plugin_registry)
+) -> UnsubscribeTarget:
+    await owned(job_id, owner_id)
+    try:
+        return UnsubscribeTarget(target=await unsubscribe_target_of(job_id, plugins))
+    except ValueError as refused:
+        raise HTTPException(status_code=422, detail=str(refused)) from refused
 
 
 async def tapped_level(owner_id: str, verb: Verb) -> PermissionLevel:

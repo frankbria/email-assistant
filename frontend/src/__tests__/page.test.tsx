@@ -346,6 +346,58 @@ describe('Job queue actions', () => {
     await waitFor(() => expect(requestTo(1).body).toEqual({ forward_to: 'controller@company.com' }))
   })
 
+  const unsubscribeCard = cardWith({ verb: 'unsubscribe', title: 'Leave Shop deals', artifacts: { ...jobCard.job.artifacts, noise_rationale: 'Bulk promotions' } })
+
+  async function showUnsubscribeTarget(target: string) {
+    const card = await renderQueue(unsubscribeCard)
+    mockFetch.mockResolvedValueOnce(Response.json({ target }))
+    await userEvent.click(within(card).getByRole('button', { name: 'Approve' }))
+    const dialog = await screen.findByRole('dialog', { name: 'Unsubscribe' })
+    expect(requestTo(1)).toMatchObject({ method: 'GET', body: null })
+    expect(requestTo(1).url).toMatch(/\/api\/v1\/jobs\/job-1\/unsubscribe$/)
+    return dialog
+  }
+
+  it('an https unsubscribe shows the full target and opens it in a new tab only on the owner tap', async () => {
+    const target = 'https://shop.example/u/leave?id=7&list=deals'
+    const dialog = await showUnsubscribeTarget(target)
+
+    expect(within(dialog).getByText(target)).toBeInTheDocument()
+    expect(within(dialog).getByText(/shop\.example/, { selector: 'strong' })).toBeInTheDocument()
+    const open = within(dialog).getByRole('link', { name: 'Open unsubscribe page' })
+    expect(open).toHaveAttribute('href', target)
+    expect(open).toHaveAttribute('target', '_blank')
+    expect(open).toHaveAttribute('rel', 'noopener noreferrer')
+    expect(mockFetch).toHaveBeenCalledTimes(2) // nothing approved yet
+
+    mockFetch.mockResolvedValueOnce(Response.json({ ...unsubscribeCard.job, state: 'done' }))
+    await userEvent.click(open)
+
+    await waitFor(() => expect(requestTo(2)).toMatchObject({ method: 'POST', body: { unsubscribe_target: target } }))
+    expect(requestTo(2).url).toMatch(/\/api\/v1\/jobs\/job-1\/approve$/)
+    await waitFor(() => expect(screen.queryByText('Leave Shop deals')).not.toBeInTheDocument())
+  })
+
+  it('a mailto unsubscribe shows the address and sends only when the owner taps send', async () => {
+    const target = 'mailto:leave@shop.example?subject=unsubscribe'
+    const dialog = await showUnsubscribeTarget(target)
+
+    expect(within(dialog).getByText(target)).toBeInTheDocument()
+    expect(within(dialog).queryByRole('link')).toBeNull()
+    mockFetch.mockResolvedValueOnce(Response.json({ ...unsubscribeCard.job, state: 'done' }))
+    await userEvent.click(within(dialog).getByRole('button', { name: 'Send unsubscribe email' }))
+
+    await waitFor(() => expect(requestTo(2)).toMatchObject({ method: 'POST', body: { unsubscribe_target: target } }))
+  })
+
+  it.each(['javascript:alert(1)', 'http://shop.example/u', 'data:text/html,hi'])('a %s target is shown but never a link or an action', async (target) => {
+    const dialog = await showUnsubscribeTarget(target)
+
+    expect(within(dialog).getByText(target)).toBeInTheDocument()
+    expect(within(dialog).queryByRole('link')).toBeNull()
+    expect(within(dialog).queryByRole('button', { name: /Send|Open/ })).toBeNull()
+  })
+
   it('a failed action shows the reason and keeps the card', async () => {
     await renderQueue(replyCard)
     mockFetch.mockResolvedValueOnce(Response.json({ detail: 'Plugin not connected' }, { status: 409 }))

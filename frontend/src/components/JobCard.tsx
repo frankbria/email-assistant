@@ -4,6 +4,7 @@ import { useId, useState, type FormEvent } from 'react'
 import { HugeiconsIcon } from '@hugeicons/react'
 import { ArrowDown01Icon, Cancel01Icon, CheckmarkCircle01Icon, Flag01Icon, PencilEdit02Icon } from '@hugeicons/core-free-icons'
 import { Button } from '@/components/ui/button'
+import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from '@/components/ui/card'
 import {
   DropdownMenu,
@@ -14,7 +15,16 @@ import {
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu'
 import { Input } from '@/components/ui/input'
-import { approveJob, chooseVerb, correctJob, dismissJob, editJob, type Correction } from '@/services/jobsService'
+import {
+  approveJob,
+  approveUnsubscribe,
+  chooseVerb,
+  correctJob,
+  dismissJob,
+  editJob,
+  fetchUnsubscribeTarget,
+  type Correction,
+} from '@/services/jobsService'
 import { showToast } from '@/utils/toast'
 import type { Job, JobCard as QueuedJob, JobEdit, Verb } from '@/types/api'
 
@@ -169,10 +179,26 @@ export function JobCard({ card, onReplaced, onRemoved }: JobCardProps) {
   const [busy, setBusy] = useState(false)
   // The API never forwards to the AI's suggestion alone: the owner confirms the recipient here.
   const [forwardTo, setForwardTo] = useState(job.artifacts.forward_to ?? '')
+  const [unsubscribeTarget, setUnsubscribeTarget] = useState<string | null>(null)
 
   function replace(updated: Job) {
     setForwardTo(updated.artifacts.forward_to ?? '')
     onReplaced(updated)
+  }
+
+  async function showUnsubscribeTarget() {
+    setBusy(true)
+    try {
+      setUnsubscribeTarget(await fetchUnsubscribeTarget(job._id))
+    } catch (error) {
+      showToast.error(error instanceof Error ? error.message : 'Failed to read the unsubscribe target')
+    }
+    setBusy(false)
+  }
+
+  function unsubscribe(target: string) {
+    setUnsubscribeTarget(null)
+    act(() => approveUnsubscribe(job._id, target), 'Failed to unsubscribe')
   }
 
   async function act(action: () => Promise<Job>, failure: string) {
@@ -227,7 +253,11 @@ export function JobCard({ card, onReplaced, onRemoved }: JobCardProps) {
           <Button
             className={TOUCH_TARGET}
             disabled={busy}
-            onClick={() => act(() => approveJob(job._id, job.verb === 'forward' ? forwardTo : undefined, shownDigest), 'Failed to approve the job')}
+            onClick={() =>
+              job.verb === 'unsubscribe'
+                ? showUnsubscribeTarget()
+                : act(() => approveJob(job._id, job.verb === 'forward' ? forwardTo : undefined, shownDigest), 'Failed to approve the job')
+            }
           >
             <HugeiconsIcon icon={CheckmarkCircle01Icon} />
             Approve
@@ -273,7 +303,54 @@ export function JobCard({ card, onReplaced, onRemoved }: JobCardProps) {
           </Button>
         </CardFooter>
       )}
+      {unsubscribeTarget !== null && (
+        <UnsubscribeDialog target={unsubscribeTarget} onConfirm={unsubscribe} onCancel={() => setUnsubscribeTarget(null)} />
+      )}
     </Card>
+  )
+}
+
+// The target comes from the mail's List-Unsubscribe header, so the owner reads all of it before acting, and only
+// an https page (opened by their own browser) or a mailto (sent by the server) can be acted on.
+function UnsubscribeDialog({ target, onConfirm, onCancel }: { target: string; onConfirm: (target: string) => void; onCancel: () => void }) {
+  const isPage = isSecureWebLink(target)
+  const isEmail = !isPage && target.toLowerCase().startsWith('mailto:')
+  return (
+    <Dialog open onOpenChange={(open) => !open && onCancel()}>
+      <DialogContent>
+        <DialogHeader>
+          <DialogTitle>Unsubscribe</DialogTitle>
+          <DialogDescription>
+            {isPage && (
+              <>
+                Opens a page on <strong>{new URL(target).host}</strong> in a new tab.{' '}
+              </>
+            )}
+            {isEmail && 'Sends an unsubscribe email from your account to this address. '}
+            {!isPage && !isEmail && "This target can't be opened safely. "}
+            It comes from the email, so check it first.
+          </DialogDescription>
+        </DialogHeader>
+        <p className="break-all rounded-md bg-muted p-3 font-mono text-sm">{target}</p>
+        <DialogFooter>
+          <Button variant="outline" className={TOUCH_TARGET} onClick={onCancel}>
+            Cancel
+          </Button>
+          {isPage && (
+            <Button asChild className={TOUCH_TARGET}>
+              <a href={target} target="_blank" rel="noopener noreferrer" onClick={() => onConfirm(target)}>
+                Open unsubscribe page
+              </a>
+            </Button>
+          )}
+          {isEmail && (
+            <Button className={TOUCH_TARGET} onClick={() => onConfirm(target)}>
+              Send unsubscribe email
+            </Button>
+          )}
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
   )
 }
 
@@ -307,6 +384,10 @@ function CorrectMenu({ job, disabled, onCorrect }: { job: Job; disabled: boolean
 // The link comes from inbound mail, so a javascript: or data: URL must never become clickable.
 function isWebLink(link: string): boolean {
   return URL.canParse(link) && ['http:', 'https:'].includes(new URL(link).protocol)
+}
+
+function isSecureWebLink(link: string): boolean {
+  return URL.canParse(link) && new URL(link).protocol === 'https:'
 }
 
 // datetime-local inputs take local wall-clock time without a zone
