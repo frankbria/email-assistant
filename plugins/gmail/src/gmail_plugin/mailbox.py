@@ -196,7 +196,8 @@ class GmailMailbox(ImapMailbox):
             self._select(connection, trash, readonly=False)
             appended = append_uid(response)
             # Only ever the UID Gmail gave this probe, in this folder's current UID numbering.
-            if appended is None or appended[0] != str(connection.response("UIDVALIDITY")[1][0], "ascii"):
+            validity = connection.response("UIDVALIDITY")[1][0]
+            if appended is None or not isinstance(validity, bytes) or appended[0] != validity.decode("ascii"):
                 raise MailboxError(ErrorCode.UNAVAILABLE, "Gmail didn't say where it put the test message.")
             uid = str(appended[1])
             status, _ = connection.uid("STORE", uid, "+FLAGS.SILENT", "(\\Deleted)")

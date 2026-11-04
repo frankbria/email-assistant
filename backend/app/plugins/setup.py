@@ -6,7 +6,7 @@ from typing import Literal
 
 from pydantic import BaseModel, Field
 
-from app.plugins.config import PluginConfig
+from app.plugins.config import PluginConfig, StdioTransport
 from app.plugins.diagnosis import WatchdogRead, WatchdogReport
 from app.plugins.state import PluginState
 from mailbox_contract import Health
@@ -75,17 +75,21 @@ def install_step(title: str, fix: str, config: PluginConfig, state: PluginState,
     return SetupStep(title=title, status="done")
 
 
-def is_gmail(state: PluginState) -> bool:
-    # shortcut: a plugin that hasn't connected yet can't say what it is, so it gets the Proton
-    # checklist; let plugins.yaml name the kind if that confuses an owner.
-    return state.info is not None and state.info.plugin_name == "gmail"
+def is_gmail(config: PluginConfig, state: PluginState) -> bool:
+    if state.info is not None:
+        return state.info.plugin_name == "gmail"
+    # shortcut: a plugin that never started (e.g. no app password set) can't say what it is, so its
+    # command is the clue; let plugins.yaml name the kind if a Gmail plugin is ever launched otherwise.
+    transport = config.transport
+    launch = [transport.command, *transport.args] if isinstance(transport, StdioTransport) else [transport.url]
+    return any("gmail" in part for part in launch)
 
 
 def build_checklist(
     config: PluginConfig, state: PluginState, health: Health | None, watchdog: WatchdogRead | None,
     warnings: list[str] | None = None,
 ) -> Checklist:
-    gmail = is_gmail(state)
+    gmail = is_gmail(config, state)
     checks = {check.layer: check for check in health.checks} if health else {}
     steps, explained = [], set()
     for title, layer, fix in GMAIL_STEPS if gmail else STEPS:

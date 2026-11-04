@@ -253,13 +253,19 @@ def test_with_auto_expunge_off_there_is_no_warning_and_only_the_probe_is_marked(
     mailbox.create_folder(trash)
     in_inbox = mailbox.deliver(sender="ana@example.com", subject="keep", body="x")
     in_trash = mailbox.append(trash, sender="ana@example.com", subject="trashed by the owner", body="x")
+    # Another mail app marked this one deleted: a CLOSE or EXPUNGE anywhere in the probe would remove it.
+    marked = mailbox.append(trash, sender="ana@example.com", subject="marked by another app", body="x")
+    with mailbox.imap() as connection:
+        connection.select(trash)
+        connection.uid("STORE", "1:*", "+FLAGS.SILENT", "(\\Deleted)")
+        connection.uid("STORE", "1", "-FLAGS.SILENT", "(\\Deleted)")  # in_trash, appended first
 
     assert on_greenmail(mailbox).setup_warnings().warnings == []
 
     trash_flags = flags_by_message_id(mailbox, trash)
-    probes = [flags for message_id, flags in trash_flags.items() if message_id != in_trash]
+    probes = [flags for message_id, flags in trash_flags.items() if message_id not in (in_trash, marked)]
     assert len(probes) == 1 and b"\\Deleted" in probes[0]
-    assert b"\\Deleted" not in trash_flags[in_trash]
+    assert b"\\Deleted" not in trash_flags[in_trash] and b"\\Deleted" in trash_flags[marked]
     assert b"\\Deleted" not in flags_by_message_id(mailbox, "INBOX")[in_inbox]
 
 

@@ -13,7 +13,7 @@ from app.main import app
 from app.plugins.config import PluginConfig, StdioTransport, WatchdogConfig
 from app.plugins.diagnosis import WatchdogReport
 from app.plugins.setup import build_checklist
-from app.plugins.state import PluginState, PluginStatus
+from app.plugins.state import PluginState
 from mailbox_contract import Folders, Health, HealthCheck, MailboxInfo
 from proton_plugin.settings import ProtonSettings
 from proton_plugin.watchdog import Watchdog, serve_status
@@ -178,8 +178,8 @@ GMAIL_INFO = MailboxInfo(
 )
 
 
-def gmail_state(status: PluginStatus = "connected", reason: str | None = None) -> PluginState:
-    return PluginState(id="gmail", status=status, reason=reason, info=GMAIL_INFO)
+def gmail_state() -> PluginState:
+    return PluginState(id="gmail", status="connected", info=GMAIL_INFO)
 
 
 def gmail_config() -> PluginConfig:
@@ -204,9 +204,13 @@ def test_a_rejected_gmail_login_points_at_each_sign_in_step_once_with_gmails_wor
     assert "apppasswords" in details[1]
 
 
-def test_a_gmail_plugin_that_is_not_answering_fails_its_step_and_the_rest_wait():
-    checklist = build_checklist(gmail_config(), gmail_state("failed", "Could not connect: no such file"), None, None)
+def test_a_gmail_plugin_that_never_started_still_gets_gmail_steps_with_its_step_failing():
+    """No app password set, say: the plugin never answered, so its command says it is Gmail."""
+    never_started = PluginState(id="gmail", status="failed", reason="Could not connect: no such file")
 
+    checklist = build_checklist(gmail_config(), never_started, None, None)
+
+    assert checklist.title == "Set up Gmail"
     assert [step.status for step in checklist.steps] == ["waiting", "waiting", "waiting", "failing", "waiting"]
     assert "Could not connect: no such file" in (checklist.steps[3].detail or "")
 

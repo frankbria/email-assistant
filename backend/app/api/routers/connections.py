@@ -64,5 +64,5 @@ async def check_connection(plugin_id: str, _owner_id: OwnerId, request: Request)
     watchdog = await read_watchdog(config.watchdog, timeout=5) if config.watchdog else None
     # Only once the connection works: the check needs it, and it writes a probe message.
     healthy = health is not None and all(check.ok for check in health.checks)
-    warnings = await plugins.setup_warnings(plugin_id) if is_gmail(state) and healthy else []
+    warnings = await plugins.setup_warnings(plugin_id) if is_gmail(config, state) and healthy else []
     return build_checklist(config, state, health, watchdog, warnings)
