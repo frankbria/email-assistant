@@ -78,12 +78,14 @@ async def finish(
     if not claimed.modified_count:
         raise JobNotOpen(f"job {job_id} isn't open")
     archived: list[PydanticObjectId] = []
+    action: Action = "dismissed" if outcome == "dismissed" else "archived"
+    job: Job | None = None
     try:  # everything after the claim: any failure must end with the job reopened, never stuck final
         job = await Job.get(job_id)
         assert job is not None
         errors = await archive_settled_messages(job, plugins, archived)
     except asyncio.CancelledError:  # a BaseException: interrupted, it must still end retryable
-        await asyncio.shield(reopen(job_id, outcome, ["finishing was interrupted, so the message is still in the inbox"]))
+        await asyncio.shield(interrupted(job, job_id, outcome, action, archived, by, level))
         raise
     except Exception as error:  # whatever broke, the job must not stay final while its mail is in the inbox
         errors = [f"archiving failed ({error}), so the message is still in the inbox"]
@@ -93,9 +95,22 @@ async def finish(
         await Job.find(Job.id == job_id, Job.state == outcome).update({"$set": {"permission_level": level}})
     refreshed = await Job.get(job_id)
     assert refreshed is not None
-    action: Action = "dismissed" if outcome == "dismissed" else "archived" if archived else "done"
+    if outcome == "done" and not archived:
+        action = "done"
     await record(refreshed.owner_id, job_id, action, archived or refreshed.message_ids, by, level, "; ".join(errors) or None, bool(archived))
     return refreshed
+
+
+async def interrupted(
+    job: Job | None, job_id: PydanticObjectId, outcome: Outcome, action: Action, archived: list[PydanticObjectId],
+    by: Actor, level: PermissionLevel | None,
+) -> None:
+    """A finish cut short ends retryable; the copies it already archived left the inbox, so they keep their
+    history entry and its undo."""
+    problem = "finishing was interrupted, so the message is still in the inbox"
+    await reopen(job_id, outcome, [problem])
+    if job is not None and archived:
+        await record(job.owner_id, job_id, action, archived, by, level, problem, undoable=True)
 
 
 async def reopen(job_id: PydanticObjectId, outcome: Outcome, errors: list[str]) -> None:
@@ -171,13 +186,19 @@ async def undo(entry: ActionLogEntry, plugins: PluginRegistry) -> ActionLogEntry
     claimed = await ActionLogEntry.find(ActionLogEntry.id == entry.id, {"undone": False}).update({"$set": {"undone": True}})
     if not claimed.modified_count:
         raise NotUndoable("it was already undone")
-    errors = []
-    for message in await Message.find(In(Message.id, entry.message_ids)).to_list():
-        problem = await restore(message, plugins.clients.get(message.plugin_id))
-        if problem:
-            errors.append(problem)
-    if errors:
-        await ActionLogEntry.find(ActionLogEntry.id == entry.id).update({"$set": {"undone": False}})
+    errors: list[str] = []
+    restored = False
+    try:
+        for message in await Message.find(In(Message.id, entry.message_ids)).to_list():
+            problem = await restore(message, plugins.clients.get(message.plugin_id))
+            if problem:
+                errors.append(problem)
+        restored = not errors
+    finally:  # failed, raised or cancelled: the archive stays undoable
+        # shortcut: a process dying between the claim and this release strands the entry as undone; make the claim
+        # and the restore's entry one transaction once MongoDB runs as a replica set.
+        if not restored:
+            await asyncio.shield(ActionLogEntry.find(ActionLogEntry.id == entry.id).update({"$set": {"undone": False}}))
     return await record(entry.owner_id, entry.job_id, "restored", entry.message_ids, "owner", None, "; ".join(errors) or None)
 
 
@@ -205,9 +226,8 @@ async def execute(
     if claimed is None:
         raise JobNotOpen(f"job {job_id} isn't open or failed")
     job = Job.model_validate(claimed)  # as of the claim: an overlapping approval may have sent it meanwhile
-    already_sent = job.sent_at is not None
     try:
-        problem = None if already_sent else await send(job, plugins, body, forward_to)
+        problem = None if job.sent_at else await send(job, plugins, body, forward_to)
     except asyncio.CancelledError:  # a BaseException: interrupted, it must still end retryable
         await asyncio.shield(mark_failed(job_id, "interrupted before it finished"))
         raise
@@ -226,7 +246,8 @@ async def execute(
         return failed
     # The plugin confirmed the send: record it even if cancelled now, so no retry ever sends it again.
     await asyncio.shield(Job.find(Job.id == job_id).update({"$set": {"sent_at": job.sent_at or now}}))
-    if not already_sent:
+    # Once per job, and again if a crash lost it after the send: a retry only archives, but fills the history's gap.
+    if not await ActionLogEntry.find(ActionLogEntry.job_id == job_id, ActionLogEntry.action == "sent", {"ok": True}).exists():
         await record(job.owner_id, job_id, "sent", job.message_ids, by, level)
     return await finish(job_id, "done", plugins, claim_from=("sending",), by=by, level=level)
 

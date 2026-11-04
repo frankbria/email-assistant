@@ -10,11 +10,15 @@ from app.api.routers.jobs import plugin_registry
 from app.main import app
 from app.models.action_log import ActionLogEntry
 from app.models.job import Artifacts
+from app.models.message import Message
 from app.permissions import PermissionSettings
 from app.pipeline.run import act_if_autonomous
 from app.plugins.registry import PluginRegistry
+from app.sync import SyncEngine
 from tests.test_routes.test_jobs_api import archived, job_from
+from tests.test_sync.test_inbox_sync import PLUGIN, add_owner
 from tests.utils.auth import OWNER_ID
+from tests.utils.fakes import FakeAIProvider
 from tests.utils.mail_server import new_mailbox
 
 pytestmark = pytest.mark.usefixtures("mail_server")
@@ -124,3 +128,40 @@ async def test_a_failed_send_is_logged_with_its_reason(async_client, test_db, ma
 
     [entry] = await history(async_client)
     assert (entry["action"], entry["ok"], entry["error"], entry["undoable"]) == ("sent", False, "choose who to forward it to", False)
+
+
+async def test_an_undone_archive_stays_in_the_inbox_through_the_next_sync(async_client, test_db, mailbox, plugins):
+    """The restored mail is the same message (refs are stable across moves), so a sync pass neither stores it
+    again nor re-runs its finished job's archive."""
+    await add_owner(test_db, OWNER_ID)
+    job = await job_from(new_mailbox(), mailbox, "todo", Artifacts(link="https://pay.example"))
+    await Message.find(Message.id == job.message_ids[0]).update({"$set": {"pipeline_done": True}})  # as the pipeline left it
+    await async_client.post(f"/api/v1/jobs/{job.id}/approve", json={})
+    [archive_entry] = await history(async_client)
+    await async_client.post(f"/api/v1/history/{archive_entry['_id']}/undo")
+
+    await SyncEngine(plugins, test_db["user"], poll_seconds=60, provider=FakeAIProvider()).sync_all()
+
+    assert len(mailbox.messages("INBOX")) == 1 and mailbox.messages("Archive") == []
+    assert [entry["action"] for entry in await history(async_client)] == ["restored", "archived"]
+    assert await Message.find(Message.owner_id == OWNER_ID).count() == 1
+
+
+async def test_a_partly_failed_undo_can_be_retried_and_restores_the_rest(async_client, test_db, mailbox, plugins):
+    ana = new_mailbox()
+    first = await job_from(ana, mailbox, "todo", Artifacts(link="https://pay.example"))
+    second = await job_from(ana, mailbox, "todo", Artifacts(link="https://pay.example"))
+    await async_client.post(f"/api/v1/jobs/{first.id}/approve", json={})
+    await async_client.post(f"/api/v1/jobs/{second.id}/approve", json={})
+    both = [*first.message_ids, *second.message_ids]
+    entry = (await history(async_client))[-1]
+    await ActionLogEntry.find(ActionLogEntry.id == PydanticObjectId(entry["_id"])).update({"$set": {"message_ids": both}})
+    await Message.find(Message.id == second.message_ids[0]).update({"$set": {"plugin_id": "elsewhere"}})  # not connected
+
+    partly = await async_client.post(f"/api/v1/history/{entry['_id']}/undo")
+    await Message.find(Message.id == second.message_ids[0]).update({"$set": {"plugin_id": PLUGIN}})  # back online
+    retried = await async_client.post(f"/api/v1/history/{entry['_id']}/undo")
+
+    assert (partly.json()["ok"], partly.json()["error"]) == (False, "elsewhere isn't connected, so the message is still archived")
+    assert (retried.json()["ok"], retried.json()["error"]) == (True, None)
+    assert len(mailbox.messages("INBOX")) == 2 and mailbox.messages("Archive") == []

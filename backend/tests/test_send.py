@@ -7,6 +7,7 @@ from email.message import EmailMessage
 import pytest
 
 from app.executor import JobNotOpen, execute, forward_subject, reply_subject
+from app.models.action_log import ActionLogEntry
 from app.models.job import Artifacts, Job, Verb
 from app.models.message import Message
 from tests.conformance.test_mailbox_conformance import reference_imap_plugin
@@ -30,6 +31,10 @@ async def job_for(mailbox: Mailbox, sender: Mailbox, verb: Verb, artifacts: Arti
               artifacts=artifacts, message_ids=[message.id])
     await job.insert()
     return job, ref
+
+
+async def sent_entries(job: Job) -> list[ActionLogEntry]:
+    return await ActionLogEntry.find(ActionLogEntry.job_id == job.id, ActionLogEntry.action == "sent").to_list()
 
 
 def received(mailbox: Mailbox) -> list[EmailMessage]:
@@ -127,6 +132,19 @@ async def test_a_send_that_went_through_is_never_repeated_when_only_the_archive_
     assert first.state == "open" and first.error is not None and first.sent_at is not None
     assert (retried.state, retried.error) == ("done", None)
     assert len(received(ana)) == 1
+    assert [entry.ok for entry in await sent_entries(job)] == [True]  # the retry only archived: no second `sent`
+
+
+async def test_a_send_whose_history_entry_was_lost_gets_it_on_retry(test_db, mailbox: Mailbox):
+    """The plugin confirmed the send (sent_at is stored), then the process died before the entry was written."""
+    ana = new_mailbox()
+    job, _ = await job_for(mailbox, ana, "reply", Artifacts(draft="Thursday works."))
+    await Job.find(Job.id == job.id).update({"$set": {"state": "failed", "sent_at": datetime.now(UTC)}})
+    async with connected(reference_imap_plugin(mailbox)) as registry:
+        await execute(job.id, registry, by="owner", level="ask")
+
+    assert [(entry.ok, entry.by, entry.permission_level) for entry in await sent_entries(job)] == [(True, "owner", "ask")]
+    assert received(ana) == []
 
 
 async def test_an_interrupted_send_ends_retryable(test_db, monkeypatch):
