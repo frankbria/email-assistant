@@ -12,6 +12,7 @@ import asyncio
 import json
 import re
 import sys
+import uuid
 from collections import Counter
 from collections.abc import Sequence
 from datetime import datetime
@@ -57,10 +58,10 @@ class Metric(NamedTuple):
     detail: str
 
 
-def message_of(line: Line) -> Message:
+def message_of(line: Line, message_id: PydanticObjectId) -> Message:
     """The line's mail as the pipeline sees it; never stored."""
     return Message.model_validate({
-        "_id": PydanticObjectId(), "owner_id": OWNER, "plugin_id": "test-set", "ref": line["message_id"],
+        "_id": message_id, "owner_id": OWNER, "plugin_id": "test-set", "ref": line["message_id"],
         "message_id": line["message_id"], "sender": {"email": line["sender"]}, "to": [], "cc": [],
         "date": datetime.fromisoformat(line["reacted_at"]), "subject": line["subject"], "snippet": line["text"][:200],
         "list_id": line["list_id"],
@@ -69,7 +70,9 @@ def message_of(line: Line) -> Message:
 
 async def evaluate(lines: Sequence[Line], provider: AIProvider) -> list[Job]:
     """The pipeline's decision on each line after calibration corrections, in order. One AI call per line."""
-    messages = [message_of(line) for line in lines]
+    # One id per email: holding a line out holds out every reaction to it (a re-run calibration repeats emails).
+    ids = {line["message_id"]: PydanticObjectId() for line in lines}
+    messages = [message_of(line, ids[line["message_id"]]) for line in lines]
     for message, line in zip(messages, lines):
         await record_example(message, line["text"], line["owner_verb"], "calibration")
     jobs = []
@@ -124,12 +127,11 @@ async def run(path: str, provider: AIProvider) -> int:
     with open(path, encoding="utf-8") as test_set:
         lines = [json.loads(text) for text in test_set if text.strip()]
     settings = get_settings()
-    scratch = settings.model_copy(update={"mongodb_db": f"{settings.mongodb_db}_metrics",
-                                          "mongodb_test_db": f"{settings.mongodb_test_db}_metrics"})
+    run_id = uuid.uuid4().hex[:12]  # its own database: a concurrent run must not share or drop it
+    # shortcut: a killed run leaves its <db>_metrics_<id> database behind; drop those by hand, or sweep them if it recurs
+    scratch = settings.model_copy(update={"mongodb_db": f"{settings.mongodb_db}_metrics_{run_id}",
+                                          "mongodb_test_db": f"{settings.mongodb_test_db}_metrics_{run_id}"})
     database = scratch.current_mongodb_db
-    stale = await init_db(scratch)
-    await stale.drop_database(database)  # left over from an aborted run
-    await stale.close()
     client = await init_db(scratch)
     try:
         metrics = measure(lines, await evaluate(lines, provider))

@@ -142,4 +142,34 @@ async def test_one_command_reports_every_metric_and_fails_on_any_fail(tmp_path: 
     failing = capsys.readouterr().out
     assert "FAIL  AC-4.2" in failing and "FAIL  AC-3.3 verb spread" in failing
     databases = await AsyncMongoClient(get_settings().current_mongodb_uri).list_database_names()
-    assert not [name for name in databases if name.endswith("_metrics")]  # the scratch database is gone
+    assert not [name for name in databases if "_metrics" in name]  # the scratch database is gone
+
+
+async def test_a_line_never_sees_another_reaction_to_the_same_email():
+    """Calibrating the same inbox twice records the email twice: either copy would give the other's answer away."""
+    first, again = line("Weekly deals #1", "archive_noise"), line("Weekly deals #1", "archive_noise")
+    other = line("Weekly deals #2", "archive_noise")
+    ai = BySubject({"Weekly deals #1": noise("deals #1"), "Weekly deals #2": noise("deals #2")})
+
+    await evaluate([first, again, other], ai)
+
+    for prompt in ai.prompts[:2]:
+        assert 'subject "Weekly deals #1"' not in prompt and 'subject "Weekly deals #2"' in prompt
+
+
+
+
+async def test_a_run_leaves_another_runs_scratch_database_alone(tmp_path: Path):
+    """Each command (its own process) gets its own scratch database, so one finishing never drops another's."""
+    test_set = tmp_path / "test_set.jsonl"
+    test_set.write_text(json.dumps(line("Deals", "archive_noise")) + "\n")
+    other = AsyncMongoClient(get_settings().current_mongodb_uri)
+    another_run = other[f"{get_settings().current_mongodb_db}_metrics"]  # the one name all runs once shared
+    await another_run["examples"].insert_one({"owner_id": "metrics"})
+    try:
+        await run(str(test_set), BySubject({"Deals": noise("deals")}))
+
+        assert await another_run["examples"].count_documents({}) == 1
+    finally:
+        await other.drop_database(another_run.name)
+        await other.close()
