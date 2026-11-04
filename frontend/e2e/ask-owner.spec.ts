@@ -15,9 +15,12 @@ test('the owner picks a verb for mail the app would not guess about', async ({ p
   for (const name of ['Reply', 'Something else', 'Dismiss']) {
     expect((await card.getByRole('button', { name }).boundingBox())?.height).toBeGreaterThanOrEqual(44)
   }
+  const always = card.getByRole('checkbox', { name: `Always do this for ${job.sender}` })
+  expect((await card.locator('label', { hasText: 'Always do this' }).boundingBox())?.height).toBeGreaterThanOrEqual(44)
   const [scrollWidth, viewportWidth] = await page.evaluate(() => [document.documentElement.scrollWidth, window.innerWidth])
   expect(scrollWidth).toBeLessThanOrEqual(viewportWidth)
 
+  await always.check()
   await card.getByRole('button', { name: 'Something else' }).click()
   await page.getByRole('menuitem', { name: 'To-do' }).click()
 

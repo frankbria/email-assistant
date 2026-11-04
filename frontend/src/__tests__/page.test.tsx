@@ -73,6 +73,7 @@ const jobCard: JobCard = {
   },
   sender: { name: null, email: 'teammate@company.com' },
   subject: 'Project Update',
+  list_id: null,
 }
 
 describe('Open jobs page', () => {
@@ -463,6 +464,43 @@ describe('Ask-owner card', () => {
     expect(await screen.findByText('Plugin not connected')).toBeInTheDocument()
     expect(within(card).getByRole('heading', { name: 'What do you want to do with this?' })).toBeInTheDocument()
     expect(within(card).getByRole('button', { name: 'To-do' })).toBeEnabled()
+  })
+
+  it('"Always do this" for the sender makes a chosen verb a rule, from a button or the menu', async () => {
+    const card = await renderQueue(askOwner)
+    mockFetch.mockResolvedValue(Response.json({ ...askOwner.job, problems: ['Still unsure'] }))
+    const always = within(card).getByRole('checkbox', { name: 'Always do this for teammate@company.com' })
+    expect(always).not.toBeChecked()
+
+    await userEvent.click(always)
+    await userEvent.click(within(card).getByRole('button', { name: 'Reply' }))
+    await within(card).findByText('Still unsure')
+    await userEvent.click(within(card).getByRole('button', { name: 'Something else' }))
+    await userEvent.click(await screen.findByRole('menuitem', { name: 'Snooze' }))
+
+    await waitFor(() => expect(mockFetch).toHaveBeenCalledTimes(3))
+    expect(requestTo(1).body).toEqual({ verb: 'reply', always: true })
+    expect(requestTo(2).body).toEqual({ verb: 'snooze', always: true })
+  })
+
+  it('a choice without "Always do this" is for this mail only', async () => {
+    const card = await renderQueue(askOwner)
+    mockFetch.mockResolvedValueOnce(Response.json({ ...askOwner.job, problems: ['Still unsure'] }))
+
+    await userEvent.click(within(card).getByRole('button', { name: 'To-do' }))
+
+    await within(card).findByText('Still unsure')
+    expect(requestTo(1).body).toEqual({ verb: 'todo', always: false })
+  })
+
+  it.each([
+    ['Garden deals <deals.shop.example>', 'Garden deals'],
+    ['"Garden deals" <deals.shop.example>', 'Garden deals'],
+    ['<deals.shop.example>', 'deals.shop.example'],
+  ])('for mail from the list %s, "Always do this" names the list', async (listId, name) => {
+    const card = await renderQueue({ ...askOwner, list_id: listId })
+
+    expect(within(card).getByRole('checkbox', { name: `Always do this for ${name}` })).toBeInTheDocument()
   })
 
   it('dismissing an ask-owner job removes its card', async () => {
