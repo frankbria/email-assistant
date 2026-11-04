@@ -5,15 +5,20 @@ import logging
 
 import pytest
 
-from app.models.job import Artifacts
+from app.api.routers.jobs import plugin_registry
+from app.main import app
+from app.models.job import Artifacts, Job
+from app.models.message import Message
 from app.models.rule import Rule
 from app.permissions import PermissionSettings
 from app.pipeline.proposal import Proposal
 from app.pipeline.run import act_if_autonomous
 from tests.test_routes.test_corrections_api import DEALS, SHOP, newest_job, sync_pass
 from tests.test_routes.test_history_api import history
+from tests.conformance.test_mailbox_conformance import reference_imap_plugin
+from tests.test_pipeline.test_shared_message import HOME, WORK, deliver_to_both
 from tests.test_routes.test_jobs_api import archived, job_from
-from tests.test_sync.test_inbox_sync import add_owner
+from tests.test_sync.test_inbox_sync import add_owner, connected
 from tests.utils.auth import OWNER_ID
 from tests.utils.fakes import FakeAIProvider
 from tests.utils.mail_server import new_mailbox
@@ -55,6 +60,51 @@ async def test_ac_2_4_restoring_mail_the_app_archived_makes_the_next_similar_mes
     waiting = await newest_job()
     assert (waiting.verb, waiting.state, waiting.requires_approval) == ("archive_noise", "open", True)
     assert len(mailbox.messages("INBOX")) == 2 and mailbox.messages("Archive") == []
+
+
+async def test_the_list_whose_noise_rule_decided_is_the_one_that_asks_first(async_client, test_db, mailbox, plugins):
+    """The list's noise rule archived it, so the list asks first from now on, not the sender's rule that didn't decide."""
+    ana = new_mailbox()
+    await PermissionSettings(owner_id=OWNER_ID, levels={"archive_noise": "autonomous"}).insert()
+    await Rule(owner_id=OWNER_ID, match="list_id", value="<deals.shop.example>", verb="archive_noise").insert()
+    await Rule(owner_id=OWNER_ID, match="sender", value=ana.address, verb="reply").insert()
+    job = await job_from(ana, mailbox, "archive_noise", Artifacts(noise_rationale="a mailing list"))
+    await Message.find(Message.id == job.message_ids[0]).update({"$set": {"list_id": "Deals <deals.shop.example>"}})
+    await act_if_autonomous(job, plugins)
+    [app_archive] = await history(async_client)
+
+    await async_client.post(f"/api/v1/history/{app_archive['_id']}/undo")
+
+    assert sorted(await rules()) == [("list_id", "deals.shop.example", None, True), ("sender", ana.address.lower(), "reply", False)]
+
+
+async def test_a_late_copy_of_restored_mail_waits_for_the_owner_instead_of_being_archived(async_client, test_db):
+    """The same mail reaching another account after the restore follows the restore, not the archive it undid."""
+    await add_owner(test_db, OWNER_ID)
+    await PermissionSettings(owner_id=OWNER_ID, levels={"archive_noise": "autonomous"}).insert()
+    home, work = new_mailbox(), new_mailbox()
+    for account in (home, work):
+        account.create_folder("Sent")  # the owner's voice is read from it
+    ai = FakeAIProvider(NOISE.model_copy(update={"evidence": ["invoice 4471"]}))  # the words deliver_to_both sends
+    async with connected(reference_imap_plugin(home, HOME), reference_imap_plugin(work, WORK)) as registry:
+        await sync_pass(test_db, registry, ai)  # first passes, empty
+    message_id = deliver_to_both(home, work, "Weekly deals")
+    async with connected(reference_imap_plugin(home, HOME)) as registry:
+        await sync_pass(test_db, registry, ai)
+        [app_archive] = await history(async_client)
+        app.dependency_overrides[plugin_registry] = lambda: registry
+        try:
+            undone = await async_client.post(f"/api/v1/history/{app_archive['_id']}/undo")
+        finally:
+            app.dependency_overrides.pop(plugin_registry)
+    assert undone.json()["ok"] and [m["Message-ID"] for m in home.messages("INBOX")] == [message_id]
+
+    async with connected(reference_imap_plugin(home, HOME), reference_imap_plugin(work, WORK)) as registry:
+        await sync_pass(test_db, registry, ai)
+
+    assert [m["Message-ID"] for m in work.messages("INBOX")] == [message_id] and work.messages("Archive") == []
+    waiting = await Job.find(Job.owner_id == OWNER_ID, Job.state == "open").to_list()
+    assert [(job.verb, job.requires_approval) for job in waiting] == [("archive_noise", True)]
 
 
 async def test_undoing_the_owners_own_archive_teaches_nothing(async_client, test_db, mailbox, plugins):

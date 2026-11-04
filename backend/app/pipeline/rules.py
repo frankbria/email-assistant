@@ -33,18 +33,27 @@ async def learn_rule(message: Message, verb: Verb, *, correct_the_deciding_rule:
 async def ask_first_from_now_on(message: Message) -> None:
     """The owner restored mail the app archived on its own (§10.4, AC-2.4): the stream's noise rule goes, and nothing
     is done to its mail again without the owner's tap. No verb is learned: the restore says only what it isn't."""
+    key = await stream_to_teach(message, correct_the_deciding_rule=True)  # before forgetting: the noise rule may have decided
     await forget_noise_rules(message)
-    await teach(message, {"ask_first": True}, correct_the_deciding_rule=True)
+    if key:
+        await store_rule(message.owner_id, key, {"ask_first": True})
 
 
 async def teach(message: Message, changes: dict[str, object], correct_the_deciding_rule: bool) -> None:
+    if key := await stream_to_teach(message, correct_the_deciding_rule):
+        await store_rule(message.owner_id, key, changes)
+
+
+async def stream_to_teach(message: Message, correct_the_deciding_rule: bool) -> tuple[RuleMatch, str] | None:
     decided = await matching_rule(message.owner_id, message) if correct_the_deciding_rule else None
     keys = [(decided.match, decided.value)] if decided else stream_keys(message)
-    if not keys:
-        return
-    match, key = keys[0]
+    return keys[0] if keys else None
+
+
+async def store_rule(owner_id: str, key: tuple[RuleMatch, str], changes: dict[str, object]) -> None:
+    match, value = key
     await Rule.get_pymongo_collection().update_one(
-        {"owner_id": message.owner_id, "match": match, "value": key},
+        {"owner_id": owner_id, "match": match, "value": value},
         {"$set": changes, "$setOnInsert": {"created_at": datetime.now(UTC)}},
         upsert=True,
     )

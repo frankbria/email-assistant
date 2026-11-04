@@ -62,8 +62,10 @@ async def process(message: Message, client: Client, provider: AIProvider, cap: i
     assert message.id is not None, "only stored messages are processed"
     job = await Job.find_one(Job.owner_id == message.owner_id, Job.message_ids == message.id)
     sibling = await sibling_job(message) if job is None else None
-    if sibling is not None and not (message.first_pass and sibling.state in ("done", "dismissed")):
-        # A first-connect copy never rides on a decision already carried out elsewhere (§5.3: it's `ask`).
+    finished = sibling is not None and sibling.state in ("done", "dismissed")
+    if sibling is not None and not (finished and (message.first_pass or await asks_first(message))):
+        # A copy that must be asked about (first-connect, §5.3, or a stream that asks first, §10.4) never rides on a
+        # decision already carried out elsewhere.
         job = await attach_copy(sibling, message)
     if job is None:
         job = await decide(message, client, provider, cap)
