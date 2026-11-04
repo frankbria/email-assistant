@@ -79,7 +79,7 @@ async function callEveryService() {
   await settings.updateUserSettings(CHOSEN)
 }
 
-const CHOSEN = { ai_provider: 'anthropic' as const, ai_model: 'claude-opus-5-5', poll_seconds: 60, first_connect_days: 14 }
+const CHOSEN = { ai_provider: 'anthropic' as const, ai_model: 'claude-opus-5-5', poll_seconds: 60, first_connect_days: 14, privacy_mode: 'full_cloud' as const }
 
 describe('frontend → FastAPI requests', () => {
   it('carry the Better Auth JWT and never a user_id', async () => {

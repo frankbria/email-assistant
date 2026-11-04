@@ -11,6 +11,7 @@ const current = {
   ai_model: 'claude-opus-5-5',
   poll_seconds: 120,
   first_connect_days: 14,
+  privacy_mode: 'full_cloud' as const,
 };
 
 describe('SettingsForm', () => {
@@ -24,7 +25,7 @@ describe('SettingsForm', () => {
     expect(screen.getByText(/loading settings/i)).toBeInTheDocument();
   });
 
-  it('renders the four settings with their current values', async () => {
+  it('renders the settings with their current values', async () => {
     vi.spyOn(service, 'fetchUserSettings').mockResolvedValue(current);
     render(<SettingsForm />);
 
@@ -32,6 +33,7 @@ describe('SettingsForm', () => {
     expect(screen.getByLabelText(/^model/i)).toHaveValue('claude-opus-5-5');
     expect(screen.getByLabelText(/poll interval/i)).toHaveValue(120);
     expect(screen.getByLabelText(/first-connect window/i)).toHaveValue(14);
+    expect(screen.getByLabelText(/privacy mode/i)).toHaveValue('full_cloud');
     expect(screen.queryByText(/spam filtering/i)).not.toBeInTheDocument();
   });
 
@@ -48,6 +50,18 @@ describe('SettingsForm', () => {
       expect(saveSpy).toHaveBeenCalledWith({ ...current, poll_seconds: 30 });
       expect(toastSpy).toHaveBeenCalledWith(expect.stringMatching(/settings saved/i));
     });
+  });
+
+  it('saves redacted cloud privacy mode when chosen', async () => {
+    vi.spyOn(service, 'fetchUserSettings').mockResolvedValue(current);
+    const saveSpy = vi.spyOn(service, 'updateUserSettings').mockResolvedValue({ ...current, privacy_mode: 'redacted_cloud' });
+    render(<SettingsForm />);
+
+    fireEvent.change(await screen.findByLabelText(/privacy mode/i), { target: { value: 'redacted_cloud' } });
+    fireEvent.click(screen.getByRole('button', { name: /save/i }));
+
+    await waitFor(() => expect(saveSpy).toHaveBeenCalledWith({ ...current, privacy_mode: 'redacted_cloud' }));
+    expect(screen.getByLabelText(/privacy mode/i)).toHaveValue('redacted_cloud');
   });
 
   it('locks the fields while a save is pending, so the response cannot overwrite newer edits', async () => {

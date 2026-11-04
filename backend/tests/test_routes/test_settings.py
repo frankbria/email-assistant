@@ -17,7 +17,7 @@ from tests.test_sync.test_inbox_sync import PLUGIN, add_owner, connected, eventu
 from tests.utils.auth import OWNER_ID, bearer_headers
 from tests.utils.mail_server import Mailbox
 
-CHOSEN = {"ai_provider": "anthropic", "ai_model": "claude-sonnet-5-5", "poll_seconds": 300, "first_connect_days": 30}
+CHOSEN = {"ai_provider": "anthropic", "ai_model": "claude-sonnet-5-5", "poll_seconds": 300, "first_connect_days": 30, "privacy_mode": "redacted_cloud"}
 
 
 @pytest.fixture
@@ -34,7 +34,8 @@ async def test_an_owner_who_has_not_chosen_gets_the_env_values(test_db, async_cl
 
     assert response.status_code == 200
     assert {key: response.json()[key] for key in CHOSEN} == {
-        "ai_provider": "anthropic", "ai_model": "claude-env-model", "poll_seconds": 90, "first_connect_days": 7
+        "ai_provider": "anthropic", "ai_model": "claude-env-model", "poll_seconds": 90, "first_connect_days": 7,
+        "privacy_mode": "full_cloud",
     }
 
 
@@ -67,6 +68,7 @@ async def test_settings_the_forwarding_model_used_are_gone_even_from_a_document_
         {"poll_seconds": 86401},
         {"first_connect_days": 0},
         {"first_connect_days": 366},
+        {"privacy_mode": "local_only"},
     ],
     ids=str,
 )
