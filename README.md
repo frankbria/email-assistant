@@ -1,116 +1,140 @@
 # 📬 AI Email Assistant
 
-An executive-style AI assistant that reads your email, identifies why people are contacting you, and generates actionable task cards — not just messages. This isn't another inbox. It's a decision-routing system, built with a personal assistant metaphor.
+You never open your mailbox, only this app. It reads your mail and turns it into a queue of **jobs**: specific
+actions worded for that exact email, such as "Send Jason the list of apps you're working on" or "This podcast
+wants to interview you: yes / no / maybe later." Each email stays in your real inbox until its jobs are done,
+then the app archives it in the real mailbox.
+
+Think: a 1950s secretary triaging your morning mail. The full design is in
+[`docs/specs/2026-11-01-email-assistant-v1-design.md`](docs/specs/2026-11-01-email-assistant-v1-design.md).
 
 ---
 
-## 🧠 Philosophy
+## 🧠 How it works
 
-**Most email tools treat messages as the primary unit.** This assistant doesn't.
+- **Mailbox plugins.** Each mail account is reached through a plugin that speaks the `mailbox/1` contract over
+  MCP ([`docs/contracts/mailbox-1.md`](docs/contracts/mailbox-1.md)). The reference IMAP/SMTP plugin lives in
+  `packages/imap-mailbox`. The Proton plugin (`plugins/proton`) runs through Proton Mail Bridge, and a watchdog
+  restarts Bridge when it stops.
+- **Pipeline.** New mail is synced, minimized, and checked first against learned **rules** (they outrank the AI).
+  Otherwise the AI proposes a job, with similar past decisions (**examples**) as context. Mail the AI can't
+  classify becomes an ask-owner card: "What do you want to do with this?"
+- **Verbs.** `reply`, `forward`, `digest`, `snooze`, `follow_up`, `todo`, `archive_noise`, `unsubscribe`.
+- **Permissions.** Each verb is `autonomous`, `ask` or `never_auto`, set on the settings screen and mirrored in a
+  readable `permissions.yaml`. Every verb has a ceiling: a `forward` never goes out on its own, and `unsubscribe`
+  always needs your tap.
+- **Learning.** Your corrections, ask-owner answers ("always do this for this sender/list") and restores of mail
+  the app archived become rules and examples, so similar mail is handled your way next time.
+- **Never losing mail.** Mail is only archived once its jobs are done. Every action is logged in History, and
+  archives can be undone. Noise the app filtered stays in the Filtered view for 30 days, one tap from restore.
 
-Instead, it treats your inbox as:
-- A stream of **requests for your attention**
-- That need to be **classified**, **delegated**, or **replied to**
-- In a **workflow-driven interface** (not a chronological list)
+## 📱 Screens
 
-Think: 1950s secretary triaging your morning mail.
+| Screen | What it's for |
+|---|---|
+| Jobs (home) | The job queue: approve, edit, choose another action, dismiss; ask-owner cards |
+| History | Timeline of everything the app and you did, with undo |
+| Filtered | The last 30 days of noise the app archived, with one-tap restore |
+| Connections | Mailbox plugin status and connection checks |
+| Settings | AI provider and model, poll interval, first-connect window, per-verb permissions |
+
+## 🚧 Status
+
+v1 is in progress; see the [open issues](https://github.com/frankbria/email-assistant/issues).
+
+- **Done:** Proton plugin, the `mailbox/1` contract, sync, the AI pipeline, the job queue, ask-owner, all v1
+  verbs, rules and examples, History with undo, Filtered view, settings and permissions, sign-in.
+- **Next:** calibration and quality metrics, the Gmail plugin, the redacted-cloud privacy mode, and the v1
+  release gate.
 
 ---
 
-## 🚀 Tech Stack
+## 🚀 Tech stack
 
-| Layer     | Tech           |
-|-----------|----------------|
-| Frontend  | Next.js 16 + Tailwind CSS (Node.js v24) |
-| Backend   | FastAPI + Beanie (MongoDB ODM) (Python 3.13+) |
-| Database  | MongoDB Atlas |
-| Auth      | (TBD — Clerk or custom) |
-| AI        | Anthropic Claude (provider interface); the owner decides when the AI cannot |
-| Package Mgmt | uv (backend), npm (frontend) |
+| Layer | Tech |
+|---|---|
+| Frontend | Next.js 16 + Tailwind CSS (Node.js 24) |
+| Backend | FastAPI + Beanie (MongoDB ODM), Python 3.13+ |
+| Database | MongoDB (Atlas, or a local container) |
+| Auth | Better Auth (single owner); the API verifies its JWTs |
+| AI | Anthropic Claude behind a provider interface |
+| Mail | `mailbox/1` plugins over MCP |
+| Packages | uv (backend), npm (frontend) |
 
----
-
-## 📁 Project Structure
+## 📁 Project structure
 
 ```
 email-assistant/
-├── backend/
-│   ├── app/           # FastAPI app, routes, models
-│   ├── tests/         # Pytest-based backend tests
-│   ├── .env.example   # Sample environment config for FastAPI
-├── frontend/
-│   ├── app/           # Next.js app router
-│   ├── components/    # BottomNav, PermissionsSection, etc.
-│   ├── .env.example   # Sample environment config for Next.js
-├── README.md
-├── .gitignore
+├── backend/                # FastAPI app: api/routers, pipeline, executor, sync, models
+├── frontend/               # Next.js app (src/app, src/components, e2e/)
+├── packages/
+│   ├── mailbox-contract/   # mailbox/1 contract types and JSON schemas
+│   └── imap-mailbox/       # reference IMAP/SMTP plugin
+├── plugins/proton/         # Proton plugin (via Proton Mail Bridge) and its watchdog
+├── docs/                   # spec, contract, deployment
+├── docker-compose.yml      # deployment
+└── docker-compose.test.yml # MongoDB + GreenMail for the test suites
 ```
 
 ---
 
-## 🧪 Running Locally
+## 🧪 Running locally
 
 ### Prerequisites
-- [uv](https://docs.astral.sh/uv/) (Python package manager)
-- Node.js v24.12.0+ (use `.nvmrc` via `nvm use` in the `frontend/` directory)
+- [uv](https://docs.astral.sh/uv/)
+- Node.js 24.12.0+ (`nvm use` in `frontend/` reads `.nvmrc`)
+- MongoDB (or `docker compose -f docker-compose.test.yml up -d mongo`)
 
-### Backend:
+### Backend
 ```bash
 cd backend
+cp .env.example .env   # fill in ANTHROPIC_API_KEY and MongoDB
 uv sync
 uv run uvicorn app.main:app --reload
 ```
 
-### Frontend:
+### Frontend
 ```bash
 cd frontend
+cp .env.example .env.local   # BETTER_AUTH_SECRET: openssl rand -base64 32
 nvm use
 npm install
-npm run dev
+npm run dev   # http://localhost:3200
 ```
 
----
-
-## 🧱 Key Features (Sprint 1)
-- API endpoints for email-task management:
-  - `GET /api/v1/jobs` and the job actions (approve, edit, choose another action, dismiss); see `backend/README.md`
-  - `GET/PUT /api/v1/settings`: AI provider and model, poll interval, first-connect window
-- Bottom navigation bar with active tab highlighting for main app sections
-- Mobile-first, touch-friendly design and persistent MongoDB storage
+To connect a Proton account, follow [`plugins/proton/README.md`](plugins/proton/README.md).
 
 ## ⚙️ Configuration
 
-Create environment files to configure AI classification and the API base URL:
- - Examples exist in .env.example files
+The `.env.example` files list every setting with comments:
 
-**Backend** (in `backend/.env` or project root `.env`):
-```dotenv
-ANTHROPIC_API_KEY=your_api_key_here
-AI_MODEL=claude-opus-5-5
-MONGODB_URI=<your_mongodb_uri>
-MONGODB_DB=<your_database_name>
-```
+- `backend/.env.example`: MongoDB, `ANTHROPIC_API_KEY`, default AI provider/model, sync interval, first-connect
+  window, optional monthly AI cap, permissions file, Better Auth URL.
+- `frontend/.env.example`: API base URL, MongoDB for the Better Auth collections, `BETTER_AUTH_SECRET`,
+  `BETTER_AUTH_URL`.
+- `.env.example` (repo root): Docker Compose deployment.
 
-**Frontend** (in `frontend/.env.local`):
-```dotenv
-NEXT_PUBLIC_API_BASE=http://localhost:8000
+The AI provider/model, poll interval and first-connect window in the backend env are defaults; the settings
+screen overrides them.
 
-# (Optional) Clerk or Auth key if using identity
-NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY=your-publishable-key
-CLERK_SECRET_KEY=your-secret-key
+## 🐳 Deployment
 
-# Flags or feature toggles
-NEXT_PUBLIC_DEBUG=true
-```
+Docker Compose on a tailnet host, with images from GHCR. See [`docs/deployment.md`](docs/deployment.md). With
+Atlas, stored mail lives off your own machines.
 
-## 🧪 Testing Instructions
+## 🧪 Testing
 
 ```bash
-# Backend tests
+docker compose -f docker-compose.test.yml up -d   # MongoDB + GreenMail (IMAP/SMTP)
+
+# Backend: real MongoDB and a real mail server, no mocks
 cd backend
 uv run pytest
 
-# Frontend tests
+# Frontend
 cd frontend
-npm run test
+npm run test   # Vitest
+npm run e2e    # Playwright
 ```
+
+Tests that call the paid AI API are marked `integration` and run only locally with `ANTHROPIC_API_KEY` set.
