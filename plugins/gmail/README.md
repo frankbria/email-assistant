@@ -32,6 +32,26 @@ Unencrypted connections are refused.
 - **Push**: the plugin keeps an IMAP IDLE on the inbox and publishes `mailbox://inbox` on new
   mail, so the app polls at once instead of waiting for its interval.
 
+## Setup checklist
+
+Connections → **Setup checklist** walks through 2-Step Verification, the app password, IMAP and
+the connection, and checks Gmail's **Auto-Expunge** setting (Settings → Forwarding and POP/IMAP).
+IMAP doesn't report that setting, so the check (the plugin's `setup_warnings` tool, run only when
+the owner checks setup) appends one probe message to the Trash, marks only that message deleted,
+and sees whether Gmail drops it at once. If it does, Auto-Expunge is on and the checklist warns;
+otherwise the probe stays in the Trash, which Gmail empties after 30 days. No other message is
+touched, and the plugin still never issues `EXPUNGE`. The Trash is found by its SPECIAL-USE flag,
+so other interface languages work.
+
+Live check (GreenMail has no such setting), against an account whose setting you know:
+
+```bash
+cd backend
+GMAIL_ADDRESS=… GMAIL_APP_PASSWORD=… GMAIL_AUTO_EXPUNGE=on uv run pytest tests/plugins/test_gmail_setup_live.py -rs
+```
+
+Run it once with Auto-Expunge on and once with it off (`GMAIL_AUTO_EXPUNGE=off`).
+
 ## Running
 
 `python -m gmail_plugin.server` (or the `gmail-plugin` script). In `plugins.yaml`:

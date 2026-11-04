@@ -10,7 +10,7 @@ from app.auth import OwnerId
 from app.models.sync_cursor import SyncCursor
 from app.plugins.diagnosis import ConnectionState, read_watchdog
 from app.plugins.registry import PluginRegistry
-from app.plugins.setup import Checklist, build_checklist
+from app.plugins.setup import Checklist, build_checklist, is_gmail
 from app.plugins.state import PluginStatus
 
 router = APIRouter(prefix="/api/v1/connections", tags=["connections"])
@@ -62,4 +62,7 @@ async def check_connection(plugin_id: str, _owner_id: OwnerId, request: Request)
     # Read this check's state and health before awaiting again: the refresh loop may re-check meanwhile.
     config, state, health = plugins.configs[plugin_id], plugins.states[plugin_id], plugins.healths[plugin_id]
     watchdog = await read_watchdog(config.watchdog, timeout=5) if config.watchdog else None
-    return build_checklist(config, state, health, watchdog)
+    # Only once the connection works: the check needs it, and it writes a probe message.
+    healthy = health is not None and all(check.ok for check in health.checks)
+    warnings = await plugins.setup_warnings(plugin_id) if is_gmail(config, state) and healthy else []
+    return build_checklist(config, state, health, watchdog, warnings)

@@ -14,14 +14,14 @@ from app.plugins.config import PluginConfig, StdioTransport, WatchdogConfig
 from app.plugins.diagnosis import WatchdogReport
 from app.plugins.setup import build_checklist
 from app.plugins.state import PluginState
-from mailbox_contract import Health, HealthCheck
+from mailbox_contract import Folders, Health, HealthCheck, MailboxInfo
 from proton_plugin.settings import ProtonSettings
 from proton_plugin.watchdog import Watchdog, serve_status
 from tests.plugins.test_proton_health import AUTH_IMAP_PORT, AUTH_SMTP_PORT, SECRET, USERNAME, closed_port
 from tests.test_plugins.test_diagnosis import TOKEN, TOKEN_ENV, free_port
 from tests.utils.auth import bearer_headers
 from tests.utils.mail_server import MAIL_HOST, wait_until_ready
-from tests.utils.tls_relay import start_tls_relay, write_certificate
+from tests.utils.tls_relay import fake_bridge, start_tls_relay, write_certificate
 
 STEP_TITLES = [
     "Install Proton Mail Bridge and start it",
@@ -155,6 +155,112 @@ def test_a_connected_plugin_without_a_watchdog_in_plugins_yaml_fails_the_install
     install_step = checklist.steps[3]
     assert install_step.status == "failing"
     assert install_step.detail is not None and "no watchdog" in install_step.detail
+
+
+def test_proton_keeps_its_title_and_has_no_warnings():
+    checklist = build_checklist(proton_config(), PluginState(id="proton", status="connected"), None, None)
+
+    assert checklist.title == "Set up Proton Mail" and checklist.warnings == []
+
+
+# --- Gmail (#97) ---------------------------------------------------------------------------
+
+GMAIL_STEP_TITLES = [
+    "Turn on 2-Step Verification for the Google account",
+    "Create an app password and set it as GMAIL_APP_PASSWORD",
+    "Check that IMAP is on in Gmail's settings",
+    "Add the Gmail plugin to plugins.yaml",
+    "Test the connection",
+]
+GMAIL_INFO = MailboxInfo(
+    contract_version="1.0", plugin_name="gmail", plugin_version="0.1.0", account="owner@example.com",
+    folders=Folders(inbox="INBOX", archive="[Gmail]/All Mail", sent="[Gmail]/Sent Mail"), capabilities=[],
+)
+
+
+def gmail_state() -> PluginState:
+    return PluginState(id="gmail", status="connected", info=GMAIL_INFO)
+
+
+def gmail_config() -> PluginConfig:
+    return PluginConfig(id="gmail", transport=StdioTransport(type="stdio", command="gmail"))
+
+
+def test_a_rejected_gmail_login_points_at_each_sign_in_step_once_with_gmails_words():
+    rejected = "Gmail rejected the IMAP login."
+    health = Health(status="degraded", repair_actions=[], checks=[
+        HealthCheck(layer="imap_login", ok=False, detail=rejected),
+        HealthCheck(layer="smtp", ok=True, detail="ok"),
+    ])
+
+    checklist = build_checklist(gmail_config(), gmail_state(), health, None)
+
+    assert checklist.title == "Set up Gmail"
+    assert [step.title for step in checklist.steps] == GMAIL_STEP_TITLES
+    assert [step.status for step in checklist.steps] == ["failing", "failing", "failing", "done", "done"]
+    details = [step.detail or "" for step in checklist.steps[:3]]
+    assert rejected in details[0] and not [detail for detail in details[1:] if rejected in detail]
+    assert "2-Step Verification" in details[0] and "IMAP" in details[2]
+    assert "apppasswords" in details[1]
+
+
+def test_a_gmail_plugin_that_never_started_still_gets_gmail_steps_with_its_step_failing():
+    """No app password set, say: the plugin never answered, so its command says it is Gmail."""
+    never_started = PluginState(id="gmail", status="failed", reason="Could not connect: no such file")
+
+    checklist = build_checklist(gmail_config(), never_started, None, None)
+
+    assert checklist.title == "Set up Gmail"
+    assert [step.status for step in checklist.steps] == ["waiting", "waiting", "waiting", "failing", "waiting"]
+    assert "Could not connect: no such file" in (checklist.steps[3].detail or "")
+
+
+def test_warnings_are_shown_alongside_the_steps():
+    warnings = ["Gmail's Auto-Expunge is on."]
+
+    checklist = build_checklist(gmail_config(), gmail_state(), None, None, warnings)
+
+    assert checklist.warnings == warnings
+
+
+GMAIL_ENTRY = f"""
+plugins:
+  - id: gmail
+    transport:
+      type: stdio
+      command: {sys.executable}
+      args: [-m, gmail_plugin.server]
+      env_from:
+{{env_from}}
+"""
+
+
+def gmail_plugins_yaml(tmp_path: Path, monkeypatch: pytest.MonkeyPatch, environment: dict[str, str]) -> None:
+    for name, value in environment.items():
+        monkeypatch.setenv(f"GMAIL_SETUP_{name}", value)
+    env_from = "".join(f"        {name}: GMAIL_SETUP_{name}\n" for name in environment)
+    config = tmp_path / "plugins.yaml"
+    config.write_text(GMAIL_ENTRY.format(env_from=env_from))
+    monkeypatch.setenv("PLUGINS_CONFIG", str(config))
+
+
+def test_gmail_with_auto_expunge_off_goes_green_without_a_warning(tmp_path, monkeypatch, mailbox):
+    """AC (off half, on GreenMail, which never auto-expunges): the real plugin over stdio."""
+    mailbox.create_folder('"[Gmail]/Trash"')
+    bridge = fake_bridge()
+    gmail_plugins_yaml(tmp_path, monkeypatch, {
+        "MAILBOX_ACCOUNT": mailbox.address, "MAILBOX_PASSWORD": "unused",
+        "MAILBOX_IMAP_HOST": "127.0.0.1", "MAILBOX_IMAP_PORT": str(bridge.imap_port),
+        "MAILBOX_SMTP_HOST": "127.0.0.1", "MAILBOX_SMTP_PORT": str(bridge.smtp_port),
+        "MAILBOX_CA_CERT_PATH": str(bridge.cert),
+    })
+
+    with TestClient(app, headers=bearer_headers()) as client:
+        checklist = client.post("/api/v1/connections/gmail/check").json()
+
+    assert checklist["title"] == "Set up Gmail"
+    assert [step["status"] for step in checklist["steps"]] == ["done"] * 5
+    assert checklist["warnings"] == []
 
 
 def test_a_watchdog_that_does_not_answer_fails_the_install_step_naming_its_machine():

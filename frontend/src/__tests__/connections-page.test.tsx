@@ -102,6 +102,15 @@ describe('Connections page', () => {
     expect(within(rows[3]).queryByRole('link')).toBeNull()
   })
 
+  it('offers Gmail plugins their setup checklist too', async () => {
+    api.rows = [row({ plugin_id: 'gmail', plugin_name: 'gmail' })]
+
+    render(<ConnectionsPage />)
+
+    const [only] = await screen.findAllByRole('listitem')
+    expect(within(only).getByRole('link', { name: 'Setup checklist' }).getAttribute('href')).toBe('/connections/gmail/setup')
+  })
+
   it('says how to add a mailbox when none is configured', async () => {
     render(<ConnectionsPage />)
 

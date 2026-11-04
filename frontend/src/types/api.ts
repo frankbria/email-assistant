@@ -53,7 +53,9 @@ export interface SetupStep {
 
 export interface Checklist {
   plugin_id: string
+  title: string
   steps: SetupStep[]
+  warnings: string[]
 }
 
 export type PermissionLevel = 'autonomous' | 'ask' | 'never_auto'

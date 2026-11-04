@@ -9,6 +9,7 @@ import { fetchConnections } from '@/services/connectionsService'
 import type { Connection, DiagnosisKind } from '@/types/api'
 
 const REFRESH_MS = 30_000 // the server re-diagnoses every 60 s; this keeps a repair visible as it happens
+const SETUP_KINDS = new Set(['proton', 'gmail']) // plugins with a setup checklist
 
 const KIND_LABELS: Record<DiagnosisKind, string> = {
   ok: 'Connected',
@@ -59,9 +60,8 @@ function ConnectionRow({ connection }: { connection: Connection }) {
       {detail && <p className="mt-2 text-sm text-gray-700 dark:text-gray-300">{detail}</p>}
       {layer && <p className="mt-1 text-sm text-gray-500 dark:text-gray-400">First failing layer: {layer}</p>}
       {connection.repairing && <p className="mt-1 text-sm text-gray-500 dark:text-gray-400">Repair in progress.</p>}
-      {/* shortcut: a plugin that hasn't connected yet can't say what it is, so it gets the Proton
-          checklist; give each plugin kind its own once Gmail setup (#97) exists. */}
-      {connection.status !== 'disabled' && (connection.plugin_name === 'proton' || connection.plugin_name === null) && (
+      {/* A plugin that hasn't connected yet can't say what it is; the server gives it the Proton checklist. */}
+      {connection.status !== 'disabled' && (connection.plugin_name === null || SETUP_KINDS.has(connection.plugin_name)) && (
         <Link
           href={`/connections/${encodeURIComponent(connection.plugin_id)}/setup`}
           className="mt-2 inline-block text-sm font-medium text-blue-700 underline underline-offset-4 dark:text-blue-300"

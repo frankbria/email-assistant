@@ -13,7 +13,9 @@ from pydantic import ValidationError
 
 from app.plugins.config import PluginConfig, StdioTransport
 from app.plugins.registry import PluginRegistry
-from gmail_plugin.mailbox import GmailMailbox, gmail_ids, gmail_labels
+from gmail_plugin.mailbox import (
+    GmailMailbox, append_uid, gmail_ids, gmail_labels, probe_expunged, trash_folder,
+)
 from gmail_plugin.settings import GmailSettings
 from imap_mailbox.mailbox import MailboxError
 from mailbox_contract import INBOX_URI, Capability, ErrorCode, MailboxInfo
@@ -188,3 +190,87 @@ async def test_new_mail_is_pushed_over_idle_and_no_tool_removes_mail(mailbox: Ma
         assert INBOX_URI in str(event)
     finally:
         await registry.close()
+
+
+# --- setup: Gmail's Auto-Expunge setting (#97) ------------------------------------------
+# IMAP doesn't report the setting, so the plugin probes: it appends a message to the Trash, marks
+# only that message \Deleted and sees whether Gmail drops it at once. GreenMail never auto-expunges
+# (the "off" case); the "on" case is Gmail's response data here and the live run in
+# test_gmail_setup_live.py.
+
+GMAIL_LIST = [
+    b'(\\HasNoChildren) "/" "INBOX"',
+    b'(\\All \\HasNoChildren) "/" "[Gmail]/All Mail"',
+    b'(\\HasNoChildren \\Trash) "/" "[Gmail]/Papierkorb"',
+]
+
+
+def test_the_trash_is_found_by_its_special_use_flag_whatever_its_name():
+    assert trash_folder(GMAIL_LIST) == "[Gmail]/Papierkorb"
+
+
+def test_without_a_special_use_trash_the_english_name_is_assumed():
+    assert trash_folder([b'() "." "INBOX"', b'() "." "Trash-ish"']) == "[Gmail]/Trash"
+
+
+def test_the_probes_uid_comes_from_appenduid():
+    assert append_uid([b"[APPENDUID 663 4521] (Success)"]) == ("663", 4521)
+    assert append_uid([b"APPEND completed."]) is None
+
+
+@pytest.mark.parametrize(
+    ("response", "expunged"),
+    [([None], True), ([b"5 (UID 42 FLAGS (\\Deleted))"], False), ([b"5 (FLAGS (\\Seen \\Deleted) UID 42)"], False)],
+    ids=["gone", "kept", "kept-seen"],
+)
+def test_a_probe_gmail_drops_at_once_means_auto_expunge_is_on(response: list[object], expunged: bool):
+    assert probe_expunged(response) is expunged
+
+
+def test_a_probe_that_kept_no_deleted_flag_tells_nothing():
+    with pytest.raises(MailboxError):
+        probe_expunged([b"5 (UID 42 FLAGS (\\Seen))"])
+
+
+def on_greenmail(mailbox: Mailbox) -> GmailMailbox:
+    bridge = fake_bridge()
+    return GmailMailbox(GmailSettings(  # type: ignore[call-arg]  # the rest default
+        account=mailbox.address, imap_host="127.0.0.1", imap_port=bridge.imap_port,
+        password="unused",
+        smtp_host="127.0.0.1", smtp_port=bridge.smtp_port, ca_cert_path=str(bridge.cert),
+    ))
+
+
+def flags_by_message_id(mailbox: Mailbox, folder: str) -> dict[str, bytes]:
+    with mailbox.imap() as connection:
+        connection.select(folder, readonly=True)
+        _, data = connection.uid("FETCH", "1:*", "(FLAGS BODY.PEEK[HEADER.FIELDS (MESSAGE-ID)])")
+    return {parsed(item[1])["Message-ID"]: item[0] for item in data if isinstance(item, tuple)}
+
+
+def test_with_auto_expunge_off_there_is_no_warning_and_only_the_probe_is_marked(mailbox: Mailbox):
+    trash = '"[Gmail]/Trash"'
+    mailbox.create_folder(trash)
+    in_inbox = mailbox.deliver(sender="ana@example.com", subject="keep", body="x")
+    in_trash = mailbox.append(trash, sender="ana@example.com", subject="trashed by the owner", body="x")
+    # Another mail app marked this one deleted: a CLOSE or EXPUNGE anywhere in the probe would remove it.
+    marked = mailbox.append(trash, sender="ana@example.com", subject="marked by another app", body="x")
+    with mailbox.imap() as connection:
+        connection.select(trash)
+        connection.uid("STORE", "1:*", "+FLAGS.SILENT", "(\\Deleted)")
+        connection.uid("STORE", "1", "-FLAGS.SILENT", "(\\Deleted)")  # in_trash, appended first
+
+    assert on_greenmail(mailbox).setup_warnings().warnings == []
+
+    trash_flags = flags_by_message_id(mailbox, trash)
+    probes = [flags for message_id, flags in trash_flags.items() if message_id not in (in_trash, marked)]
+    assert len(probes) == 1 and b"\\Deleted" in probes[0]
+    assert b"\\Deleted" not in trash_flags[in_trash] and b"\\Deleted" in trash_flags[marked]
+    assert b"\\Deleted" not in flags_by_message_id(mailbox, "INBOX")[in_inbox]
+
+
+def test_when_the_probe_cannot_run_the_owner_is_told_to_check_the_setting(mailbox: Mailbox):
+    # No Trash folder on this server, so there's nowhere to put the probe.
+    [warning] = on_greenmail(mailbox).setup_warnings().warnings
+
+    assert "couldn't check" in warning.lower() and "Auto-Expunge" in warning
