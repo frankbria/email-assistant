@@ -38,12 +38,11 @@ function Calibration() {
 
   useEffect(load, [load])
 
-  // The run proposes one message at a time, so its cards are picked up while the page is open.
+  // A run proposes one message at a time and outlives this page, so cards are picked up whenever it is open.
   useEffect(() => {
-    if (!running) return
     const timer = setInterval(load, POLL_MS)
     return () => clearInterval(timer)
-  }, [running, load])
+  }, [load])
 
   async function calibrate() {
     try {

@@ -1,6 +1,7 @@
 # Calibration (spec §10.7): a dry run of the pipeline over recent mail that takes no action, and the owner's reactions
 # on the ask-owner card, which become examples, optionally rules, and lines of a local, git-ignored test set.
 # Real MongoDB; GreenMail + the reference IMAP plugin; FakeAIProvider.
+import asyncio
 import json
 import subprocess
 import uuid
@@ -9,14 +10,17 @@ from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
 import pytest
+from pymongo.errors import DuplicateKeyError
 
 from app.config import Settings, get_settings
 from app.main import app
 from app.models.action_log import ActionLogEntry
+from app.models.calibration import CalibrationJob
 from app.models.example import Example
 from app.models.job import Job
 from app.models.message import Message
 from app.permissions import PermissionSettings
+from app.pipeline.calibrate import calibrate
 from app.pipeline.proposal import Proposal
 from tests.test_routes.test_corrections_api import rules
 from tests.test_sync.test_inbox_sync import PLUGIN
@@ -135,3 +139,19 @@ async def test_a_reaction_that_cant_be_saved_keeps_its_card(async_client, test_d
     assert failed.status_code == 502
     assert [kept["job"]["_id"] for kept in (await async_client.get("/api/v1/calibration")).json()] == [card["job"]["_id"]]
     assert await Example.find_all().count() == 0
+
+
+
+async def test_two_overlapping_runs_leave_one_card_per_message(test_db, mailbox, plugins, ai):
+    """"Calibrate again" while a run is going: each message still has one card, so one reaction is one test-set line.
+    The runs rarely interleave on their own, so the store itself must refuse a second card for a message."""
+    shop = new_mailbox()
+    messages = [await stored(shop, mailbox, f"Weekly deals #{number}", timedelta(days=number)) for number in range(1, 4)]
+    ai.result = NOISE
+
+    await asyncio.gather(calibrate(OWNER_ID, plugins, ai, None), calibrate(OWNER_ID, plugins, ai, None))
+
+    cards = await CalibrationJob.find(CalibrationJob.owner_id == OWNER_ID).to_list()
+    assert sorted(str(card.message_ids[0]) for card in cards) == sorted(str(message.id) for message in messages)
+    with pytest.raises(DuplicateKeyError):
+        await CalibrationJob(**cards[0].model_dump(exclude={"id", "revision_id"})).insert()

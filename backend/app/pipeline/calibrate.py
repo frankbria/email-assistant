@@ -7,6 +7,8 @@ import logging
 from datetime import UTC, datetime
 from pathlib import Path
 
+from pymongo.errors import DuplicateKeyError
+
 from app.models.calibration import CalibrationJob
 from app.models.job import Verb
 from app.models.message import Message
@@ -38,15 +40,24 @@ async def calibrate(owner_id: str, plugins: PluginRegistry, provider: AIProvider
             logger.exception("Calibration left out message %s", message.id)
             continue
         proposed = None if job.ask_owner else job.verb
-        # one card per message, also when a second run started meanwhile
-        await CalibrationJob.find(CalibrationJob.owner_id == owner_id, CalibrationJob.message_ids == message.id).delete()
         # The AI's verb is the card's one-tap answer (the owner's 👍); another verb is the owner's fix.
-        await CalibrationJob(
+        card = CalibrationJob(
             **job.model_dump(exclude={"id", "revision_id", "ask_owner", "suggested_verbs"}),
             ask_owner=True, suggested_verbs=[proposed] if proposed else job.suggested_verbs,
             proposed=proposed, text=minimize(detail.text, message.subject),
-        ).insert()
+        )
+        await replace_card(owner_id, message, card)
 
+
+async def replace_card(owner_id: str, message: Message, card: CalibrationJob) -> None:
+    """The message's one card, replacing one an overlapping run stored; the unique index makes a lost race fail."""
+    collection = CalibrationJob.get_pymongo_collection()
+    same_message = {"owner_id": owner_id, "message_ids": message.id}
+    document = card.model_dump(by_alias=True, exclude={"id", "revision_id"})
+    try:
+        await collection.replace_one(same_message, document, upsert=True)
+    except DuplicateKeyError:  # the other run inserted between our match and our insert: replace what it stored
+        await collection.replace_one(same_message, document)
 
 def add_to_test_set(path: str, message: Message, calibration: CalibrationJob, verb: Verb) -> None:
     """One JSON line per reaction: the mail, what the AI proposed and what the owner said it should be."""

@@ -102,4 +102,20 @@ describe('Train page', () => {
     expect(init.method).toBe('POST')
     expect(await screen.findByText(/Garden Shop - Weekly deals/)).toBeInTheDocument()
   })
+
+  it('keeps picking up new proposals while open, also when the run was started on an earlier visit', async () => {
+    vi.useFakeTimers()
+    try {
+      await renderTrain()
+      mockFetch.mockResolvedValueOnce(Response.json([card]))
+
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(5000)
+      })
+
+      expect(screen.getByText(/Garden Shop - Weekly deals/)).toBeInTheDocument()
+    } finally {
+      vi.useRealTimers()
+    }
+  })
 })
