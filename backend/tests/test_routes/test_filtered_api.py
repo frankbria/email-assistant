@@ -92,3 +92,12 @@ async def test_another_owners_noise_is_not_listed(async_client, test_db, mailbox
                          by="app", permission_level="autonomous", ok=True, undoable=True).insert()
 
     assert await filtered(async_client) == []
+
+
+async def test_a_noise_archive_that_failed_is_not_listed(async_client, test_db, mailbox, plugins):
+    """Its mail never left the inbox, so there is nothing to restore."""
+    failed = await job_from(new_mailbox(), mailbox, "archive_noise", Artifacts(noise_rationale="a newsletter"))
+    await ActionLogEntry(owner_id=OWNER_ID, action="archived", job_id=failed.id, message_ids=failed.message_ids,
+                         by="app", permission_level="autonomous", ok=False, error="the server was down", undoable=False).insert()
+
+    assert await filtered(async_client) == []

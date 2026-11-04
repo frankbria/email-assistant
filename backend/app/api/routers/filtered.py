@@ -29,8 +29,10 @@ class FilteredCard(BaseModel):
 async def list_filtered(owner_id: OwnerId) -> list[FilteredCard]:
     """Only archive_noise archives: a digest is low-priority mail the owner read as a summary, not mail filtered
     out unseen, and a dismissal is the owner's own call."""
+    # shortcut: the whole 30-day window, unpaged (like History); page it when an owner's noise volume shows it slow.
     entries = await ActionLogEntry.find(
-        ActionLogEntry.owner_id == owner_id, ActionLogEntry.action == "archived", ActionLogEntry.created_at >= datetime.now(UTC) - WINDOW
+        ActionLogEntry.owner_id == owner_id, ActionLogEntry.action == "archived", {"ok": True},
+        ActionLogEntry.created_at >= datetime.now(UTC) - WINDOW,
     ).sort("-created_at", "-_id").to_list()
     noise_jobs = {job.id: job for job in await Job.find(In(Job.id, list({entry.job_id for entry in entries})), Job.verb == "archive_noise").to_list()}
     entries = [entry for entry in entries if entry.job_id in noise_jobs]
