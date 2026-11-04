@@ -172,7 +172,7 @@ async def propose_instead(
     job: Job, message: Message, verb: Verb, plugins: PluginRegistry, provider: AIProvider, settings: Settings
 ) -> Job:
     """A fresh proposal for `verb` replaces the job's."""
-    if job.state != "open" or job.sent_at is not None:
+    if job.state not in IN_QUEUE or job.sent_at is not None:
         raise HTTPException(status_code=409, detail=f"job {job.id} isn't open")
     client = plugins.clients.get(message.plugin_id)
     if client is None:
@@ -188,8 +188,9 @@ async def propose_instead(
 async def replace_proposal(job: Job, proposed: Job) -> Job:
     replaced = proposed.model_dump(include={"verb", "title", "evidence", "artifacts", "due", "ask_owner", "suggested_verbs", "problems"})
     # Re-checked at write time: an approval may have sent it while the AI was proposing.
-    fresh = {**replaced, "edited": False, "error": None, "reminder": None, "permission_level": None}  # the old action's
-    stored = await Job.find({"_id": job.id, "state": "open", "sent_at": None}).update({"$set": fresh})
+    # A failed job (its send didn't go out) is back to open with the new proposal.
+    fresh = {**replaced, "state": "open", "edited": False, "error": None, "reminder": None, "permission_level": None}  # the old action's
+    stored = await Job.find({"_id": job.id, "state": {"$in": IN_QUEUE}, "sent_at": None}).update({"$set": fresh})
     if not stored.modified_count:
         raise HTTPException(status_code=409, detail=f"job {job.id} isn't open")
     assert job.id is not None
@@ -219,26 +220,32 @@ async def correct_job(
     if correction.kind == "not_noise":
         if job.verb != "archive_noise" or job.ask_owner:
             raise HTTPException(status_code=422, detail="this job isn't noise")
-        handed_back = await replace_proposal(job, ask_owner_job(message, ["you said this isn't noise"], []))
-        await forget_noise_rules(message)
-        return handed_back
-    if correction.kind == "noise":
-        verb: Verb = "archive_noise"
-        corrected = await archive_as_noise(job, plugins)
+        corrected = await replace_proposal(job, ask_owner_job(message, ["you said this isn't noise"], []))
+    elif correction.kind == "noise":
+        corrected = await archive_as_noise(job, message, plugins)
     else:
         assert correction.verb is not None  # the model validator requires it
-        verb = correction.verb
-        corrected = await propose_instead(job, message, verb, plugins, provider, settings)
-    await learn_rule(message, verb)
-    await record_example(message, message.snippet, verb, "correction")
+        corrected = await propose_instead(job, message, correction.verb, plugins, provider, settings)
+    try:  # the job is already put right: a failed lesson mustn't turn that into an error the owner can't retry
+        if correction.kind == "not_noise":
+            await forget_noise_rules(message)
+        else:
+            verb: Verb | None = "archive_noise" if correction.kind == "noise" else correction.verb
+            assert verb is not None
+            await learn_rule(message, verb)
+            await record_example(message, message.snippet, verb, "correction")
+    except Exception:
+        logger.exception("Couldn't learn from the correction of job %s", job_id)
     return corrected
 
 
-async def archive_as_noise(job: Job, plugins: PluginRegistry) -> Job:
+async def archive_as_noise(job: Job, message: Message, plugins: PluginRegistry) -> Job:
     """The job becomes the owner's own archive_noise job and the executor archives its mail, as approving it would."""
     job_id = job.id
     assert job_id is not None
-    noise = {"verb": "archive_noise", "ask_owner": False, "suggested_verbs": [], "problems": [], "edited": False,
+    # Nothing of the old action survives: its title, quotes, date and messages were about another verb.
+    noise: dict[str, object] = {"verb": "archive_noise", "title": message.subject.strip() or "(no subject)", "evidence": [], "due": None,
+             "ask_owner": False, "suggested_verbs": [], "problems": [], "edited": False, "error": None, "reminder": None,
              "artifacts": Artifacts(noise_rationale="you marked this as noise").model_dump()}
     marked = await Job.find({"_id": job_id, "state": {"$in": IN_QUEUE}, "sent_at": None}).update({"$set": noise})
     if not marked.matched_count:

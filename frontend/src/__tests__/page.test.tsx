@@ -344,6 +344,12 @@ describe('Correcting a job', () => {
     expect(requestTo(1)).toMatchObject({ method: 'POST', body: { kind: 'wrong_action', verb: 'todo' } })
   })
 
+  it('an ask-owner card offers no correction, since nothing was proposed to correct', async () => {
+    const card = await renderQueue(cardWith({ verb: 'archive_noise', ask_owner: true, suggested_verbs: ['archive_noise'] }))
+
+    expect(within(card).queryByRole('button', { name: 'Correct' })).not.toBeInTheDocument()
+  })
+
   it('a noise job offers "This isn\'t noise", which hands the mail to the owner', async () => {
     const noise = cardWith({ verb: 'archive_noise', artifacts: { ...jobCard.job.artifacts, noise_rationale: 'A promotional mailing' } })
     const card = await renderQueue(noise)

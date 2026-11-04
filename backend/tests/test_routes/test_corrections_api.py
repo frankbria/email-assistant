@@ -1,6 +1,8 @@
 # Corrections on jobs (spec §10.4, AC-2.3): "wrong action", "this is noise" and "this isn't noise" each put the
 # job right and teach a rule for its sender or list, effective on the next matching message, plus an example.
 # Real MongoDB; GreenMail + the reference IMAP plugin; FakeAIProvider.
+import logging
+
 import pytest
 from beanie import PydanticObjectId
 
@@ -193,3 +195,56 @@ async def test_someone_elses_job_isnt_found_and_teaches_nothing(async_client, te
         assert response.status_code == 404
 
     assert await Rule.find_all().count() == 0 and len(mailbox.messages("INBOX")) == 1
+
+
+async def test_a_corrected_failed_job_keeps_nothing_of_the_old_action(async_client, test_db, mailbox, plugins):
+    due = "2026-12-01T09:00:00Z"
+    job = await job_from(new_mailbox(), mailbox, "reply", Artifacts(draft="Yes"), state="failed", error="send failed",
+                         reminder="nobody answered", due=due)
+
+    corrected = (await async_client.post(f"/api/v1/jobs/{job.id}/correct", json={"kind": "noise"})).json()
+
+    assert (corrected["state"], corrected["error"], corrected["reminder"], corrected["due"]) == ("done", None, None, None)
+    assert (corrected["title"], corrected["evidence"]) == ("Q4 budget", [])  # the mail's subject, not the old action's title
+
+
+@pytest.mark.parametrize(("verb", "body"), [
+    ("archive_noise", {"kind": "not_noise"}),
+    ("reply", {"kind": "wrong_action", "verb": "reply"}),
+])
+async def test_a_failed_job_can_be_corrected_like_an_open_one(async_client, test_db, mailbox, plugins, ai, verb, body):
+    ana = new_mailbox()
+    await Rule(owner_id=OWNER_ID, match="sender", value=ana.address, verb=verb).insert()
+    job = await job_from(ana, mailbox, verb, Artifacts(draft="Yes", noise_rationale="x"), state="failed", error="it broke")
+    ai.result = Proposal(needs_owner=False, verb="reply", title="Ana asks to meet Thursday at 3pm", evidence=[QUESTION],
+                         draft="Thursday at 3 works.", confidence=0.9)
+
+    response = await async_client.post(f"/api/v1/jobs/{job.id}/correct", json=body)
+
+    assert response.status_code == 200
+    assert (response.json()["state"], response.json()["error"]) == ("open", None)
+    assert await rules() == ([] if body["kind"] == "not_noise" else [("sender", ana.address.lower(), "reply")])
+
+
+async def test_a_sender_rule_that_chose_the_wrong_verb_is_the_one_corrected(async_client, test_db, mailbox, plugins):
+    ana = new_mailbox()
+    await Rule(owner_id=OWNER_ID, match="sender", value=ana.address, verb="reply").insert()
+    job = await job_from(ana, mailbox, "reply", Artifacts(draft="Yes"))
+    await Message.find(Message.id == job.message_ids[0]).update({"$set": {"list_id": "<deals.shop.example>"}})
+
+    await async_client.post(f"/api/v1/jobs/{job.id}/correct", json={"kind": "noise"})
+
+    assert await rules() == [("sender", ana.address.lower(), "archive_noise")]
+
+
+async def test_a_lesson_that_fails_to_store_still_returns_the_corrected_job(async_client, test_db, mailbox, plugins, caplog):
+    ana = new_mailbox()
+    job = await job_from(ana, mailbox, "reply", Artifacts(draft="Yes"))
+    # A stored rule for the sender that can't be read: learning from the correction fails, as a broken collection does.
+    await Rule.get_pymongo_collection().insert_one({"owner_id": OWNER_ID, "match": "sender", "value": ana.address.lower(), "verb": "not a verb"})
+
+    with caplog.at_level(logging.ERROR, logger="app.api.routers.jobs"):
+        response = await async_client.post(f"/api/v1/jobs/{job.id}/correct", json={"kind": "noise"})
+
+    assert response.status_code == 200 and response.json()["state"] == "done"
+    assert "Couldn't learn from the correction" in caplog.text
