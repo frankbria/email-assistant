@@ -6,5 +6,6 @@
 !packages/mailbox-contract
 !packages/imap-mailbox
 !plugins/proton
+!plugins/gmail
 **/__pycache__
 **/.venv
