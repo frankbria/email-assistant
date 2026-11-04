@@ -133,3 +133,24 @@ def test_a_link_that_carries_an_email_address_is_restored_whole():
 
     assert "ana@example.com" not in redacted
     assert redaction.restore(redacted) == f"Pay here: {link}"
+
+
+def test_a_greeting_with_a_full_name_redacts_the_surname_too():
+    redacted = Redaction([]).redact("Hi Jane Doe,\n\nThe parcel arrived.")
+
+    assert "Jane" not in redacted and "Doe" not in redacted
+
+
+def test_a_greeting_never_takes_the_next_sentence_as_a_surname():
+    redacted = Redaction([]).redact("Hi Frank Please send the report.")
+
+    assert "Frank" not in redacted and "Please" in redacted
+
+
+def test_a_link_ending_in_a_balanced_parenthesis_is_kept_whole():
+    link = "https://en.wikipedia.org/wiki/Function_(math)"
+    redaction = Redaction([])
+    redacted = redaction.redact(f"See {link} (or ask me).")
+
+    assert redacted == "See URL_1 (or ask me)."
+    assert redaction.restore("URL_1") == link

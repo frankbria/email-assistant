@@ -17,7 +17,8 @@ ModelT = TypeVar("ModelT", bound=BaseModel)
 
 PLACEHOLDER = re.compile(r"\b(?:PERSON|EMAIL|PHONE|URL|ACCOUNT|CODE)_\d+\b")
 # Like validate.URL: anything up to whitespace or <>, less the prose punctuation after it, so a restored link passes whole_link.
-URL_REST = r"[^\s<>]*[^\s<>.,;:!?)\]'\"]"
+# A balanced "(...)" may end it (…/Function_(math)); a lone ")" is the prose around the link.
+URL_REST = r"(?:[^\s<>()]|\([^\s<>()]*\))*(?:\([^\s<>()]*\)|[^\s<>.,;:!?()\]'\"])"
 DOMAIN = r"(?<![\w@.-])(?:[a-z0-9-]+\.)+"
 BARE_TLDS = "com|org|net|edu|gov|io|co|uk|us|ca|de|fr|es|it|nl|au|ly|me|app|dev|info|biz"
 # Most specific first: an email's or URL's digits are never read as a phone or an account.
@@ -42,7 +43,8 @@ PATTERNS = [
 PHONE_DIGITS = 9
 WORD = r"[A-ZÀ-Þ](?:[^\W\d_]|['’-](?=[^\W\d_]))+"  # José, O'Brien
 # Who a mail is to or from, by its greeting ("Hi Frank,") or sign-off ("Best regards,\nAna").
-GREETING = re.compile(rf"\b(?:Hi|Hello|Hey|Dear|Thanks|Thank you|Cheers)[ ,]+({WORD})\b")
+# A surname only when the greeting line ends right after it ("Hi Jane Doe,"), never the next sentence's first word.
+GREETING = re.compile(rf"\b(?:Hi|Hello|Hey|Dear|Thanks|Thank you|Cheers)[ ,]+({WORD} {WORD}(?=[ \t]*[,!:\n])|{WORD})\b")
 SIGN_OFF = re.compile(
     rf"\b(?:[Rr]egards|Thanks|Cheers|Best|Sincerely|Yours|Love)[,!.]?[ \t]*(?:\n[ \t]*){{1,2}}({WORD}(?: {WORD})?)[ \t]*$",
     re.MULTILINE,
