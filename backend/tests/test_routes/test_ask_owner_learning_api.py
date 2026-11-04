@@ -82,7 +82,7 @@ async def test_another_action_chosen_for_a_proposed_job_isnt_an_ask_owner_answer
     ai.result = Proposal(needs_owner=False, verb="todo", title="Book the Thursday meeting room", evidence=[QUESTION],
                          link="https://rooms.example", confidence=0.9)
 
-    response = await async_client.post(f"/api/v1/jobs/{job.id}/choose", json={"verb": "todo"})
+    response = await async_client.post(f"/api/v1/jobs/{job.id}/choose", json={"verb": "todo", "always": True})
 
     assert response.status_code == 200 and response.json()["verb"] == "todo"
     assert await Example.find_all().count() == 0 and await rules() == []
@@ -121,7 +121,9 @@ async def test_a_lesson_that_fails_to_store_still_returns_the_chosen_job(async_c
         response = await async_client.post(f"/api/v1/jobs/{job.id}/choose", json={"verb": "todo", "always": True})
 
     assert response.status_code == 200 and response.json()["verb"] == "todo"
-    assert "Couldn't learn from the choice" in caplog.text
+    assert "Couldn't learn the rule" in caplog.text
+    # the lessons stand apart: a rule that can't be learned still leaves the example
+    assert await Example.find_all().count() == 1
 
 
 async def test_a_choice_that_isnt_made_teaches_nothing(async_client, test_db, mailbox, plugins, ai):

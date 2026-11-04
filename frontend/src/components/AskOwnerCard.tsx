@@ -99,7 +99,8 @@ export function AskOwnerCard({ card, onReplaced, onRemoved }: AskOwnerCardProps)
         <Button
           variant="ghost"
           className={TOUCH_TARGET}
-          disabled={busy}
+          disabled={busy || always}
+          title={always ? 'Choose an action to make it a rule; dismissing teaches nothing' : undefined}
           onClick={() => act(() => dismissJob(job._id), 'Failed to dismiss the job')}
         >
           <HugeiconsIcon icon={Cancel01Icon} />

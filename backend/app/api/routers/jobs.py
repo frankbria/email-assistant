@@ -166,13 +166,18 @@ async def choose_action(
     job = await owned(job_id, owner_id)
     message = await message_of(job)
     chosen = await propose_instead(job, message, choice.verb, plugins, provider, settings)
-    try:  # the choice is already made: a failed lesson mustn't turn that into an error the owner can't retry
-        if job.ask_owner:
-            await record_example(message, message.snippet, choice.verb, "ask_owner")
-        if choice.always:
-            await learn_rule(message, choice.verb)
+    if not job.ask_owner:  # another action for a proposed job answers no question; teaching from it is /correct's
+        return chosen
+    # The choice is already made, so a failed lesson mustn't become an error; each lesson stands on its own.
+    try:
+        await record_example(message, message.snippet, choice.verb, "ask_owner")
     except Exception:
-        logger.exception("Couldn't learn from the choice for job %s", job_id)
+        logger.exception("Couldn't record the example for job %s", job_id)
+    if choice.always:
+        try:
+            await learn_rule(message, choice.verb)
+        except Exception:
+            logger.exception("Couldn't learn the rule for job %s", job_id)
     return chosen
 
 

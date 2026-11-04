@@ -483,6 +483,14 @@ describe('Ask-owner card', () => {
     expect(requestTo(2).body).toEqual({ verb: 'snooze', always: true })
   })
 
+  it('Dismiss is off while "Always do this" is ticked, since dismissing teaches no rule', async () => {
+    const card = await renderQueue(askOwner)
+
+    await userEvent.click(within(card).getByRole('checkbox', { name: /Always do this/ }))
+
+    expect(within(card).getByRole('button', { name: 'Dismiss' })).toBeDisabled()
+  })
+
   it('a choice without "Always do this" is for this mail only', async () => {
     const card = await renderQueue(askOwner)
     mockFetch.mockResolvedValueOnce(Response.json({ ...askOwner.job, problems: ['Still unsure'] }))
