@@ -67,6 +67,14 @@ async def process(message: Message, client: Client, provider: AIProvider, cap: i
         # A copy that must be asked about (first-connect, §5.3, or a stream that asks first, §10.4) never rides on a
         # decision already carried out elsewhere.
         job = await attach_copy(sibling, message)
+    if (
+        job is not None and job.state in ("done", "dismissed") and len(job.message_ids) > 1 and await asks_first(message)
+    ):
+        # A copy of an ask-first stream that joined a job which finished meanwhile must still be asked; after a crash
+        # that may ask twice, the safe way. A first-connect copy that joined in time made the job ask (attach_copy),
+        # and a finished job of this message alone was decided on it, so their archive below stands.
+        await Job.find(Job.id == job.id).update({"$pull": {"message_ids": message.id}})
+        job = None
     if job is None:
         job = await decide(message, client, provider, cap)
         job.requires_approval = message.first_pass or await asks_first(message)

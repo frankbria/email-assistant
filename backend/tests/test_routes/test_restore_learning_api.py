@@ -159,3 +159,26 @@ async def test_a_copy_joining_an_unfinished_job_brings_its_streams_ask_first_wit
     joined = await attach_copy(job, copy)
 
     assert joined.requires_approval
+
+
+async def test_a_must_ask_copy_already_attached_to_a_finished_job_gets_its_own_job(test_db, mailbox, plugins):
+    """A copy can end up on a finished job: its sibling finished while it attached, or a crash came between
+    attaching and processing. If its stream asks first, it still isn't archived without the owner's tap."""
+    await add_owner(test_db, OWNER_ID)
+    mailbox.create_folder("Sent")
+    ana = new_mailbox()
+    copy_job = await job_from(ana, mailbox, "archive_noise")
+    [copy_id] = copy_job.message_ids
+    await copy_job.delete()
+    archived_elsewhere = await job_from(new_mailbox(), mailbox, "archive_noise", state="done", permission_level="autonomous")
+    await Message.find(Message.id == archived_elsewhere.message_ids[0]).update({"$set": {"pipeline_done": True}})
+    await Job.find(Job.id == archived_elsewhere.id).update({"$push": {"message_ids": copy_id}})
+    await Rule(owner_id=OWNER_ID, match="sender", value=ana.address.lower(), ask_first=True).insert()
+
+    await sync_pass(test_db, plugins, FakeAIProvider(NOISE))
+
+    copy_subject = (await Message.get(copy_id)).subject
+    assert copy_subject in [str(mail["Subject"]) for mail in mailbox.messages("INBOX")]
+    waiting = await newest_job()
+    assert waiting.message_ids == [copy_id] and (waiting.state, waiting.requires_approval) == ("open", True)
+    assert copy_id not in (await Job.get(archived_elsewhere.id)).message_ids
