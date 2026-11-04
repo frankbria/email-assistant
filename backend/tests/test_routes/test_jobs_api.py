@@ -151,7 +151,9 @@ async def test_approving_a_snooze_hides_the_job_until_its_date(async_client, tes
 async def test_approving_a_todo_or_noise_finishes_it_and_archives_the_mail(async_client, test_db, mailbox, plugins, verb):
     job = await job_from(new_mailbox(), mailbox, verb, Artifacts(link="https://x.example", noise_rationale="a newsletter"))
 
-    response = await async_client.post(f"/api/v1/jobs/{job.id}/approve", json={})
+    shown = {"message_ids": [str(message_id) for message_id in job.message_ids]}  # a digest's tap must name them
+
+    response = await async_client.post(f"/api/v1/jobs/{job.id}/approve", json=shown)
 
     assert response.json()["state"] == "done" and archived(mailbox)
 

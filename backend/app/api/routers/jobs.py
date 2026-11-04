@@ -55,7 +55,12 @@ class JobEdit(BaseModel):
     due: datetime | None = None
 
 
-class Approval(BaseModel):
+class Seen(BaseModel):
+    # The messages the owner's card showed; a digest gathers mail, so its tap covers only these (required for one).
+    message_ids: list[PydanticObjectId] | None = None
+
+
+class Approval(Seen):
     forward_to: str | None = None  # a forward's recipient as the owner confirmed it (never the AI's suggestion alone)
 
 
@@ -80,6 +85,20 @@ async def owned(job_id: PydanticObjectId, owner_id: str) -> Job:
     if job is None:
         raise HTTPException(status_code=404, detail="Job not found")
     return job
+
+
+async def for_one_message(job_id: PydanticObjectId, owner_id: str) -> Job:
+    """Another action, a correction or an edit is about one message, while a digest's done archives all of them."""
+    job = await owned(job_id, owner_id)
+    if job.verb == "digest" and len(job.message_ids) > 1 and len(await distinct_emails(job)) > 1:
+        raise HTTPException(status_code=409, detail="a digest speaks for several messages; approve or dismiss it, or archive them one by one")
+    return job
+
+
+async def distinct_emails(job: Job) -> set[str]:
+    """Copies of one email in several accounts share its Message-ID; mail without one counts on its own."""
+    messages = await Message.find(In(Message.id, job.message_ids)).to_list()
+    return {message.message_id or str(message.id) for message in messages}
 
 
 async def acting(action: Callable[[], Awaitable[Job]]) -> Job:
@@ -109,7 +128,7 @@ async def list_jobs(owner_id: OwnerId) -> list[JobCard]:
 
 @router.patch("/{job_id}", response_model=Job)
 async def edit_job(job_id: PydanticObjectId, edit: JobEdit, owner_id: OwnerId) -> Job:
-    await owned(job_id, owner_id)
+    await for_one_message(job_id, owner_id)
     sent = edit.model_dump(exclude_unset=True)
     if not sent:
         raise HTTPException(status_code=422, detail="nothing to change")
@@ -131,6 +150,7 @@ async def approve_job(
     if job.verb == "unsubscribe":
         # shortcut: no unsubscribe action yet; approving it acts once the List-Unsubscribe executor lands (#90).
         raise HTTPException(status_code=422, detail="unsubscribing isn't available yet")
+    messages = shown_messages(job, approval)
     level = await tapped_level(owner_id, job.verb)
     actions: dict[str, Callable[[], Awaitable[Job]]] = {
         "reply": lambda: execute(job_id, plugins, forward_to=approval.forward_to, by="owner", level=level),
@@ -138,7 +158,7 @@ async def approve_job(
         "snooze": lambda: defer(job_id, by="owner", level=level),
         "follow_up": lambda: defer(job_id, by="owner", level=level),
     }
-    acted = await acting(actions.get(job.verb, lambda: finish(job_id, "done", plugins, verb=job.verb, by="owner", level=level)))
+    acted = await acting(actions.get(job.verb, lambda: finish(job_id, "done", plugins, verb=job.verb, by="owner", level=level, messages=messages)))
     if acted.state in ("done", "snoozed"):
         # shortcut: a DB failure after the action and before this write loses this one streak tick (the job is final, so
         # a retry gets 409); move it into the executor if promotion offers ever need the streak exact.
@@ -163,7 +183,7 @@ async def choose_action(
     """Spec §10.2: an ask-owner card's answer is kept as an example, and "always" teaches a rule, once the job
     has the chosen proposal. Another action chosen for a proposed job is no answer to a question, so it's no example;
     teaching from it is the correction's job (§10.4)."""
-    job = await owned(job_id, owner_id)
+    job = await for_one_message(job_id, owner_id)
     message = await message_of(job)
     chosen = await propose_instead(job, message, choice.verb, plugins, provider, settings)
     if not job.ask_owner:  # another action for a proposed job answers no question; teaching from it is /correct's
@@ -207,20 +227,32 @@ async def propose_instead(
 
 async def replace_proposal(job: Job, proposed: Job) -> Job:
     replaced = proposed.model_dump(include={"verb", "title", "evidence", "artifacts", "due", "ask_owner", "suggested_verbs", "problems"})
-    # Re-checked at write time: an approval may have sent it while the AI was proposing.
+    # Re-checked at write time: an approval may have sent it, or mail may have joined it (a digest), while the AI
+    # was proposing; the proposal speaks only for the messages it was made for.
     # A failed job (its send didn't go out) is back to open with the new proposal.
     fresh = {**replaced, "state": "open", "edited": False, "error": None, "reminder": None, "permission_level": None}  # the old action's
-    stored = await Job.find({"_id": job.id, "state": {"$in": IN_QUEUE}, "sent_at": None}).update({"$set": fresh})
+    stored = await Job.find(
+        {"_id": job.id, "state": {"$in": IN_QUEUE}, "sent_at": None, "message_ids": job.message_ids}
+    ).update({"$set": fresh})
     if not stored.modified_count:
-        raise HTTPException(status_code=409, detail=f"job {job.id} isn't open")
+        raise HTTPException(status_code=409, detail=f"job {job.id} isn't open or its mail changed, try again")
     assert job.id is not None
     return await owned(job.id, job.owner_id)
 
 
 @router.post("/{job_id}/dismiss", response_model=Job)
-async def dismiss_job(job_id: PydanticObjectId, owner_id: OwnerId, plugins: PluginRegistry = Depends(plugin_registry)) -> Job:
-    await owned(job_id, owner_id)
-    return await acting(lambda: finish(job_id, "dismissed", plugins, claim_from=("open", "failed"), by="owner", level=None))
+async def dismiss_job(
+    job_id: PydanticObjectId, owner_id: OwnerId, seen: Seen | None = None, plugins: PluginRegistry = Depends(plugin_registry)
+) -> Job:
+    messages = shown_messages(await owned(job_id, owner_id), seen or Seen())
+    return await acting(lambda: finish(job_id, "dismissed", plugins, claim_from=("open", "failed"), by="owner", level=None, messages=messages))
+
+
+def shown_messages(job: Job, seen: Seen) -> list[PydanticObjectId] | None:
+    """A digest's tap must say which messages it covers; other jobs may (finish then refuses if they changed)."""
+    if job.verb == "digest" and seen.message_ids is None:
+        raise HTTPException(status_code=422, detail="say which messages of the digest you saw")
+    return seen.message_ids
 
 
 @router.post("/{job_id}/correct", response_model=Job)
@@ -235,7 +267,7 @@ async def correct_job(
     """Spec §10.4: the job is put right first; only then does the correction teach a rule for the mail's sender
     or list, effective on the next matching message, and an example. "This isn't noise" names no verb, so it
     forgets the noise rule and leaves the choice, and the example, to the owner's ask-owner card."""
-    job = await owned(job_id, owner_id)
+    job = await for_one_message(job_id, owner_id)
     message = await message_of(job)
     if correction.kind == "not_noise":
         if job.verb != "archive_noise" or job.ask_owner:
@@ -267,8 +299,11 @@ async def archive_as_noise(job: Job, message: Message, plugins: PluginRegistry) 
     noise: dict[str, object] = {"verb": "archive_noise", "title": message.subject.strip() or "(no subject)", "evidence": [], "due": None,
              "ask_owner": False, "suggested_verbs": [], "problems": [], "edited": False, "error": None, "reminder": None,
              "artifacts": Artifacts(noise_rationale="you marked this as noise").model_dump()}
-    marked = await Job.find({"_id": job_id, "state": {"$in": IN_QUEUE}, "sent_at": None}).update({"$set": noise})
+    # Only over the mail the owner judged: a digest may have gathered more since the guard (see replace_proposal).
+    marked = await Job.find(
+        {"_id": job_id, "state": {"$in": IN_QUEUE}, "sent_at": None, "message_ids": job.message_ids}
+    ).update({"$set": noise})
     if not marked.matched_count:
-        raise HTTPException(status_code=409, detail=f"job {job_id} isn't open")
+        raise HTTPException(status_code=409, detail=f"job {job_id} isn't open or its mail changed, try again")
     level = await tapped_level(job.owner_id, "archive_noise")
     return await acting(lambda: finish(job_id, "done", plugins, claim_from=("open", "failed"), verb="archive_noise", by="owner", level=level))

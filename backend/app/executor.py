@@ -67,12 +67,16 @@ async def finish(
     *,
     by: Actor,
     level: PermissionLevel | None,
+    messages: list[PydanticObjectId] | None = None,
 ) -> Job:
     """Done (the action succeeded, or a todo's owner tapped done) or dismissed; then archive what's settled.
     `claim_from`: execute() finishes a job it already holds as `sending`. `verb`: only while the job is still
     that verb and not an ask-owner card (the owner approved what they saw, not a choice made meanwhile).
+    `messages`: only while the job still covers exactly those (a digest gathers mail; the tap covers what was shown).
     `level`: the permission it ran under, stored on the job once it took effect (None: a dismissal)."""
-    unchanged = {"verb": verb, "ask_owner": False} if verb else {}
+    unchanged: dict[str, object] = {"verb": verb, "ask_owner": False} if verb else {}
+    if messages is not None:
+        unchanged["message_ids"] = messages
     # Out of `open` before any archive, so a sync pass can't close it as handled elsewhere meanwhile.
     claimed = await Job.find(Job.id == job_id, In(Job.state, list(claim_from)), unchanged).update({"$set": {"state": outcome, "error": None}})
     if not claimed.modified_count:
@@ -121,21 +125,36 @@ async def reopen(job_id: PydanticObjectId, outcome: Outcome, errors: list[str]) 
 async def archive_settled_messages(job: Job, plugins: PluginRegistry, archived: list[PydanticObjectId]) -> list[str]:
     """Archives each of the job's messages that no other unsettled job needs and that is still in its
     account's inbox, adding each one moved to `archived`. Returns what went wrong, one line per plugin problem.
-    shortcut: no per-message claim, so two jobs on one message finished at the same instant can both
-    archive (one then reopens); and a multi-message job that fails partway stays reopened with some
-    mail archived. Both need a durable per-message archive claim once multi-message jobs exist (#59, #88)."""
+    A job that failed partway reopens; its retry archives only what is still in the inbox."""
     errors = []
     for message in await Message.find(In(Message.id, job.message_ids)).to_list():
         waiting = await Job.find(Job.message_ids == message.id, Job.id != job.id, NotIn(Job.state, SETTLED)).exists()
         if waiting:
             continue  # another job still needs it in the inbox (AC-2.1)
+        if not await claim_archive(message, job):
+            continue  # another final job is archiving it now; if that fails, it reopens and still holds the mail
         try:
             if await archive(message, plugins.clients.get(message.plugin_id)):
                 assert message.id is not None
                 archived.append(message.id)
         except ArchiveFailed as problem:
             errors.append(str(problem))
+        finally:
+            await asyncio.shield(Message.find(Message.id == message.id, Message.archive_claim == job.id).update(
+                {"$set": {"archive_claim": None}}
+            ))
     return errors
+
+
+async def claim_archive(message: Message, job: Job) -> bool:
+    """Two final jobs over one message (finished at the same instant) must not both move it: the first to claim it
+    archives it. A job may retake its own claim.
+    shortcut: a process dying mid-archive strands its claim (as it strands its job final); expire claims like
+    STALE_SENDING if that is ever seen."""
+    claimed = await Message.find({"_id": message.id, "archive_claim": {"$in": [None, job.id]}}).update(
+        {"$set": {"archive_claim": job.id}}
+    )
+    return bool(claimed.matched_count)
 
 
 async def archive(message: Message, client: Client | None) -> bool:

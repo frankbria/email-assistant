@@ -78,7 +78,10 @@ async def process(message: Message, client: Client, provider: AIProvider, cap: i
     if job is None:
         job = await decide(message, client, provider, cap)
         job.requires_approval = message.first_pass or await asks_first(message)
-        await job.insert()
+        if job.verb == "digest" and not job.ask_owner:
+            job = await join_open_digest(job, message)
+        else:
+            await job.insert()
         await act_if_autonomous(job, plugins)
     elif job.state == "open" and job.permission_level is None:
         await act_if_autonomous(job, plugins)  # stored, then a crash before acting: act now
@@ -93,6 +96,7 @@ async def process(message: Message, client: Client, provider: AIProvider, cap: i
     return job
 
 
+DIGEST_TITLE = "Low-priority mail to skim"
 NO_REPLY = re.compile(r"^(?:no-?reply|do-?not-?reply|mailer-daemon|postmaster|bounces?)[^@]*@", re.IGNORECASE)
 
 
@@ -102,7 +106,8 @@ async def act_if_autonomous(job: Job, plugins: PluginRegistry) -> None:
     original sender (execute never adds recipients), and never to a list (it would post to everyone) or a
     no-reply address. forward, todo and unsubscribe can't be autonomous. The executor records the level
     once the action took effect.
-    shortcut: digest waits for the owner until digests group mail (#88)."""
+    shortcut: an autonomous digest still waits for the owner's tap, since nothing decides when a rolling digest is
+    complete; finish it on a schedule (e.g. a daily digest) once owners ask for autonomous digests."""
     job_id = job.id
     if job.ask_owner or job.requires_approval or job_id is None:
         return
@@ -161,6 +166,35 @@ async def attach_copy(job: Job, message: Message) -> Job:
     )
     assert stored is not None
     return Job.model_validate(stored)
+
+
+async def join_open_digest(job: Job, message: Message) -> Job:
+    """Spec §4: low-priority mail gathers into the owner's one open digest, one summary line per message, until
+    the owner finishes it (archiving all of it); with none open, `job` starts it. A message joining a digest that
+    must ask (first-connect, §5.3, or a stream that asks first, §10.4) makes the whole digest ask."""
+    summary = " ".join((job.artifacts.digest or message.subject).split())  # one line, whatever the AI wrote
+    line = f"{message.sender.name or message.sender.email}: {summary}"
+    joined = await Job.get_pymongo_collection().find_one_and_update(
+        {"owner_id": job.owner_id, "verb": "digest", "state": "open", "ask_owner": False},
+        [{"$set": {
+            "message_ids": {"$concatArrays": ["$message_ids", [message.id]]},
+            "artifacts.digest": {"$cond": [
+                {"$gt": [{"$strLenCP": {"$ifNull": ["$artifacts.digest", ""]}}, 0]},
+                # $literal: mail text starting with "$" would otherwise be read as a field path
+                {"$concat": ["$artifacts.digest", "\n", {"$literal": line}]},
+                {"$literal": line},
+            ]},
+            "requires_approval": {"$or": ["$requires_approval", job.requires_approval]},
+        }}],
+        sort=[("created_at", 1)],
+        return_document=ReturnDocument.AFTER,
+    )
+    if joined is not None:
+        return Job.model_validate(joined)
+    job.title = DIGEST_TITLE  # it will speak for every message that joins, not just this first one
+    job.artifacts.digest = line
+    await job.insert()
+    return job
 
 
 async def archive_late_copy(job: Job, message: Message, client: Client) -> None:

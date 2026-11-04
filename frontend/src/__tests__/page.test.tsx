@@ -109,6 +109,48 @@ describe('Open jobs page', () => {
     expect(await screen.findByText(/Ana Lima - Project Update/)).toBeInTheDocument()
   })
 
+  it('shows a digest as its message count with one line per message', async () => {
+    const digest: JobCard = {
+      ...jobCard,
+      job: {
+        ...jobCard.job,
+        verb: 'digest',
+        title: 'Low-priority mail to skim',
+        message_ids: ['m1', 'm2', 'm3'],
+        artifacts: {
+          ...jobCard.job.artifacts,
+          digest: 'Garden News: Spring planting.\nCooking Weekly: Three soups.\nCycling Digest: A new trail.',
+        },
+      },
+    }
+    mockFetch.mockResolvedValueOnce(Response.json([digest]))
+
+    await act(async () => {
+      renderPage()
+    })
+
+    const card = await screen.findByRole('article', { name: 'Low-priority mail to skim' })
+    expect(within(card).getByText('3 messages')).toBeInTheDocument()
+    expect(within(card).queryByText(/Project Update/)).not.toBeInTheDocument()
+    expect(within(card).getAllByRole('listitem').map((item) => item.textContent)).toEqual([
+      'Garden News: Spring planting.',
+      'Cooking Weekly: Three soups.',
+      'Cycling Digest: A new trail.',
+    ])
+    // they would act on the first message alone, while done archives them all
+    for (const control of [/Other action/, /Correct/, /Edit/]) {
+      expect(within(card).queryByRole('button', { name: control })).not.toBeInTheDocument()
+    }
+    expect(within(card).getByRole('button', { name: /Approve/ })).toBeInTheDocument()
+    expect(within(card).getByRole('button', { name: /Dismiss/ })).toBeInTheDocument()
+
+    // the tap covers only the messages shown: one that joined since makes the server refuse
+    mockFetch.mockResolvedValueOnce(Response.json({ ...digest.job, state: 'done' }))
+    await userEvent.click(within(card).getByRole('button', { name: /Approve/ }))
+    await waitFor(() => expect(mockFetch).toHaveBeenCalledTimes(2))
+    expect(requestTo(1).body).toEqual({ message_ids: ['m1', 'm2', 'm3'] })
+  })
+
   it('shows the empty state when there are no open jobs', async () => {
     mockFetch.mockResolvedValueOnce(Response.json([]))
 
@@ -519,5 +561,15 @@ describe('Ask-owner card', () => {
 
     await waitFor(() => expect(screen.queryByRole('article', { name: 'Q4 budget' })).not.toBeInTheDocument())
     expect(requestTo(1).url).toMatch(/\/api\/v1\/jobs\/job-1\/dismiss$/)
+  })
+
+  it('dismissing an ask-owner digest names the messages it showed, as the server requires', async () => {
+    const card = await renderQueue({ ...askOwner, job: { ...askOwner.job, verb: 'digest', message_ids: ['m1'] } })
+    mockFetch.mockResolvedValueOnce(Response.json({ ...askOwner.job, state: 'dismissed' }))
+
+    await userEvent.click(within(card).getByRole('button', { name: 'Dismiss' }))
+
+    await waitFor(() => expect(mockFetch).toHaveBeenCalledTimes(2))
+    expect(requestTo(1).body).toEqual({ message_ids: ['m1'] })
   })
 })

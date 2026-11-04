@@ -52,6 +52,11 @@ function editableFields(job: Job): (keyof JobEdit)[] {
   return fields
 }
 
+// A digest speaks for all its mail, not only the first message the card's sender and subject come from.
+function messageCount(count: number): string {
+  return count === 1 ? '1 message' : `${count} messages`
+}
+
 function Artifacts({ job }: { job: Job }) {
   const { draft, options, digest, link, noise_rationale } = job.artifacts
   return (
@@ -64,7 +69,13 @@ function Artifacts({ job }: { job: Job }) {
           ))}
         </ul>
       )}
-      {digest && <p className="whitespace-pre-wrap">{digest}</p>}
+      {digest && (
+        <ul className="list-disc space-y-1 pl-5">
+          {digest.split('\n').map((line, index) => (
+            <li key={index}>{line}</li>
+          ))}
+        </ul>
+      )}
       {link && (isWebLink(link) ? (
         <a href={link} target="_blank" rel="noreferrer" className="break-all text-primary underline">
           {link}
@@ -151,6 +162,9 @@ function EditForm({ job, onSaved, onCancel }: { job: Job; onSaved: (job: Job) =>
 export function JobCard({ card, onReplaced, onRemoved }: JobCardProps) {
   const { job, sender, subject } = card
   const titleId = useId()
+  // Another action, a correction or an edit would act on the first message alone, while done archives them all.
+  const speaksForSeveral = job.verb === 'digest' && job.message_ids.length > 1
+  const shownDigest = job.verb === 'digest' ? job.message_ids : undefined // the tap covers only these
   const [editing, setEditing] = useState(false)
   const [busy, setBusy] = useState(false)
   // The API never forwards to the AI's suggestion alone: the owner confirms the recipient here.
@@ -182,7 +196,7 @@ export function JobCard({ card, onReplaced, onRemoved }: JobCardProps) {
       <CardHeader>
         <CardTitle id={titleId}>{job.title}</CardTitle>
         <CardDescription className="break-words">
-          {sender.name ?? sender.email} - {subject}
+          {job.verb === 'digest' ? messageCount(job.message_ids.length) : `${sender.name ?? sender.email} - ${subject}`}
         </CardDescription>
       </CardHeader>
       <CardContent className="space-y-3 text-sm">
@@ -213,42 +227,46 @@ export function JobCard({ card, onReplaced, onRemoved }: JobCardProps) {
           <Button
             className={TOUCH_TARGET}
             disabled={busy}
-            onClick={() => act(() => approveJob(job._id, job.verb === 'forward' ? forwardTo : undefined), 'Failed to approve the job')}
+            onClick={() => act(() => approveJob(job._id, job.verb === 'forward' ? forwardTo : undefined, shownDigest), 'Failed to approve the job')}
           >
             <HugeiconsIcon icon={CheckmarkCircle01Icon} />
             Approve
           </Button>
-          {editableFields(job).length > 0 && (
+          {!speaksForSeveral && editableFields(job).length > 0 && (
             <Button variant="outline" className={TOUCH_TARGET} disabled={busy} onClick={() => setEditing(true)}>
               <HugeiconsIcon icon={PencilEdit02Icon} />
               Edit
             </Button>
           )}
-          <DropdownMenu>
-            <DropdownMenuTrigger asChild>
-              <Button variant="outline" className={TOUCH_TARGET} disabled={busy}>
-                Other action
-                <HugeiconsIcon icon={ArrowDown01Icon} />
-              </Button>
-            </DropdownMenuTrigger>
-            <DropdownMenuContent>
-              {ACTIONS.filter(({ verb }) => verb !== job.verb).map(({ verb, label }) => (
-                <DropdownMenuItem
-                  key={verb}
-                  className={TOUCH_TARGET}
-                  onSelect={() => act(() => chooseVerb(job._id, verb), 'Failed to choose the action')}
-                >
-                  {label}
-                </DropdownMenuItem>
-              ))}
-            </DropdownMenuContent>
-          </DropdownMenu>
-          <CorrectMenu job={job} disabled={busy} onCorrect={(correction) => act(() => correctJob(job._id, correction), 'Failed to correct the job')} />
+          {!speaksForSeveral && (
+            <>
+              <DropdownMenu>
+                <DropdownMenuTrigger asChild>
+                  <Button variant="outline" className={TOUCH_TARGET} disabled={busy}>
+                    Other action
+                    <HugeiconsIcon icon={ArrowDown01Icon} />
+                  </Button>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent>
+                  {ACTIONS.filter(({ verb }) => verb !== job.verb).map(({ verb, label }) => (
+                    <DropdownMenuItem
+                      key={verb}
+                      className={TOUCH_TARGET}
+                      onSelect={() => act(() => chooseVerb(job._id, verb), 'Failed to choose the action')}
+                    >
+                      {label}
+                    </DropdownMenuItem>
+                  ))}
+                </DropdownMenuContent>
+              </DropdownMenu>
+              <CorrectMenu job={job} disabled={busy} onCorrect={(correction) => act(() => correctJob(job._id, correction), 'Failed to correct the job')} />
+            </>
+          )}
           <Button
             variant="ghost"
             className={TOUCH_TARGET}
             disabled={busy}
-            onClick={() => act(() => dismissJob(job._id), 'Failed to dismiss the job')}
+            onClick={() => act(() => dismissJob(job._id, shownDigest), 'Failed to dismiss the job')}
           >
             <HugeiconsIcon icon={Cancel01Icon} />
             Dismiss

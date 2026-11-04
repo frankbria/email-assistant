@@ -6,7 +6,7 @@ import re
 from datetime import datetime
 from typing import Literal
 
-from beanie import Document
+from beanie import Document, PydanticObjectId
 from pymongo import ASCENDING, DESCENDING, IndexModel
 
 from mailbox_contract import Address
@@ -27,7 +27,8 @@ class Message(Document):
     list_id: str | None = None
     in_reply_to: str | None = None
     first_pass: bool = False  # arrived in the first-connect pass: every decision on it is `ask` (spec §5.3)
-    pipeline_done: bool = False  # the pipeline made its job (or ask-owner job) for this inbox message  # arrived in the first-connect pass: every decision on it is `ask` (spec §5.3)
+    pipeline_done: bool = False  # the pipeline made its job (or ask-owner job) for this inbox message
+    archive_claim: PydanticObjectId | None = None  # the job archiving it right now: no other job archives it alongside
 
     class Settings:
         name = "messages"
