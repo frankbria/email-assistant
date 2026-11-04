@@ -29,8 +29,6 @@ jobs:
           --health-cmd "mongosh --quiet --eval 'db.runCommand({ping: 1})'"
           --health-interval 5s
           --health-retries 12
-    env:
-      ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
     steps:
       # A skipped run would hide that AC-4.3 isn't being checked, so a missing secret fails the job.
       - name: require the ANTHROPIC_API_KEY secret
@@ -40,6 +38,8 @@ jobs:
             exit 1
           fi
         working-directory: .
+        env:
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
       - uses: actions/checkout@v7
       - uses: astral-sh/setup-uv@v10.3.3 # no floating major tag upstream
         with:
@@ -47,3 +47,5 @@ jobs:
       - run: uv sync --locked
       - name: metrics over the synthetic test set
         run: uv run python -m app.metrics tests/fixtures/synthetic_test_set.jsonl
+        env:
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
