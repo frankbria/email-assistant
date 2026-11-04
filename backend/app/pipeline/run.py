@@ -21,7 +21,7 @@ from app.permissions import level_for
 from app.pipeline.examples import similar_examples
 from app.pipeline.minimize import minimize
 from app.pipeline.propose import forward_candidates, propose
-from app.pipeline.rules import apply_rule, matching_rule
+from app.pipeline.rules import apply_rule, asks_first, matching_rule
 from app.pipeline.validate import ask_owner_job, to_job
 from app.plugins.calls import call_plugin, refs_in_inbox
 from app.plugins.registry import PluginRegistry
@@ -62,12 +62,22 @@ async def process(message: Message, client: Client, provider: AIProvider, cap: i
     assert message.id is not None, "only stored messages are processed"
     job = await Job.find_one(Job.owner_id == message.owner_id, Job.message_ids == message.id)
     sibling = await sibling_job(message) if job is None else None
-    if sibling is not None and not (message.first_pass and sibling.state in ("done", "dismissed")):
-        # A first-connect copy never rides on a decision already carried out elsewhere (§5.3: it's `ask`).
+    finished = sibling is not None and sibling.state in ("done", "dismissed")
+    if sibling is not None and not (finished and (message.first_pass or await asks_first(message))):
+        # A copy that must be asked about (first-connect, §5.3, or a stream that asks first, §10.4) never rides on a
+        # decision already carried out elsewhere.
         job = await attach_copy(sibling, message)
+    if (
+        job is not None and job.state in ("done", "dismissed") and len(job.message_ids) > 1 and await asks_first(message)
+    ):
+        # A copy of an ask-first stream that joined a job which finished meanwhile must still be asked; after a crash
+        # that may ask twice, the safe way. A first-connect copy that joined in time made the job ask (attach_copy),
+        # and a finished job of this message alone was decided on it, so their archive below stands.
+        await Job.find(Job.id == job.id).update({"$pull": {"message_ids": message.id}})
+        job = None
     if job is None:
         job = await decide(message, client, provider, cap)
-        job.requires_approval = message.first_pass
+        job.requires_approval = message.first_pass or await asks_first(message)
         await job.insert()
         await act_if_autonomous(job, plugins)
     elif job.state == "open" and job.permission_level is None:
@@ -88,7 +98,7 @@ NO_REPLY = re.compile(r"^(?:no-?reply|do-?not-?reply|mailer-daemon|postmaster|bo
 
 async def act_if_autonomous(job: Job, plugins: PluginRegistry) -> None:
     """Spec §9: an `autonomous` verb acts without a tap; `ask` and `never_auto` wait for the owner. An
-    ask-owner card or first-connect mail (§5.3) always waits. A reply acts only with a draft, only to the
+    ask-owner card, first-connect mail (§5.3) or mail whose rule asks first (§10.4) always waits. A reply acts only with a draft, only to the
     original sender (execute never adds recipients), and never to a list (it would post to everyone) or a
     no-reply address. forward, todo and unsubscribe can't be autonomous. The executor records the level
     once the action took effect.
@@ -97,6 +107,10 @@ async def act_if_autonomous(job: Job, plugins: PluginRegistry) -> None:
     if job.ask_owner or job.requires_approval or job_id is None:
         return
     if await level_for(job.owner_id, job.verb) != "autonomous":
+        return
+    # Read now, not only when the job was made: a recovered job predates any rule the owner taught since.
+    first = await Message.get(job.message_ids[0])
+    if first is None or await asks_first(first):
         return
     actions: dict[str, Callable[[], Awaitable[Job]]] = {
         "archive_noise": lambda: finish(job_id, "done", plugins, verb="archive_noise", by="app", level="autonomous"),
@@ -139,7 +153,8 @@ async def attach_copy(job: Job, message: Message) -> Job:
     """One job for every copy (spec §5.3). Returns the job as stored right after attaching, so a
     finish that landed meanwhile is seen (its archive may have missed this copy)."""
     attach: dict[str, object] = {"$addToSet": {"message_ids": message.id}}
-    if message.first_pass:  # a first-connect copy makes the shared job need the owner's approval (§5.3)
+    # A first-connect copy (§5.3), or one whose stream asks first (§10.4), makes the shared job need the owner's tap.
+    if message.first_pass or await asks_first(message):
         attach["$set"] = {"requires_approval": True}
     stored = await Job.get_pymongo_collection().find_one_and_update(
         {"_id": job.id}, attach, return_document=ReturnDocument.AFTER

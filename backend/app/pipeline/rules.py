@@ -26,16 +26,42 @@ async def matching_rule(owner_id: str, message: Message) -> Rule | None:
 async def learn_rule(message: Message, verb: Verb, *, correct_the_deciding_rule: bool = True) -> None:
     """The owner's verb for the message's stream from now on. A correction fixes the rule that decided this message;
     otherwise (or with none) the stream matching_rule checks first gets the rule, so it decides next time."""
+    noise_again = {"ask_first": False} if verb == "archive_noise" else {}  # outranks an earlier restore's ask_first
+    await teach(message, {"verb": verb, **noise_again}, correct_the_deciding_rule)
+
+
+async def ask_first_from_now_on(message: Message) -> None:
+    """The owner restored mail the app archived on its own (§10.4, AC-2.4): the stream's noise rule goes, and nothing
+    is done to its mail again without the owner's tap. No verb is learned: the restore says only what it isn't."""
+    key = await stream_to_teach(message, correct_the_deciding_rule=True)  # before forgetting: the noise rule may have decided
+    await forget_noise_rules(message)
+    if key:
+        await store_rule(message.owner_id, key, {"ask_first": True})
+
+
+async def teach(message: Message, changes: dict[str, object], correct_the_deciding_rule: bool) -> None:
+    if key := await stream_to_teach(message, correct_the_deciding_rule):
+        await store_rule(message.owner_id, key, changes)
+
+
+async def stream_to_teach(message: Message, correct_the_deciding_rule: bool) -> tuple[RuleMatch, str] | None:
     decided = await matching_rule(message.owner_id, message) if correct_the_deciding_rule else None
     keys = [(decided.match, decided.value)] if decided else stream_keys(message)
-    if not keys:
-        return
-    match, key = keys[0]
+    return keys[0] if keys else None
+
+
+async def store_rule(owner_id: str, key: tuple[RuleMatch, str], changes: dict[str, object]) -> None:
+    match, value = key
     await Rule.get_pymongo_collection().update_one(
-        {"owner_id": message.owner_id, "match": match, "value": key},
-        {"$set": {"verb": verb}, "$setOnInsert": {"created_at": datetime.now(UTC)}},
+        {"owner_id": owner_id, "match": match, "value": value},
+        {"$set": changes, "$setOnInsert": {"created_at": datetime.now(UTC)}},
         upsert=True,
     )
+
+
+async def asks_first(message: Message) -> bool:
+    rule = await matching_rule(message.owner_id, message)
+    return rule is not None and rule.ask_first
 
 
 async def forget_noise_rules(message: Message) -> None:
@@ -48,7 +74,7 @@ def apply_rule(proposal: Proposal, rule: Rule | None) -> Proposal:
     """The rule's verb wins and the owner isn't asked which action (permissions, §9, still decide
     whether acting asks first). Details the AI wrote for another verb are dropped: validation (§8.5)
     then routes a proposal with nothing left for the rule's verb to the owner rather than guessing."""
-    if rule is None:
+    if rule is None or rule.verb is None:
         return proposal
     if rule.verb == proposal.verb:
         return proposal.model_copy(update={"needs_owner": False})
