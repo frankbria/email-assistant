@@ -250,23 +250,32 @@ class ImapMailbox:
         uids = self._search(connection, "HEADER", "Message-ID", f'"{ref}"')
         return uids[0] if uids else None
 
-    @staticmethod
-    def _fetch(connection: imaplib.IMAP4, uid: int) -> EmailMessage:
-        status, data = connection.uid("FETCH", str(uid), "(BODY.PEEK[])")
-        raw = data[0][1] if status == "OK" and data and isinstance(data[0], tuple) else None
-        if not isinstance(raw, bytes):
+    # Providers fetch their server ids alongside the body (Gmail: X-GM-MSGID).
+    FETCH_ITEMS = "(BODY.PEEK[])"
+
+    def _fetch(self, connection: imaplib.IMAP4, uid: int) -> EmailMessage:
+        status, data = connection.uid("FETCH", str(uid), self.FETCH_ITEMS)
+        item = data[0] if status == "OK" and data else None
+        if not isinstance(item, tuple) or not isinstance(item[1], bytes):
             # Not "not found": the message was just located; this is a server or link failure.
             raise MailboxError(ErrorCode.UNAVAILABLE, "The IMAP server didn't return the message.")
-        message = message_from_bytes(raw, policy=policy.default)
+        message = message_from_bytes(item[1], policy=policy.default)
         assert isinstance(message, EmailMessage)
+        self._add_server_headers(message, item[0])
         return message
 
-    @staticmethod
-    def _summary(message: EmailMessage) -> MessageSummary:
+    def _add_server_headers(self, message: EmailMessage, fetch_line: bytes) -> None:
+        """Providers copy server-side ids from the FETCH response into the message here."""
+
+    def _ref(self, message: EmailMessage) -> str:
+        """The message's ref: its Message-ID (stable across moves, unlike UIDs)."""
+        return str(message["Message-ID"] or "")
+
+    def _summary(self, message: EmailMessage) -> MessageSummary:
         message_id = str(message["Message-ID"] or "")
         date_header = message["Date"]
         return MessageSummary(
-            ref=message_id,
+            ref=self._ref(message),
             message_id=message_id,
             sender=(addresses(message, "From") or [Address(email="")])[0],
             to=addresses(message, "To"),
@@ -407,6 +416,15 @@ class ImapMailbox:
                         ],
                     )
         raise MailboxError(ErrorCode.NOT_FOUND, "No message with that ref.")
+
+    def wait_for_new_mail(self, seconds: float) -> bool:
+        """Block until the inbox reports new mail over IMAP IDLE (True) or `seconds` pass (False)."""
+        with self._imap() as connection:
+            if "IDLE" not in connection.capabilities:
+                raise MailboxError(ErrorCode.UNSUPPORTED, "This IMAP server doesn't support IDLE.")
+            self._select(connection, self.folders.inbox)
+            with connection.idle(duration=seconds) as responses:
+                return any(kind == "EXISTS" for kind, _ in responses)
 
     def repair(self, action: str) -> RepairResult:
         """Providers with a `repair` capability override this."""

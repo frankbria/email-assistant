@@ -15,7 +15,7 @@ Think: a 1950s secretary triaging your morning mail. The full design is in
 - **Mailbox plugins.** Each mail account is reached through a plugin that speaks the `mailbox/1` contract over
   MCP ([`docs/contracts/mailbox-1.md`](docs/contracts/mailbox-1.md)). The reference IMAP/SMTP plugin lives in
   `packages/imap-mailbox`. The Proton plugin (`plugins/proton`) runs through Proton Mail Bridge, and a watchdog
-  restarts Bridge when it stops.
+  restarts Bridge when it stops. The Gmail plugin (`plugins/gmail`) uses IMAP with an app password.
 - **Pipeline.** New mail is synced, minimized, and checked first against learned **rules** (they outrank the AI).
   Otherwise the AI proposes a job, with similar past decisions (**examples**) as context. Mail the AI can't
   classify becomes an ask-owner card: "What do you want to do with this?"
@@ -71,6 +71,7 @@ email-assistant/
 │   ├── mailbox-contract/   # mailbox/1 contract types and JSON schemas
 │   └── imap-mailbox/       # reference IMAP/SMTP plugin
 ├── plugins/proton/         # Proton plugin (via Proton Mail Bridge) and its watchdog
+├── plugins/gmail/          # Gmail plugin (IMAP + app password)
 ├── docs/                   # spec, contract, deployment
 ├── docker-compose.yml      # deployment
 └── docker-compose.test.yml # MongoDB + GreenMail for the test suites
@@ -102,7 +103,8 @@ npm install
 npm run dev   # http://localhost:3200
 ```
 
-To connect a Proton account, follow [`plugins/proton/README.md`](plugins/proton/README.md).
+To connect a Proton account, follow [`plugins/proton/README.md`](plugins/proton/README.md); for Gmail,
+[`plugins/gmail/README.md`](plugins/gmail/README.md).
 
 ## ⚙️ Configuration
 
