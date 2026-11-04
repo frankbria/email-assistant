@@ -50,14 +50,17 @@ async def calibrate(owner_id: str, plugins: PluginRegistry, provider: AIProvider
 
 
 async def replace_card(owner_id: str, message: Message, card: CalibrationJob) -> None:
-    """The message's one card, replacing one an overlapping run stored; the unique index makes a lost race fail."""
+    """The message's one card, replacing one an overlapping run stored. Always under a new id: a reaction names the
+    card the owner saw, so it must never land on a proposal that replaced it. The unique index makes a lost race fail."""
     collection = CalibrationJob.get_pymongo_collection()
-    same_message = {"owner_id": owner_id, "message_ids": message.id}
     document = card.model_dump(by_alias=True, exclude={"id", "revision_id"})
-    try:
-        await collection.replace_one(same_message, document, upsert=True)
-    except DuplicateKeyError:  # the other run inserted between our match and our insert: replace what it stored
-        await collection.replace_one(same_message, document)
+    while True:
+        await collection.delete_one({"owner_id": owner_id, "message_ids": message.id})
+        try:
+            await collection.insert_one(dict(document))  # a copy: insert_one adds the _id it generates
+            return
+        except DuplicateKeyError:  # another run inserted between our delete and insert: replace that one
+            continue
 
 def add_to_test_set(path: str, message: Message, calibration: CalibrationJob, verb: Verb) -> None:
     """One JSON line per reaction: the mail, what the AI proposed and what the owner said it should be."""

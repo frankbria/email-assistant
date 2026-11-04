@@ -20,7 +20,7 @@ from app.models.example import Example
 from app.models.job import Job
 from app.models.message import Message
 from app.permissions import PermissionSettings
-from app.pipeline.calibrate import calibrate
+from app.pipeline.calibrate import calibrate, replace_card
 from app.pipeline.proposal import Proposal
 from tests.test_routes.test_corrections_api import rules
 from tests.test_sync.test_inbox_sync import PLUGIN
@@ -155,3 +155,19 @@ async def test_two_overlapping_runs_leave_one_card_per_message(test_db, mailbox,
     assert sorted(str(card.message_ids[0]) for card in cards) == sorted(str(message.id) for message in messages)
     with pytest.raises(DuplicateKeyError):
         await CalibrationJob(**cards[0].model_dump(exclude={"id", "revision_id"})).insert()
+
+
+async def test_a_new_run_gives_a_message_a_new_card_so_a_reaction_to_the_old_one_is_refused(async_client, test_db, mailbox, plugins, ai, test_set):
+    """The owner judged the card they saw: a reaction must never be recorded against a proposal that replaced it."""
+    message = await stored(new_mailbox(), mailbox, "Weekly deals", timedelta(days=1))
+    ai.result = NOISE
+    await calibrate(OWNER_ID, plugins, ai, None)
+    [seen] = await CalibrationJob.find(CalibrationJob.owner_id == OWNER_ID).to_list()
+
+    # an overlapping run, already past its clear-out, stores its own proposal for the same message
+    await replace_card(OWNER_ID, message, CalibrationJob(**seen.model_dump(exclude={"id", "revision_id", "proposed"}), proposed="digest"))
+    reacted = await async_client.post(f"/api/v1/calibration/{seen.id}/react", json={"verb": "archive_noise", "always": False})
+
+    [replacement] = await CalibrationJob.find(CalibrationJob.owner_id == OWNER_ID).to_list()
+    assert replacement.id != seen.id
+    assert reacted.status_code in (404, 409) and not test_set.exists()
