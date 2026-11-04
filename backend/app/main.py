@@ -8,6 +8,7 @@ from app.models.action_log import ActionLogEntry
 from app.models.message import Message
 from app.models.ai_usage import AiUsage
 from app.models.rule import Rule
+from app.models.example import Example
 from app.permissions import ApprovalStreak, PermissionSettings
 from app.models.sync_cursor import SyncCursor
 from beanie import init_beanie
@@ -61,7 +62,7 @@ async def init_db(settings: Settings | None = None):
     )
     await init_beanie(
         database=client[settings.current_mongodb_db],
-        document_models=[UserSettings, Message, Job, SyncCursor, Rule, AiUsage, PermissionSettings, ApprovalStreak, ActionLogEntry],
+        document_models=[UserSettings, Message, Job, SyncCursor, Rule, AiUsage, PermissionSettings, ApprovalStreak, ActionLogEntry, Example],
         allow_index_dropping=True,
     )
 

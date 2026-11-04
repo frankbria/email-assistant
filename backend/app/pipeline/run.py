@@ -18,6 +18,7 @@ from app.models.ai_usage import AiUsage
 from app.models.job import Job, Verb
 from app.models.message import Message
 from app.permissions import level_for
+from app.pipeline.examples import similar_examples
 from app.pipeline.minimize import minimize
 from app.pipeline.propose import forward_candidates, propose
 from app.pipeline.rules import apply_rule, matching_rule
@@ -171,10 +172,11 @@ async def decide(message: Message, client: Client, provider: AIProvider, cap: in
     rule = None if chosen else await matching_rule(message.owner_id, message)
     fixed_verb = chosen or (rule.verb if rule else None)
     suggested = [fixed_verb] if fixed_verb else []
+    examples = [example.summary() for example in await similar_examples(message, text)]
     if not await take_ai_call(cap):
         return ask_owner_job(message, ["the monthly AI cap is reached"], suggested)
     try:
-        proposal = await propose(message, text, provider, fixed_verb=fixed_verb)
+        proposal = await propose(message, text, provider, fixed_verb=fixed_verb, examples=examples)
     except AIProposalError:
         return ask_owner_job(message, ["the AI gave no usable proposal"], suggested)
     except Exception:  # an outage or a failed local read isn't a used call; the message waits for the next pass
