@@ -143,6 +143,12 @@ describe('Open jobs page', () => {
     }
     expect(within(card).getByRole('button', { name: /Approve/ })).toBeInTheDocument()
     expect(within(card).getByRole('button', { name: /Dismiss/ })).toBeInTheDocument()
+
+    // the tap covers only the messages shown: one that joined since makes the server refuse
+    mockFetch.mockResolvedValueOnce(Response.json({ ...digest.job, state: 'done' }))
+    await userEvent.click(within(card).getByRole('button', { name: /Approve/ }))
+    await waitFor(() => expect(mockFetch).toHaveBeenCalledTimes(2))
+    expect(requestTo(1).body).toEqual({ message_ids: ['m1', 'm2', 'm3'] })
   })
 
   it('shows the empty state when there are no open jobs', async () => {

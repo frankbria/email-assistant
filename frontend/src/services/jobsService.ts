@@ -35,16 +35,17 @@ export async function editJob(jobId: string, edit: JobEdit): Promise<Job> {
   return responseBody(res, 'Failed to save the job')
 }
 
-export function approveJob(jobId: string, forwardTo?: string): Promise<Job> {
-  return postJson(`/api/v1/jobs/${encodeURIComponent(jobId)}/approve`, { forward_to: forwardTo }, 'Failed to approve the job')
+// `messageIds`: what the card showed; a digest gathers mail, so its tap covers only these.
+export function approveJob(jobId: string, forwardTo?: string, messageIds?: string[]): Promise<Job> {
+  return postJson(`/api/v1/jobs/${encodeURIComponent(jobId)}/approve`, { forward_to: forwardTo, message_ids: messageIds }, 'Failed to approve the job')
 }
 
 export function chooseVerb(jobId: string, verb: Verb, always?: boolean): Promise<Job> {
   return postJson(`/api/v1/jobs/${encodeURIComponent(jobId)}/choose`, { verb, always }, 'Failed to choose the action')
 }
 
-export function dismissJob(jobId: string): Promise<Job> {
-  return postJson(`/api/v1/jobs/${encodeURIComponent(jobId)}/dismiss`, undefined, 'Failed to dismiss the job')
+export function dismissJob(jobId: string, messageIds?: string[]): Promise<Job> {
+  return postJson(`/api/v1/jobs/${encodeURIComponent(jobId)}/dismiss`, messageIds && { message_ids: messageIds }, 'Failed to dismiss the job')
 }
 
 export type Correction = { kind: 'noise' } | { kind: 'not_noise' } | { kind: 'wrong_action'; verb: Verb }

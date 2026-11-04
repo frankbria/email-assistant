@@ -67,12 +67,16 @@ async def finish(
     *,
     by: Actor,
     level: PermissionLevel | None,
+    messages: list[PydanticObjectId] | None = None,
 ) -> Job:
     """Done (the action succeeded, or a todo's owner tapped done) or dismissed; then archive what's settled.
     `claim_from`: execute() finishes a job it already holds as `sending`. `verb`: only while the job is still
     that verb and not an ask-owner card (the owner approved what they saw, not a choice made meanwhile).
+    `messages`: only while the job still covers exactly those (a digest gathers mail; the tap covers what was shown).
     `level`: the permission it ran under, stored on the job once it took effect (None: a dismissal)."""
-    unchanged = {"verb": verb, "ask_owner": False} if verb else {}
+    unchanged: dict[str, object] = {"verb": verb, "ask_owner": False} if verb else {}
+    if messages is not None:
+        unchanged["message_ids"] = messages
     # Out of `open` before any archive, so a sync pass can't close it as handled elsewhere meanwhile.
     claimed = await Job.find(Job.id == job_id, In(Job.state, list(claim_from)), unchanged).update({"$set": {"state": outcome, "error": None}})
     if not claimed.modified_count:

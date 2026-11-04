@@ -164,6 +164,7 @@ export function JobCard({ card, onReplaced, onRemoved }: JobCardProps) {
   const titleId = useId()
   // Another action, a correction or an edit would act on the first message alone, while done archives them all.
   const speaksForSeveral = job.verb === 'digest' && job.message_ids.length > 1
+  const shownDigest = job.verb === 'digest' ? job.message_ids : undefined // the tap covers only these
   const [editing, setEditing] = useState(false)
   const [busy, setBusy] = useState(false)
   // The API never forwards to the AI's suggestion alone: the owner confirms the recipient here.
@@ -226,7 +227,7 @@ export function JobCard({ card, onReplaced, onRemoved }: JobCardProps) {
           <Button
             className={TOUCH_TARGET}
             disabled={busy}
-            onClick={() => act(() => approveJob(job._id, job.verb === 'forward' ? forwardTo : undefined), 'Failed to approve the job')}
+            onClick={() => act(() => approveJob(job._id, job.verb === 'forward' ? forwardTo : undefined, shownDigest), 'Failed to approve the job')}
           >
             <HugeiconsIcon icon={CheckmarkCircle01Icon} />
             Approve
@@ -265,7 +266,7 @@ export function JobCard({ card, onReplaced, onRemoved }: JobCardProps) {
             variant="ghost"
             className={TOUCH_TARGET}
             disabled={busy}
-            onClick={() => act(() => dismissJob(job._id), 'Failed to dismiss the job')}
+            onClick={() => act(() => dismissJob(job._id, shownDigest), 'Failed to dismiss the job')}
           >
             <HugeiconsIcon icon={Cancel01Icon} />
             Dismiss

@@ -24,6 +24,11 @@ DIGEST = Proposal(needs_owner=False, verb="digest", title="This week's newslette
                   digest="Three short stories about the season.", noise_rationale="A newsletter", confidence=0.9)
 
 
+def seen(digest: Job) -> dict[str, list[str]]:
+    """What the owner's card showed when they tapped: a digest's action speaks only for those messages."""
+    return {"message_ids": [str(message_id) for message_id in digest.message_ids]}
+
+
 async def three_newsletters_in_one_digest(test_db, mailbox: Mailbox, plugins) -> Job:
     await add_owner(test_db, OWNER_ID)
     mailbox.create_folder("Sent")  # the owner's voice is read from it
@@ -43,7 +48,7 @@ async def test_ac_three_newsletters_become_one_digest_and_done_archives_all_thre
     assert digest.artifacts.digest is not None
     assert digest.artifacts.digest.splitlines() == [f"{sender}: Three short stories about the season." for sender in NEWSLETTERS]
 
-    approved = await async_client.post(f"/api/v1/jobs/{digest.id}/approve", json={})
+    approved = await async_client.post(f"/api/v1/jobs/{digest.id}/approve", json=seen(digest))
 
     assert approved.status_code == 200 and (approved.json()["state"], approved.json()["error"]) == ("done", None)
     assert mailbox.messages("INBOX") == [] and len(mailbox.messages("Archive")) == 3
@@ -51,7 +56,7 @@ async def test_ac_three_newsletters_become_one_digest_and_done_archives_all_thre
 
 async def test_undoing_the_digests_archive_restores_all_three(async_client, test_db, mailbox, plugins):
     digest = await three_newsletters_in_one_digest(test_db, mailbox, plugins)
-    await async_client.post(f"/api/v1/jobs/{digest.id}/approve", json={})
+    await async_client.post(f"/api/v1/jobs/{digest.id}/approve", json=seen(digest))
     [archive] = await history(async_client)
     assert (archive["action"], len(archive["message_ids"])) == ("archived", 3)
 
@@ -64,7 +69,7 @@ async def test_undoing_the_digests_archive_restores_all_three(async_client, test
 
 async def test_newsletters_after_the_digest_was_finished_start_a_new_one(async_client, test_db, mailbox, plugins):
     digest = await three_newsletters_in_one_digest(test_db, mailbox, plugins)
-    await async_client.post(f"/api/v1/jobs/{digest.id}/approve", json={})
+    await async_client.post(f"/api/v1/jobs/{digest.id}/approve", json=seen(digest))
     mailbox.deliver(sender=NEWSLETTERS[0], subject="Next week's news", body="This week in brief: two short stories.")
 
     await sync_pass(test_db, plugins, FakeAIProvider(DIGEST))
@@ -124,7 +129,7 @@ async def message_of_digest(digest: Job) -> Message:
 
 async def test_the_history_of_a_digests_archive_names_its_message_count(async_client, test_db, mailbox, plugins):
     digest = await three_newsletters_in_one_digest(test_db, mailbox, plugins)
-    await async_client.post(f"/api/v1/jobs/{digest.id}/approve", json={})
+    await async_client.post(f"/api/v1/jobs/{digest.id}/approve", json=seen(digest))
     await Message.find(Message.id == digest.message_ids[0]).delete()  # the first message is gone; the entry stays
 
     [card] = (await async_client.get("/api/v1/history")).json()
@@ -168,3 +173,25 @@ async def test_a_noise_correction_is_not_stored_over_a_job_whose_messages_change
 
     assert refused.value.status_code == 409
     assert (await Job.get(digest.id)).verb == "digest" and len(mailbox.messages("INBOX")) == 3
+
+
+async def test_approving_a_digest_that_gathered_more_mail_since_it_was_shown_archives_nothing(async_client, test_db, mailbox, plugins):
+    """A newsletter that joined after the owner's card was drawn was never reviewed, so the tap doesn't cover it."""
+    digest = await three_newsletters_in_one_digest(test_db, mailbox, plugins)
+    shown = digest.model_copy(update={"message_ids": digest.message_ids[:2]})
+
+    approved = await async_client.post(f"/api/v1/jobs/{digest.id}/approve", json=seen(shown))
+    dismissed = await async_client.post(f"/api/v1/jobs/{digest.id}/dismiss", json=seen(shown))
+
+    assert (approved.status_code, dismissed.status_code) == (409, 409)
+    assert (await Job.get(digest.id)).state == "open" and len(mailbox.messages("INBOX")) == 3
+
+
+async def test_a_digest_is_only_finished_for_the_messages_the_owner_saw(async_client, test_db, mailbox, plugins):
+    digest = await three_newsletters_in_one_digest(test_db, mailbox, plugins)
+
+    unsaid = await async_client.post(f"/api/v1/jobs/{digest.id}/approve", json={})
+    dismissed = await async_client.post(f"/api/v1/jobs/{digest.id}/dismiss", json=seen(digest))
+
+    assert unsaid.status_code == 422
+    assert dismissed.status_code == 200 and len(mailbox.messages("Archive")) == 3

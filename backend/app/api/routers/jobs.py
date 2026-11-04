@@ -55,7 +55,12 @@ class JobEdit(BaseModel):
     due: datetime | None = None
 
 
-class Approval(BaseModel):
+class Seen(BaseModel):
+    # The messages the owner's card showed; a digest gathers mail, so its tap covers only these (required for one).
+    message_ids: list[PydanticObjectId] | None = None
+
+
+class Approval(Seen):
     forward_to: str | None = None  # a forward's recipient as the owner confirmed it (never the AI's suggestion alone)
 
 
@@ -139,6 +144,7 @@ async def approve_job(
     if job.verb == "unsubscribe":
         # shortcut: no unsubscribe action yet; approving it acts once the List-Unsubscribe executor lands (#90).
         raise HTTPException(status_code=422, detail="unsubscribing isn't available yet")
+    messages = shown_messages(job, approval)
     level = await tapped_level(owner_id, job.verb)
     actions: dict[str, Callable[[], Awaitable[Job]]] = {
         "reply": lambda: execute(job_id, plugins, forward_to=approval.forward_to, by="owner", level=level),
@@ -146,7 +152,7 @@ async def approve_job(
         "snooze": lambda: defer(job_id, by="owner", level=level),
         "follow_up": lambda: defer(job_id, by="owner", level=level),
     }
-    acted = await acting(actions.get(job.verb, lambda: finish(job_id, "done", plugins, verb=job.verb, by="owner", level=level)))
+    acted = await acting(actions.get(job.verb, lambda: finish(job_id, "done", plugins, verb=job.verb, by="owner", level=level, messages=messages)))
     if acted.state in ("done", "snoozed"):
         # shortcut: a DB failure after the action and before this write loses this one streak tick (the job is final, so
         # a retry gets 409); move it into the executor if promotion offers ever need the streak exact.
@@ -229,9 +235,18 @@ async def replace_proposal(job: Job, proposed: Job) -> Job:
 
 
 @router.post("/{job_id}/dismiss", response_model=Job)
-async def dismiss_job(job_id: PydanticObjectId, owner_id: OwnerId, plugins: PluginRegistry = Depends(plugin_registry)) -> Job:
-    await owned(job_id, owner_id)
-    return await acting(lambda: finish(job_id, "dismissed", plugins, claim_from=("open", "failed"), by="owner", level=None))
+async def dismiss_job(
+    job_id: PydanticObjectId, owner_id: OwnerId, seen: Seen | None = None, plugins: PluginRegistry = Depends(plugin_registry)
+) -> Job:
+    messages = shown_messages(await owned(job_id, owner_id), seen or Seen())
+    return await acting(lambda: finish(job_id, "dismissed", plugins, claim_from=("open", "failed"), by="owner", level=None, messages=messages))
+
+
+def shown_messages(job: Job, seen: Seen) -> list[PydanticObjectId] | None:
+    """A digest's tap must say which messages it covers; other jobs may (finish then refuses if they changed)."""
+    if job.verb == "digest" and seen.message_ids is None:
+        raise HTTPException(status_code=422, detail="say which messages of the digest you saw")
+    return seen.message_ids
 
 
 @router.post("/{job_id}/correct", response_model=Job)
