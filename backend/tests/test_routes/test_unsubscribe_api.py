@@ -6,9 +6,11 @@ from datetime import UTC, datetime
 
 import pytest
 
+from app.executor import execute
 from app.models.action_log import ActionLogEntry
 from app.models.job import Artifacts, Job
 from app.models.message import Message
+from app.unsubscribe import unsubscribe_mail
 from tests.test_routes.test_jobs_api import archived, job_from
 from tests.test_sync.test_inbox_sync import PLUGIN
 from tests.utils.auth import OWNER_ID
@@ -109,3 +111,17 @@ async def test_only_an_unsubscribe_job_has_a_target(async_client, test_db, mailb
     response = await async_client.get(f"/api/v1/jobs/{job.id}/unsubscribe")
 
     assert response.status_code == 422 and "isn't an unsubscribe" in response.json()["detail"]
+
+
+async def test_an_unsubscribe_request_never_sends_a_job_that_became_a_reply_meanwhile(test_db, mailbox, plugins):
+    """The approval read the target, then another request turned the job into a reply: the unsubscribe tap must not
+    send that reply's draft."""
+    ana = new_mailbox()
+    job = await job_from(ana, mailbox, "reply", Artifacts(draft="A draft the owner never approved"))
+    request = unsubscribe_mail("mailto:leave@list.example?subject=unsubscribe")
+    assert request is not None
+
+    with pytest.raises(ValueError):
+        await execute(job.id, plugins, by="owner", level="never_auto", unsubscribe_request=request)
+
+    assert ana.messages("INBOX") == [] and (await Job.get(job.id)).state == "open"

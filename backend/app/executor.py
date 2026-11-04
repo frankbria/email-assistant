@@ -234,6 +234,9 @@ async def execute(
     job = await Job.get(job_id)
     if job is None or job.verb not in ("reply", "forward", "unsubscribe"):
         raise ValueError(f"only reply, forward and unsubscribe jobs send; job {job_id} isn't one")
+    if (unsubscribe_request is not None) != (job.verb == "unsubscribe"):
+        # The job became another action while the tap was on its way: send neither what wasn't approved.
+        raise ValueError(f"job {job_id} changed since it was approved, look at it again")
     now = datetime.now(UTC)
     # Still the verb read above: another action chosen meanwhile must not be sent as this one.
     claimable = {"_id": job_id, "verb": job.verb, "ask_owner": False, "$or": [
