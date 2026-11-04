@@ -2,7 +2,7 @@
 import Link from 'next/link'
 import { usePathname } from 'next/navigation'
 import { HugeiconsIcon } from '@hugeicons/react'
-import { AiBrain01Icon, Settings01Icon, Task01Icon, WorkHistoryIcon } from '@hugeicons/core-free-icons'
+import { AiBrain01Icon, FilterIcon, Settings01Icon, Task01Icon, WorkHistoryIcon } from '@hugeicons/core-free-icons'
 
 export function BottomNav() {
   const pathname = usePathname()
@@ -31,6 +31,12 @@ export function BottomNav() {
           active={pathname.startsWith('/history')}
           icon={<HugeiconsIcon icon={WorkHistoryIcon} className="w-7 h-7 md:w-6 md:h-6" />}
           label="History"
+        />
+        <NavItem
+          href="/filtered"
+          active={pathname.startsWith('/filtered')}
+          icon={<HugeiconsIcon icon={FilterIcon} className="w-7 h-7 md:w-6 md:h-6" />}
+          label="Filtered"
         />
         <NavItem
           href="/settings"

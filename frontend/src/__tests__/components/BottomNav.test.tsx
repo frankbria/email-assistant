@@ -24,6 +24,7 @@ describe('BottomNav', () => {
     expect(screen.getByText('Do')).toBeInTheDocument()
     expect(screen.getByText('Train')).toBeInTheDocument()
     expect(screen.getByText('History')).toBeInTheDocument()
+    expect(screen.getByText('Filtered').closest('a')).toHaveAttribute('href', '/filtered')
     expect(screen.getByText('Settings')).toBeInTheDocument()
   })
 

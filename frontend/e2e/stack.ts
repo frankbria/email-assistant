@@ -68,11 +68,15 @@ export function resetDatabase(): void {
 }
 
 // askOwner: the problem that leaves the choice to the owner, with `verb` the one suggested
-export function seedJob(verb: 'reply' | 'forward', options: { draft?: string; forwardTo?: string; askOwner?: string } = {}): SeededJob {
+export function seedJob(
+  verb: 'reply' | 'forward' | 'archive_noise',
+  options: { draft?: string; forwardTo?: string; askOwner?: string; noiseRationale?: string } = {}
+): SeededJob {
   const args: string[] = [verb]
   if (options.draft) args.push('--draft', options.draft)
   if (options.forwardTo) args.push('--forward-to', options.forwardTo)
   if (options.askOwner) args.push('--ask-owner', options.askOwner)
+  if (options.noiseRationale) args.push('--noise-rationale', options.noiseRationale)
   const job: SeededJob = JSON.parse(seedScript('job', ...args))
   return job
 }
