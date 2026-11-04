@@ -34,3 +34,5 @@ backend/permissions.yaml
 # Editor swap and lock files (vim, nano), e.g. ..env.swp next to an open .env
 *.swp
 *.swo
+# The calibration test set: the owner's real mail, never committed (spec §10.7)
+backend/calibration/

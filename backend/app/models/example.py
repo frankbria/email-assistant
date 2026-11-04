@@ -9,7 +9,7 @@ from pymongo import ASCENDING, DESCENDING, IndexModel
 
 from app.models.job import Verb
 
-ExampleSource = Literal["ask_owner", "correction", "restore"]
+ExampleSource = Literal["ask_owner", "correction", "restore", "calibration"]
 EXCERPT_CHARACTERS = 200
 
 

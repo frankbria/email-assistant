@@ -26,6 +26,8 @@ services:
       BETTER_AUTH_JWKS_URL: http://frontend:3200/api/auth/jwks
       # The owner's per-verb permissions, editable on the host in ./config (see docs/deployment.md).
       PERMISSIONS_FILE: /app/config/permissions.yaml
+      # The calibration test set (your real mail), kept on the host in ./config, which is never committed.
+      TEST_SET_FILE: /app/config/test_set.jsonl
     volumes:
       - ./config:/app/config
     ports:
