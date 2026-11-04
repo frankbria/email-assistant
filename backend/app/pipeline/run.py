@@ -180,8 +180,9 @@ async def join_open_digest(job: Job, message: Message) -> Job:
             "message_ids": {"$concatArrays": ["$message_ids", [message.id]]},
             "artifacts.digest": {"$cond": [
                 {"$gt": [{"$strLenCP": {"$ifNull": ["$artifacts.digest", ""]}}, 0]},
-                {"$concat": ["$artifacts.digest", "\n", line]},
-                line,
+                # $literal: mail text starting with "$" would otherwise be read as a field path
+                {"$concat": ["$artifacts.digest", "\n", {"$literal": line}]},
+                {"$literal": line},
             ]},
             "requires_approval": {"$or": ["$requires_approval", job.requires_approval]},
         }}],

@@ -215,12 +215,15 @@ async def propose_instead(
 
 async def replace_proposal(job: Job, proposed: Job) -> Job:
     replaced = proposed.model_dump(include={"verb", "title", "evidence", "artifacts", "due", "ask_owner", "suggested_verbs", "problems"})
-    # Re-checked at write time: an approval may have sent it while the AI was proposing.
+    # Re-checked at write time: an approval may have sent it, or mail may have joined it (a digest), while the AI
+    # was proposing; the proposal speaks only for the messages it was made for.
     # A failed job (its send didn't go out) is back to open with the new proposal.
     fresh = {**replaced, "state": "open", "edited": False, "error": None, "reminder": None, "permission_level": None}  # the old action's
-    stored = await Job.find({"_id": job.id, "state": {"$in": IN_QUEUE}, "sent_at": None}).update({"$set": fresh})
+    stored = await Job.find(
+        {"_id": job.id, "state": {"$in": IN_QUEUE}, "sent_at": None, "message_ids": job.message_ids}
+    ).update({"$set": fresh})
     if not stored.modified_count:
-        raise HTTPException(status_code=409, detail=f"job {job.id} isn't open")
+        raise HTTPException(status_code=409, detail=f"job {job.id} isn't open or its mail changed, try again")
     assert job.id is not None
     return await owned(job.id, job.owner_id)
 

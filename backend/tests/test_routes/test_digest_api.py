@@ -2,7 +2,9 @@
 # it archives every message, and undoing that archive restores them all. Real MongoDB; GreenMail + the reference IMAP
 # plugin; FakeAIProvider proposing `digest`; real SyncEngine passes after an empty first pass.
 import pytest
+from fastapi import HTTPException
 
+from app.api.routers.jobs import replace_proposal
 from app.models.example import Example
 from app.models.job import Artifacts, Job
 from app.models.message import Message
@@ -129,3 +131,29 @@ async def test_the_history_of_a_digests_archive_names_its_message_count(async_cl
 
     assert (card["entry"]["action"], card["subject"]) == ("archived", "3 messages")
     assert card["sender"]["email"] == NEWSLETTERS[1]
+
+
+async def test_a_sender_name_that_looks_like_a_field_reference_is_kept_as_text(test_db, mailbox, plugins):
+    """Untrusted mail text must never be read as a MongoDB expression: '$x' would erase the digest so far."""
+    digest = await three_newsletters_in_one_digest(test_db, mailbox, plugins)
+    message = await message_of_digest(digest)
+    message.sender.name = "$artifacts.missing"
+    newcomer = Job(owner_id=OWNER_ID, verb="digest", title="t", artifacts=Artifacts(digest="A short story."),
+                   message_ids=digest.message_ids[:1])
+
+    joined = await join_open_digest(newcomer, message)
+
+    assert joined.artifacts.digest == f"{digest.artifacts.digest}\n$artifacts.missing: A short story."
+
+
+async def test_a_proposal_is_not_stored_over_a_job_whose_messages_changed_while_it_was_made(test_db, mailbox, plugins):
+    """A newsletter joining while the AI drafted a reply for a one-message digest: the reply would speak for both."""
+    digest = await three_newsletters_in_one_digest(test_db, mailbox, plugins)
+    snapshot = digest.model_copy(update={"message_ids": digest.message_ids[:2]})
+    reply = Job(owner_id=OWNER_ID, verb="reply", title="Answer", artifacts=Artifacts(draft="Thanks"), message_ids=snapshot.message_ids)
+
+    with pytest.raises(HTTPException) as refused:
+        await replace_proposal(snapshot, reply)
+
+    assert refused.value.status_code == 409
+    assert (await Job.get(digest.id)).verb == "digest"
