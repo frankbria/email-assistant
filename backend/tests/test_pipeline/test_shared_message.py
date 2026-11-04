@@ -47,7 +47,7 @@ async def test_the_same_mail_in_two_accounts_is_one_job_archived_in_both_when_do
         await SyncEngine(registry, test_db["user"], poll_seconds=60, provider=provider).sync_all()
         [job] = await Job.find(Job.owner_id == OWNER).to_list()
         copies = await Message.find(Message.message_id == message_id).to_list()
-        finished = await finish(job.id, "done", registry)
+        finished = await finish(job.id, "done", registry, by="owner", level="ask")
 
     assert sorted(job.message_ids) == sorted(copy.id for copy in copies) and len(copies) == 2
     assert len(provider.prompts) == 1  # the second copy costs no AI call
@@ -67,7 +67,7 @@ async def test_a_copy_arriving_after_its_job_was_done_is_archived_at_once(test_d
     async with connected(reference_imap_plugin(home, HOME)) as registry:
         await SyncEngine(registry, test_db["user"], poll_seconds=60, provider=provider).sync_all()
         [job] = await Job.find(Job.owner_id == OWNER).to_list()
-        await finish(job.id, "done", registry)
+        await finish(job.id, "done", registry, by="owner", level="ask")
     async with connected(reference_imap_plugin(home, HOME), reference_imap_plugin(work, WORK)) as registry:
         await SyncEngine(registry, test_db["user"], poll_seconds=60, provider=provider).sync_all()
 
@@ -87,7 +87,7 @@ async def test_a_first_connect_copy_is_never_archived_on_another_accounts_decisi
     async with connected(reference_imap_plugin(home, HOME)) as registry:
         await SyncEngine(registry, test_db["user"], poll_seconds=60, provider=provider).sync_all()
         [done] = await Job.find(Job.owner_id == OWNER).to_list()
-        await finish(done.id, "done", registry)
+        await finish(done.id, "done", registry, by="owner", level="ask")
     async with connected(reference_imap_plugin(home, HOME), reference_imap_plugin(work, WORK)) as registry:
         await SyncEngine(registry, test_db["user"], poll_seconds=60, provider=provider).sync_all()  # work: first connect
 

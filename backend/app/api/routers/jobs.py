@@ -113,19 +113,18 @@ async def approve_job(
     if job.verb == "unsubscribe":
         # shortcut: no unsubscribe action yet; approving it acts once the List-Unsubscribe executor lands (#90).
         raise HTTPException(status_code=422, detail="unsubscribing isn't available yet")
+    # The owner's tap is the `ask` path whatever the verb's level; never_auto verbs say so.
+    level: PermissionLevel = "never_auto" if await level_for(owner_id, job.verb) == "never_auto" else "ask"
     actions: dict[str, Callable[[], Awaitable[Job]]] = {
-        "reply": lambda: execute(job_id, plugins, forward_to=approval.forward_to),
-        "forward": lambda: execute(job_id, plugins, forward_to=approval.forward_to),
-        "snooze": lambda: defer(job_id),
-        "follow_up": lambda: defer(job_id),
+        "reply": lambda: execute(job_id, plugins, forward_to=approval.forward_to, by="owner", level=level),
+        "forward": lambda: execute(job_id, plugins, forward_to=approval.forward_to, by="owner", level=level),
+        "snooze": lambda: defer(job_id, by="owner", level=level),
+        "follow_up": lambda: defer(job_id, by="owner", level=level),
     }
-    acted = await acting(actions.get(job.verb, lambda: finish(job_id, "done", plugins, verb=job.verb)))
+    acted = await acting(actions.get(job.verb, lambda: finish(job_id, "done", plugins, verb=job.verb, by="owner", level=level)))
     if acted.state in ("done", "snoozed"):
-        # The owner's tap is the `ask` path whatever the verb's level; never_auto verbs say so.
-        # shortcut: a DB failure after the action and before these writes loses this one streak tick and label (the job
-        # is final, so a retry gets 409); make them part of the executor's claim if history (#78) needs them exact.
-        level: PermissionLevel = "never_auto" if await level_for(owner_id, job.verb) == "never_auto" else "ask"
-        await Job.find(Job.id == job_id, Job.state == acted.state).update({"$set": {"permission_level": level}})
+        # shortcut: a DB failure after the action and before this write loses this one streak tick (the job is final, so
+        # a retry gets 409); move it into the executor if promotion offers ever need the streak exact.
         await record_approval(owner_id, job.verb, edited=acted.edited)
     return await owned(job_id, owner_id)
 
@@ -164,4 +163,4 @@ async def choose_action(
 @router.post("/{job_id}/dismiss", response_model=Job)
 async def dismiss_job(job_id: PydanticObjectId, owner_id: OwnerId, plugins: PluginRegistry = Depends(plugin_registry)) -> Job:
     await owned(job_id, owner_id)
-    return await acting(lambda: finish(job_id, "dismissed", plugins, claim_from=("open", "failed")))
+    return await acting(lambda: finish(job_id, "dismissed", plugins, claim_from=("open", "failed"), by="owner", level=None))

@@ -1,6 +1,7 @@
 """Finishing jobs and archive-on-done (spec §10.3): a message is archived only when every job that
 references it is final (done or dismissed), and only by a verified move. Anything short of that
-reopens the job with an error naming the plugin (AC-1.3)."""
+reopens the job with an error naming the plugin (AC-1.3). Every action is written to the action log here, so
+no caller can skip it (spec §9, §10.6)."""
 
 import asyncio
 import logging
@@ -15,7 +16,8 @@ from mcp.shared.exceptions import MCPError
 from pydantic import ValidationError
 from pymongo import ReturnDocument
 
-from app.models.job import Job, JobState, Verb
+from app.models.action_log import Action, ActionLogEntry, Actor
+from app.models.job import Job, JobState, PermissionLevel, Verb
 from app.models.message import Message
 from app.plugins.calls import InvalidCursor, SyncError, call_plugin, refs_in_inbox
 from app.plugins.registry import PluginRegistry
@@ -35,35 +37,80 @@ class JobNotOpen(Exception):
     """Only an open job can be finished (it may have been finished or handled elsewhere already)."""
 
 
+class NotUndoable(Exception):
+    """The entry can't be undone; the message says why in the owner's words."""
+
+
+class ArchiveFailed(Exception):
+    """The message is still in the inbox; the message names the plugin and why."""
+
+
+async def record(
+    owner_id: str, job_id: PydanticObjectId, action: Action, message_ids: list[PydanticObjectId], by: Actor,
+    level: PermissionLevel | None, error: str | None = None, undoable: bool = False,
+) -> ActionLogEntry:
+    """Writes one action to the history.
+    shortcut: written after the action, not in one transaction with it, so a DB failure in between loses the entry;
+    use a transaction once MongoDB runs as a replica set."""
+    entry = ActionLogEntry(owner_id=owner_id, action=action, job_id=job_id, message_ids=message_ids, by=by,
+                           permission_level=level, ok=error is None, error=error, undoable=undoable)
+    await entry.insert()
+    return entry
+
+
 async def finish(
     job_id: PydanticObjectId,
     outcome: Outcome,
     plugins: PluginRegistry,
     claim_from: tuple[JobState, ...] = ("open",),
     verb: Verb | None = None,
+    *,
+    by: Actor,
+    level: PermissionLevel | None,
 ) -> Job:
     """Done (the action succeeded, or a todo's owner tapped done) or dismissed; then archive what's settled.
     `claim_from`: execute() finishes a job it already holds as `sending`. `verb`: only while the job is still
-    that verb and not an ask-owner card (the owner approved what they saw, not a choice made meanwhile)."""
+    that verb and not an ask-owner card (the owner approved what they saw, not a choice made meanwhile).
+    `level`: the permission it ran under, stored on the job once it took effect (None: a dismissal)."""
     unchanged = {"verb": verb, "ask_owner": False} if verb else {}
     # Out of `open` before any archive, so a sync pass can't close it as handled elsewhere meanwhile.
     claimed = await Job.find(Job.id == job_id, In(Job.state, list(claim_from)), unchanged).update({"$set": {"state": outcome, "error": None}})
     if not claimed.modified_count:
         raise JobNotOpen(f"job {job_id} isn't open")
+    archived: list[PydanticObjectId] = []
+    action: Action = "dismissed" if outcome == "dismissed" else "archived"
+    job: Job | None = None
     try:  # everything after the claim: any failure must end with the job reopened, never stuck final
         job = await Job.get(job_id)
         assert job is not None
-        errors = await archive_settled_messages(job, plugins)
+        errors = await archive_settled_messages(job, plugins, archived)
     except asyncio.CancelledError:  # a BaseException: interrupted, it must still end retryable
-        await asyncio.shield(reopen(job_id, outcome, ["finishing was interrupted, so the message is still in the inbox"]))
+        await asyncio.shield(interrupted(job, job_id, outcome, action, archived, by, level))
         raise
     except Exception as error:  # whatever broke, the job must not stay final while its mail is in the inbox
         errors = [f"archiving failed ({error}), so the message is still in the inbox"]
     if errors:
         await reopen(job_id, outcome, errors)
+    elif level is not None:
+        await Job.find(Job.id == job_id, Job.state == outcome).update({"$set": {"permission_level": level}})
     refreshed = await Job.get(job_id)
     assert refreshed is not None
+    if outcome == "done" and not archived:
+        action = "done"
+    await record(refreshed.owner_id, job_id, action, archived or refreshed.message_ids, by, level, "; ".join(errors) or None, bool(archived))
     return refreshed
+
+
+async def interrupted(
+    job: Job | None, job_id: PydanticObjectId, outcome: Outcome, action: Action, archived: list[PydanticObjectId],
+    by: Actor, level: PermissionLevel | None,
+) -> None:
+    """A finish cut short ends retryable; the copies it already archived left the inbox, so they keep their
+    history entry and its undo."""
+    problem = "finishing was interrupted, so the message is still in the inbox"
+    await reopen(job_id, outcome, [problem])
+    if job is not None and archived:
+        await record(job.owner_id, job_id, action, archived, by, level, problem, undoable=True)
 
 
 async def reopen(job_id: PydanticObjectId, outcome: Outcome, errors: list[str]) -> None:
@@ -71,9 +118,9 @@ async def reopen(job_id: PydanticObjectId, outcome: Outcome, errors: list[str]) 
     await Job.find(Job.id == job_id, Job.state == outcome).update({"$set": {"state": "open", "error": "; ".join(errors)}})
 
 
-async def archive_settled_messages(job: Job, plugins: PluginRegistry) -> list[str]:
+async def archive_settled_messages(job: Job, plugins: PluginRegistry, archived: list[PydanticObjectId]) -> list[str]:
     """Archives each of the job's messages that no other unsettled job needs and that is still in its
-    account's inbox. Returns what went wrong, one line per plugin problem.
+    account's inbox, adding each one moved to `archived`. Returns what went wrong, one line per plugin problem.
     shortcut: no per-message claim, so two jobs on one message finished at the same instant can both
     archive (one then reopens); and a multi-message job that fails partway stays reopened with some
     mail archived. Both need a durable per-message archive claim once multi-message jobs exist (#59, #88)."""
@@ -82,32 +129,82 @@ async def archive_settled_messages(job: Job, plugins: PluginRegistry) -> list[st
         waiting = await Job.find(Job.message_ids == message.id, Job.id != job.id, NotIn(Job.state, SETTLED)).exists()
         if waiting:
             continue  # another job still needs it in the inbox (AC-2.1)
-        problem = await archive(message, plugins.clients.get(message.plugin_id))
-        if problem:
-            errors.append(problem)
+        try:
+            if await archive(message, plugins.clients.get(message.plugin_id)):
+                assert message.id is not None
+                archived.append(message.id)
+        except ArchiveFailed as problem:
+            errors.append(str(problem))
     return errors
 
 
-async def archive(message: Message, client: Client | None) -> str | None:
-    """Archives one copy if it's still in its inbox; what went wrong, naming the plugin, or None."""
+async def archive(message: Message, client: Client | None) -> bool:
+    """Archives one copy if it's still in its inbox: True once moved, False if it already left the inbox.
+    Raises ArchiveFailed, naming the plugin, when it couldn't."""
     plugin_id = message.plugin_id
     if client is None:
-        return f"{plugin_id} isn't connected, so the message is still in the inbox"
+        raise ArchiveFailed(f"{plugin_id} isn't connected, so the message is still in the inbox")
     try:
         if message.ref not in await refs_in_inbox(plugin_id, client, [message.ref]):
-            return None  # already out of the inbox (moved elsewhere): nothing to archive
+            return False  # already out of the inbox (moved elsewhere): nothing to archive
         result = MoveResult.model_validate(await call_plugin(plugin_id, client, "archive", {"ref": message.ref}))
-    except ValidationError:
-        return f"{plugin_id} couldn't archive the message (it answered outside the contract), so it is still in the inbox"
+    except ValidationError as error:
+        raise ArchiveFailed(f"{plugin_id} couldn't archive the message (it answered outside the contract), so it is still in the inbox") from error
     except (SyncError, InvalidCursor, TimeoutError, MCPError, OSError) as error:
-        return f"{plugin_id} couldn't archive the message ({error}), so it is still in the inbox"
+        raise ArchiveFailed(f"{plugin_id} couldn't archive the message ({error}), so it is still in the inbox") from error
     if not (result.ok and result.verified):
-        return f"{plugin_id} couldn't confirm the archive, so the message is still in the inbox"
+        raise ArchiveFailed(f"{plugin_id} couldn't confirm the archive, so the message is still in the inbox")
+    return True
+
+
+async def restore(message: Message, client: Client | None) -> str | None:
+    """Moves one archived copy back to its inbox, verified like archive(); what went wrong, naming the plugin, or None."""
+    plugin_id = message.plugin_id
+    if client is None:
+        return f"{plugin_id} isn't connected, so the message is still archived"
+    try:
+        if message.ref in await refs_in_inbox(plugin_id, client, [message.ref]):
+            return None  # already back (an earlier attempt that half-worked, or the owner moved it)
+        result = MoveResult.model_validate(await call_plugin(plugin_id, client, "restore", {"ref": message.ref}))
+    except ValidationError:
+        return f"{plugin_id} couldn't restore the message (it answered outside the contract), so it is still archived"
+    except (SyncError, InvalidCursor, TimeoutError, MCPError, OSError) as error:
+        return f"{plugin_id} couldn't restore the message ({error}), so it is still archived"
+    if not (result.ok and result.verified):
+        return f"{plugin_id} couldn't confirm the restore, so the message is still archived"
     return None
 
 
+async def undo(entry: ActionLogEntry, plugins: PluginRegistry) -> ActionLogEntry:
+    """Spec §9: restore after an archive (or a dismissal that archived); a send can't be unsent and nothing
+    else moved mail. The restore is logged as its own entry; a failed one leaves the original undoable."""
+    if entry.action == "sent":
+        raise NotUndoable("a sent email can't be unsent")
+    if not entry.undoable:
+        raise NotUndoable("only archived mail can be undone (restored to the inbox)")
+    # Claimed first, so two taps can't both restore and log.
+    claimed = await ActionLogEntry.find(ActionLogEntry.id == entry.id, {"undone": False}).update({"$set": {"undone": True}})
+    if not claimed.modified_count:
+        raise NotUndoable("it was already undone")
+    errors: list[str] = []
+    restored = False
+    try:
+        for message in await Message.find(In(Message.id, entry.message_ids)).to_list():
+            problem = await restore(message, plugins.clients.get(message.plugin_id))
+            if problem:
+                errors.append(problem)
+        restored = not errors
+    finally:  # failed, raised or cancelled: the archive stays undoable
+        # shortcut: a process dying between the claim and this release strands the entry as undone; make the claim
+        # and the restore's entry one transaction once MongoDB runs as a replica set.
+        if not restored:
+            await asyncio.shield(ActionLogEntry.find(ActionLogEntry.id == entry.id).update({"$set": {"undone": False}}))
+    return await record(entry.owner_id, entry.job_id, "restored", entry.message_ids, "owner", None, "; ".join(errors) or None)
+
+
 async def execute(
-    job_id: PydanticObjectId, plugins: PluginRegistry, body: str | None = None, forward_to: str | None = None
+    job_id: PydanticObjectId, plugins: PluginRegistry, body: str | None = None, forward_to: str | None = None,
+    *, by: Actor, level: PermissionLevel,
 ) -> Job:
     """The owner approved a reply or forward: send it from the account that received the mail, then
     finish the job (archive-on-done). A failed send leaves the job `failed` and the mail in the inbox
@@ -143,12 +240,16 @@ async def execute(
         # shortcut: a send that succeeded but whose answer was lost (timeout) counts as failed and can go
         # twice on retry; fix with an idempotency key once the contract's send takes one.
         await mark_failed(job_id, problem)
+        await record(job.owner_id, job_id, "sent", job.message_ids, by, level, problem)
         failed = await Job.get(job_id)
         assert failed is not None
         return failed
     # The plugin confirmed the send: record it even if cancelled now, so no retry ever sends it again.
     await asyncio.shield(Job.find(Job.id == job_id).update({"$set": {"sent_at": job.sent_at or now}}))
-    return await finish(job_id, "done", plugins, claim_from=("sending",))
+    # Once per job, and again if a crash lost it after the send: a retry only archives, but fills the history's gap.
+    if not await ActionLogEntry.find(ActionLogEntry.job_id == job_id, ActionLogEntry.action == "sent", {"ok": True}).exists():
+        await record(job.owner_id, job_id, "sent", job.message_ids, by, level)
+    return await finish(job_id, "done", plugins, claim_from=("sending",), by=by, level=level)
 
 
 async def mark_failed(job_id: PydanticObjectId, problem: str) -> None:
@@ -187,7 +288,7 @@ async def send(job: Job, plugins: PluginRegistry, body: str | None, forward_to: 
     return None if result.ok else f"{message.plugin_id} didn't send it"
 
 
-async def defer(job_id: PydanticObjectId, until: datetime | None = None) -> Job:
+async def defer(job_id: PydanticObjectId, until: datetime | None = None, *, by: Actor, level: PermissionLevel) -> Job:
     """Hides a snooze or an approved follow-up until its date (`until`, else the date the AI extracted)."""
     job = await Job.get(job_id)
     if job is None or job.verb not in ("snooze", "follow_up"):
@@ -196,9 +297,10 @@ async def defer(job_id: PydanticObjectId, until: datetime | None = None) -> Job:
     if when is None:
         raise ValueError(f"job {job_id} needs a date to wait for")
     still = (Job.id == job_id, Job.state == "open", Job.verb == job.verb, Job.ask_owner == False)  # noqa: E712  (a query, not a bool)
-    claimed = await Job.find(*still).update({"$set": {"state": "snoozed", "due": when, "reminder": None}})
+    claimed = await Job.find(*still).update({"$set": {"state": "snoozed", "due": when, "reminder": None, "permission_level": level}})
     if not claimed.modified_count:
         raise JobNotOpen(f"job {job_id} isn't open")
+    await record(job.owner_id, job_id, "snoozed", job.message_ids, by, level)
     deferred = await Job.get(job_id)
     assert deferred is not None
     return deferred
@@ -229,7 +331,7 @@ async def wake(job: Job, plugins: PluginRegistry) -> int:
     assert job.id is not None
     reminder = await missing_answer(job) if job.verb == "follow_up" else None
     if job.verb == "follow_up" and reminder is None:  # answered: done, straight from where it waits
-        await finish(job.id, "done", plugins, claim_from=(job.state,), verb=job.verb)
+        await finish(job.id, "done", plugins, claim_from=(job.state,), verb=job.verb, by="app", level=job.permission_level)
         return 1
     if job.state == "open":
         return 0  # a reminder still without an answer: it stays as it is

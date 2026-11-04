@@ -47,7 +47,7 @@ async def state(job: Job) -> tuple[str, str | None]:
 async def test_a_snoozed_job_reappears_at_its_date(test_db):
     job = await job_over(await message("<m@x>", "ana@example.com"), "snooze")
 
-    await defer(job.id)
+    await defer(job.id, by="owner", level="ask")
     await wake_due(OWNER, PluginRegistry(), now=DUE - timedelta(hours=1))
     before = await state(job)
     await wake_due(OWNER, PluginRegistry(), now=DUE + timedelta(minutes=1))
@@ -61,7 +61,7 @@ async def test_a_follow_up_fires_when_nobody_answered(test_db):
     await message("<reply@frank>", "frank@example.com", folder="sent", in_reply_to="<m@x>", to="ana@example.com")
     job = await job_over(original, "follow_up")
 
-    await defer(job.id)
+    await defer(job.id, by="owner", level="ask")
     await wake_due(OWNER, PluginRegistry(), now=DUE + timedelta(minutes=1))
 
     assert await state(job) == ("open", "No answer from ana@example.com to “Contract” since 2026-11-02")
@@ -77,7 +77,7 @@ async def test_a_follow_up_with_an_answer_is_done_and_its_mail_archived(test_db,
     await message("<answer@ana>", "ana.phone@example.net", in_reply_to="<reply@frank>", date=NOV_2 + timedelta(days=2))
     job = await job_over(original, "follow_up")
 
-    await defer(job.id)
+    await defer(job.id, by="owner", level="ask")
     async with connected(reference_imap_plugin(mailbox)) as registry:
         await wake_due(OWNER, registry, now=DUE + timedelta(minutes=1))
 
@@ -93,7 +93,7 @@ async def test_newer_mail_from_the_correspondent_counts_as_an_answer(test_db, ma
     await message("<later@ana>", "Ana@Example.com", date=NOV_2 + timedelta(days=3))
     job = await job_over(original, "follow_up")
 
-    await defer(job.id)
+    await defer(job.id, by="owner", level="ask")
     async with connected(reference_imap_plugin(mailbox)) as registry:
         await wake_due(OWNER, registry, now=DUE + timedelta(minutes=1))
 
@@ -105,12 +105,12 @@ async def test_defer_needs_a_date_and_a_snooze_or_follow_up_job(test_db):
     reply = await job_over(await message("<b@x>", "b@example.com"), "reply")
 
     with pytest.raises(ValueError, match="needs a date"):
-        await defer(undated.id)
+        await defer(undated.id, by="owner", level="ask")
     with pytest.raises(ValueError, match="only snooze and follow-up"):
-        await defer(reply.id)
-    await defer(undated.id, until=DUE)
+        await defer(reply.id, by="owner", level="ask")
+    await defer(undated.id, until=DUE, by="owner", level="ask")
     with pytest.raises(JobNotOpen):
-        await defer(undated.id, until=DUE)
+        await defer(undated.id, until=DUE, by="owner", level="ask")
 
 
 async def test_the_engine_wakes_due_jobs_every_pass(test_db, mailbox: Mailbox):
@@ -128,7 +128,7 @@ async def test_an_answer_arriving_after_the_reminder_resolves_it(test_db, mailbo
     ref = mailbox.deliver(sender="ana@example.com", subject="Contract", body="Please sign")
     mailbox.create_folder("Archive")
     job = await job_over(await message(ref, "ana@example.com"), "follow_up")
-    await defer(job.id)
+    await defer(job.id, by="owner", level="ask")
     async with connected(reference_imap_plugin(mailbox)) as registry:
         await wake_due(OWNER, registry, now=DUE + timedelta(minutes=1))
         reminded = await state(job)
@@ -143,7 +143,7 @@ async def test_a_reminder_survives_its_mail_being_archived_elsewhere(test_db, ma
     """The owner often archives after replying; the follow-up is about the answer, not the inbox."""
     ref = mailbox.deliver(sender="ana@example.com", subject="Contract", body="Please sign")
     job = await job_over(await message(ref, "ana@example.com"), "follow_up")
-    await defer(job.id)
+    await defer(job.id, by="owner", level="ask")
     await wake_due(OWNER, PluginRegistry(), now=DUE + timedelta(minutes=1))
     mailbox.move(ref, "Archive")
     async with connected(reference_imap_plugin(mailbox)) as registry:
@@ -156,7 +156,7 @@ async def test_one_broken_job_doesnt_stop_the_others_waking(test_db):
     broken = Job(owner_id=OWNER, verb="follow_up", title="t", artifacts=Artifacts(), due=DUE, message_ids=[PydanticObjectId()], state="snoozed")
     await broken.insert()
     snooze = await job_over(await message("<m@x>", "ana@example.com"), "snooze")
-    await defer(snooze.id)
+    await defer(snooze.id, by="owner", level="ask")
 
     await wake_due(OWNER, PluginRegistry(), now=DUE + timedelta(minutes=1))
 
@@ -166,7 +166,7 @@ async def test_one_broken_job_doesnt_stop_the_others_waking(test_db):
 async def test_a_date_without_a_timezone_is_taken_as_utc(test_db):
     job = await job_over(await message("<m@x>", "ana@example.com"), "snooze", due=None)
 
-    await defer(job.id, until=datetime(2026, 11, 9, 9))
+    await defer(job.id, until=datetime(2026, 11, 9, 9), by="owner", level="ask")
     await wake_due(OWNER, PluginRegistry(), now=DUE - timedelta(minutes=1))
     early = await state(job)
     await wake_due(OWNER, PluginRegistry(), now=DUE + timedelta(minutes=1))
@@ -182,7 +182,7 @@ async def test_an_answer_to_an_earlier_reply_doesnt_resolve_a_later_one(test_db)
     await message("<reply2@frank>", "frank@example.com", folder="sent", in_reply_to="<m@x>", date=NOV_2 + timedelta(days=2))
     job = await job_over(original, "follow_up")
 
-    await defer(job.id)
+    await defer(job.id, by="owner", level="ask")
     await wake_due(OWNER, PluginRegistry(), now=DUE + timedelta(minutes=1))
 
     assert await state(job) == ("open", "No answer from ana@example.com to “Contract” since 2026-11-04")
@@ -196,7 +196,7 @@ async def test_the_owners_latest_turn_in_a_back_and_forth_is_the_one_awaiting_an
     await message("<reply2@frank>", "frank@example.com", folder="sent", in_reply_to="<answer1@ana>", to="Ana@Example.com", date=NOV_2 + timedelta(days=2))
     job = await job_over(original, "follow_up")
 
-    await defer(job.id)
+    await defer(job.id, by="owner", level="ask")
     await wake_due(OWNER, PluginRegistry(), now=DUE + timedelta(minutes=1))
 
     assert await state(job) == ("open", "No answer from ana@example.com to “Contract” since 2026-11-04")

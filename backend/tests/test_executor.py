@@ -6,7 +6,10 @@ from datetime import UTC, datetime
 
 import pytest
 
-from app.executor import JobNotOpen, finish
+from beanie import PydanticObjectId
+
+from app.executor import JobNotOpen, finish, undo
+from app.models.action_log import ActionLogEntry
 from app.models.job import Artifacts, Job, Verb
 from app.models.message import Message
 from app.plugins.registry import PluginRegistry
@@ -45,9 +48,9 @@ async def test_a_message_stays_until_every_job_on_it_is_final(test_db, mailbox: 
     message = await stored(PLUGIN, ref)
     pay, file = await job_over(message), await job_over(message, verb="archive_noise")
     async with connected(reference_imap_plugin(mailbox)) as registry:
-        done = await finish(pay.id, "done", registry)
+        done = await finish(pay.id, "done", registry, by="owner", level="ask")
         still_in_inbox = subjects(mailbox, "INBOX")
-        dismissed = await finish(file.id, "dismissed", registry)
+        dismissed = await finish(file.id, "dismissed", registry, by="owner", level=None)
 
     assert (done.state, done.error) == ("done", None) and still_in_inbox == [ref]
     assert (dismissed.state, dismissed.error) == ("dismissed", None)
@@ -65,7 +68,7 @@ async def test_an_unverified_or_garbled_archive_keeps_the_job_open_and_names_the
     job = await job_over(await stored("fake", "r1"))
     plugin = fake_plugin("fake", {"FAKE_ARCHIVE": "FAKE_MODE_ARCHIVE", "FAKE_INBOX_CONTAINS": "FAKE_MODE_INBOX"})
     async with connected(plugin) as registry:
-        finished = await finish(job.id, "done", registry)
+        finished = await finish(job.id, "done", registry, by="owner", level="ask")
 
     assert (finished.state, finished.error) == ("open", error)
 
@@ -73,7 +76,7 @@ async def test_an_unverified_or_garbled_archive_keeps_the_job_open_and_names_the
 async def test_a_disconnected_plugin_keeps_the_job_open_and_names_it(test_db):
     job = await job_over(await stored("proton", "r1"))
 
-    finished = await finish(job.id, "done", PluginRegistry())
+    finished = await finish(job.id, "done", PluginRegistry(), by="owner", level="ask")
 
     assert (finished.state, finished.error) == ("open", "proton isn't connected, so the message is still in the inbox")
 
@@ -84,7 +87,7 @@ async def test_mail_the_owner_filed_elsewhere_is_left_where_they_put_it(test_db,
     mailbox.move(ref, "Receipts")
     job = await job_over(await stored(PLUGIN, ref))
     async with connected(reference_imap_plugin(mailbox)) as registry:
-        finished = await finish(job.id, "done", registry)
+        finished = await finish(job.id, "done", registry, by="owner", level="ask")
 
     assert (finished.state, finished.error) == ("done", None)
     assert subjects(mailbox, "Receipts") == [ref] and subjects(mailbox, "Archive") == []
@@ -96,8 +99,8 @@ async def test_a_job_dismissed_earlier_doesnt_hold_the_message(test_db, mailbox:
     message = await stored(PLUGIN, ref)
     first, second = await job_over(message), await job_over(message)
     async with connected(reference_imap_plugin(mailbox)) as registry:
-        await finish(first.id, "dismissed", registry)  # the other one is still open: the message stays
-        await finish(second.id, "done", registry)
+        await finish(first.id, "dismissed", registry, by="owner", level=None)  # the other one is still open: the message stays
+        await finish(second.id, "done", registry, by="owner", level="ask")
 
     assert subjects(mailbox, "Archive") == [ref]
 
@@ -107,7 +110,7 @@ async def test_only_an_open_job_can_be_finished(test_db):
     await Job.find(Job.id == job.id).update({"$set": {"state": "handled_elsewhere"}})
 
     with pytest.raises(JobNotOpen):
-        await finish(job.id, "done", PluginRegistry())
+        await finish(job.id, "done", PluginRegistry(), by="owner", level="ask")
 
 
 async def test_a_job_reopened_with_an_error_isnt_closed_as_handled_elsewhere(test_db, mailbox: Mailbox):
@@ -130,7 +133,7 @@ async def test_an_interrupted_finish_reopens_the_job(test_db, monkeypatch):
     job = await job_over(await stored("fake", "r1"))
     plugin = fake_plugin("fake", {"FAKE_ARCHIVE": "FAKE_MODE_ARCHIVE", "FAKE_INBOX_CONTAINS": "FAKE_MODE_INBOX"})
     async with connected(plugin) as registry:
-        finishing = asyncio.create_task(finish(job.id, "done", registry))
+        finishing = asyncio.create_task(finish(job.id, "done", registry, by="owner", level="ask"))
         await asyncio.sleep(1)  # claimed and waiting on the archive
         finishing.cancel()
         with pytest.raises(asyncio.CancelledError):
@@ -139,3 +142,52 @@ async def test_an_interrupted_finish_reopens_the_job(test_db, monkeypatch):
     reloaded = await Job.get(job.id)
     assert reloaded is not None and reloaded.state == "open"
     assert reloaded.error == "finishing was interrupted, so the message is still in the inbox"
+
+
+async def test_an_interrupted_finish_still_logs_the_mail_it_archived(test_db, mailbox: Mailbox, monkeypatch):
+    """Those messages left the inbox: the history must show them, with their undo."""
+    monkeypatch.setenv("FAKE_MODE_ARCHIVE", "slow")
+    monkeypatch.setenv("FAKE_MODE_INBOX", "present")
+    ref = mailbox.deliver(sender="a@example.com", subject="Invoice", body="x")
+    mailbox.create_folder("Archive")
+    archived_first, waiting = await stored(PLUGIN, ref), await stored("fake", "r1")
+    assert archived_first.id is not None and waiting.id is not None
+    job = Job(owner_id=OWNER, verb="todo", title="Pay", artifacts=Artifacts(link="https://x.example"),
+              message_ids=[archived_first.id, waiting.id])
+    await job.insert()
+    plugin = fake_plugin("fake", {"FAKE_ARCHIVE": "FAKE_MODE_ARCHIVE", "FAKE_INBOX_CONTAINS": "FAKE_MODE_INBOX"})
+    async with connected(reference_imap_plugin(mailbox), plugin) as registry:
+        finishing = asyncio.create_task(finish(job.id, "done", registry, by="owner", level="ask"))
+        for _ in range(100):  # the first copy archived, the second waiting on the slow plugin
+            if subjects(mailbox, "Archive") == [ref]:
+                break
+            await asyncio.sleep(0.1)
+        await asyncio.sleep(0.5)
+        finishing.cancel()
+        with pytest.raises(asyncio.CancelledError):
+            await finishing
+
+    [entry] = await ActionLogEntry.find(ActionLogEntry.job_id == job.id).to_list()
+    assert (entry.action, entry.message_ids, entry.ok, entry.undoable) == ("archived", [archived_first.id], False, True)
+    assert entry.error == "finishing was interrupted, so the message is still in the inbox"
+
+
+async def test_an_interrupted_undo_releases_its_claim(test_db, monkeypatch):
+    """E.g. the owner's request is cancelled mid-restore: the archive must stay undoable."""
+    monkeypatch.setenv("FAKE_MODE_RESTORE", "slow")
+    monkeypatch.setenv("FAKE_MODE_INBOX", "absent")
+    message = await stored("fake", "r1")
+    assert message.id is not None
+    entry = ActionLogEntry(owner_id=OWNER, action="archived", job_id=PydanticObjectId(), message_ids=[message.id],
+                           by="owner", permission_level="ask", ok=True, undoable=True)
+    await entry.insert()
+    plugin = fake_plugin("fake", {"FAKE_RESTORE": "FAKE_MODE_RESTORE", "FAKE_INBOX_CONTAINS": "FAKE_MODE_INBOX"})
+    async with connected(plugin) as registry:
+        undoing = asyncio.create_task(undo(entry, registry))
+        await asyncio.sleep(1)  # claimed and waiting on the restore
+        undoing.cancel()
+        with pytest.raises(asyncio.CancelledError):
+            await undoing
+
+    reloaded = await ActionLogEntry.get(entry.id)
+    assert reloaded is not None and reloaded.undone is False
