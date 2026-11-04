@@ -8,6 +8,7 @@ from pathlib import Path
 import pytest
 import yaml
 
+from app.models.action_log import ActionLogEntry
 from app.models.job import Job
 from app.models.message import Message
 from app.permissions import PermissionSettings, PermissionsRejected, level_for, parse_permissions, set_levels, sync_permissions_file
@@ -94,7 +95,8 @@ async def pipeline_pass(test_db, mailbox: Mailbox, path: Path, result: Proposal)
 
 @pytest.mark.usefixtures("mail_server")
 async def test_autonomous_noise_is_archived_without_a_tap(test_db, mailbox: Mailbox, tmp_path: Path):
-    """AC-K.2 (executor half). An empty first pass first, so the mail isn't first-connect mail (always ask)."""
+    """AC-K.2 (noise half, #87): archived without a tap, with its rationale, and logged in History as the app's
+    autonomous archive. An empty first pass first, so the mail isn't first-connect mail (always ask)."""
     await add_owner(test_db)
     mailbox.create_folder("Archive")
     path = tmp_path / "permissions.yaml"
@@ -105,8 +107,12 @@ async def test_autonomous_noise_is_archived_without_a_tap(test_db, mailbox: Mail
     await pipeline_pass(test_db, mailbox, path, proposal())
 
     [job] = await Job.find(Job.owner_id == OWNER).to_list()
-    assert (job.state, job.permission_level) == ("done", "autonomous")
+    assert (job.state, job.permission_level) == ("done", "autonomous") and job.artifacts.noise_rationale
     assert mailbox.messages("INBOX") == [] and [m["Message-ID"] for m in mailbox.messages("Archive")] == [ref]
+    [logged] = await ActionLogEntry.find(ActionLogEntry.job_id == job.id).to_list()
+    assert (logged.action, logged.by, logged.permission_level, logged.ok, logged.undoable) == (
+        "archived", "app", "autonomous", True, True
+    )
 
 
 @pytest.mark.usefixtures("mail_server")
