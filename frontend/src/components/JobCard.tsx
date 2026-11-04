@@ -2,17 +2,19 @@
 
 import { useId, useState, type FormEvent } from 'react'
 import { HugeiconsIcon } from '@hugeicons/react'
-import { ArrowDown01Icon, Cancel01Icon, CheckmarkCircle01Icon, PencilEdit02Icon } from '@hugeicons/core-free-icons'
+import { ArrowDown01Icon, Cancel01Icon, CheckmarkCircle01Icon, Flag01Icon, PencilEdit02Icon } from '@hugeicons/core-free-icons'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from '@/components/ui/card'
 import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
+  DropdownMenuLabel,
+  DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu'
 import { Input } from '@/components/ui/input'
-import { approveJob, chooseVerb, dismissJob, editJob } from '@/services/jobsService'
+import { approveJob, chooseVerb, correctJob, dismissJob, editJob, type Correction } from '@/services/jobsService'
 import { showToast } from '@/utils/toast'
 import type { Job, JobCard as QueuedJob, JobEdit, Verb } from '@/types/api'
 
@@ -241,6 +243,7 @@ export function JobCard({ card, onReplaced, onRemoved }: JobCardProps) {
               ))}
             </DropdownMenuContent>
           </DropdownMenu>
+          <CorrectMenu job={job} disabled={busy} onCorrect={(correction) => act(() => correctJob(job._id, correction), 'Failed to correct the job')} />
           <Button
             variant="ghost"
             className={TOUCH_TARGET}
@@ -253,6 +256,33 @@ export function JobCard({ card, onReplaced, onRemoved }: JobCardProps) {
         </CardFooter>
       )}
     </Card>
+  )
+}
+
+// Unlike "Other action", a correction also teaches the app a rule for this sender or list.
+function CorrectMenu({ job, disabled, onCorrect }: { job: Job; disabled: boolean; onCorrect: (correction: Correction) => void }) {
+  const isNoise = job.verb === 'archive_noise'
+  return (
+    <DropdownMenu>
+      <DropdownMenuTrigger asChild>
+        <Button variant="outline" className={TOUCH_TARGET} disabled={disabled}>
+          <HugeiconsIcon icon={Flag01Icon} />
+          Correct
+        </Button>
+      </DropdownMenuTrigger>
+      <DropdownMenuContent>
+        <DropdownMenuItem className={TOUCH_TARGET} onSelect={() => onCorrect({ kind: isNoise ? 'not_noise' : 'noise' })}>
+          {isNoise ? "This isn't noise" : 'This is noise'}
+        </DropdownMenuItem>
+        <DropdownMenuSeparator />
+        <DropdownMenuLabel>Wrong action, it should be</DropdownMenuLabel>
+        {ACTIONS.filter(({ verb }) => verb !== job.verb).map(({ verb, label }) => (
+          <DropdownMenuItem key={verb} className={TOUCH_TARGET} onSelect={() => onCorrect({ kind: 'wrong_action', verb })}>
+            {label}
+          </DropdownMenuItem>
+        ))}
+      </DropdownMenuContent>
+    </DropdownMenu>
   )
 }
 

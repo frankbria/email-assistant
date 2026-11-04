@@ -314,6 +314,58 @@ describe('Job queue actions', () => {
   })
 })
 
+describe('Correcting a job', () => {
+  beforeEach(() => {
+    vi.clearAllMocks()
+  })
+
+  it('"This is noise" removes the card and sends the correction', async () => {
+    const card = await renderQueue(replyCard)
+    mockFetch.mockResolvedValueOnce(Response.json({ ...replyCard.job, verb: 'archive_noise', state: 'done' }))
+
+    await userEvent.click(within(card).getByRole('button', { name: 'Correct' }))
+    expect(screen.queryByRole('menuitem', { name: "This isn't noise" })).not.toBeInTheDocument()
+    await userEvent.click(await screen.findByRole('menuitem', { name: 'This is noise' }))
+
+    await waitFor(() => expect(screen.queryByText('Answer the project update')).not.toBeInTheDocument())
+    expect(requestTo(1)).toMatchObject({ method: 'POST', body: { kind: 'noise' } })
+    expect(requestTo(1).url).toMatch(/\/api\/v1\/jobs\/job-1\/correct$/)
+  })
+
+  it('a wrong action names the right one and the card becomes its proposal', async () => {
+    const card = await renderQueue(replyCard)
+    mockFetch.mockResolvedValueOnce(Response.json({ ...replyCard.job, verb: 'todo', title: 'Confirm the Friday deadline' }))
+
+    await userEvent.click(within(card).getByRole('button', { name: 'Correct' }))
+    expect(screen.queryByRole('menuitem', { name: 'Reply' })).not.toBeInTheDocument()
+    await userEvent.click(await screen.findByRole('menuitem', { name: 'To-do' }))
+
+    expect(await screen.findByText('Confirm the Friday deadline')).toBeInTheDocument()
+    expect(requestTo(1)).toMatchObject({ method: 'POST', body: { kind: 'wrong_action', verb: 'todo' } })
+  })
+
+  it('an ask-owner card offers no correction, since nothing was proposed to correct', async () => {
+    const card = await renderQueue(cardWith({ verb: 'archive_noise', ask_owner: true, suggested_verbs: ['archive_noise'] }))
+
+    expect(within(card).queryByRole('button', { name: 'Correct' })).not.toBeInTheDocument()
+  })
+
+  it('a noise job offers "This isn\'t noise", which hands the mail to the owner', async () => {
+    const noise = cardWith({ verb: 'archive_noise', artifacts: { ...jobCard.job.artifacts, noise_rationale: 'A promotional mailing' } })
+    const card = await renderQueue(noise)
+    mockFetch.mockResolvedValueOnce(
+      Response.json({ ...noise.job, verb: 'todo', ask_owner: true, suggested_verbs: [], problems: ["you said this isn't noise"] }),
+    )
+
+    await userEvent.click(within(card).getByRole('button', { name: 'Correct' }))
+    expect(screen.queryByRole('menuitem', { name: 'This is noise' })).not.toBeInTheDocument()
+    await userEvent.click(await screen.findByRole('menuitem', { name: "This isn't noise" }))
+
+    expect(await screen.findByText("you said this isn't noise")).toBeInTheDocument()
+    expect(requestTo(1)).toMatchObject({ method: 'POST', body: { kind: 'not_noise' } })
+  })
+})
+
 const askOwner = cardWith({
   verb: 'reply',
   title: 'Q4 budget',
