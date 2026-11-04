@@ -4,21 +4,22 @@ import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { render, screen, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import SetupChecklistPage from '@/app/connections/[pluginId]/setup/page'
-import type { SetupStep } from '@/types/api'
+import type { Checklist, SetupStep } from '@/types/api'
 
 vi.mock('next/navigation', () => ({ useParams: () => ({ pluginId: 'proton' }) }))
 
 // Better Auth's client keeps the fetch it sees at import time, so stand it in first. Each
 // POST to the check endpoint answers with the next scripted checklist; null answers 500.
 const { api } = vi.hoisted(() => {
-  const api = { answers: [] as (SetupStep[] | null)[], calls: [] as string[] }
+  const api = { answers: [] as (SetupStep[] | Checklist | null)[], calls: [] as string[] }
   globalThis.fetch = ((input: RequestInfo | URL, init?: RequestInit) => {
     const url = String(input instanceof Request ? input.url : input)
     if (url.includes('/api/auth/token')) return Promise.resolve(Response.json({ token: 'test-jwt' }))
     api.calls.push(`${init?.method ?? 'GET'} ${url.slice(url.indexOf('/api/'))}`)
     const answer = api.answers.shift()
     if (answer === null) return Promise.resolve(new Response(null, { status: 500 }))
-    return Promise.resolve(Response.json({ plugin_id: 'proton', steps: answer }))
+    if (answer && !Array.isArray(answer)) return Promise.resolve(Response.json(answer))
+    return Promise.resolve(Response.json({ plugin_id: 'proton', title: 'Set up Proton Mail', steps: answer, warnings: [] }))
   }) as typeof fetch
   return { api }
 })
@@ -66,5 +67,31 @@ describe('Proton setup checklist', () => {
     expect((await screen.findByRole('alert')).textContent).toBe('Failed to check the connection')
     expect(screen.queryByText('Everything works. Mail can flow.')).toBeNull()
     expect(screen.queryAllByRole('listitem')).toEqual([])
+  })
+})
+
+describe('Gmail setup checklist', () => {
+  const gmail = (warnings: string[]): Checklist => ({
+    plugin_id: 'proton',
+    title: 'Set up Gmail',
+    steps: steps(['done', 'done', 'done', 'done', 'done']),
+    warnings,
+  })
+  const AUTO_EXPUNGE = "Gmail's Auto-Expunge is on: anything a mail app marks as deleted leaves that folder at once."
+
+  it('shows the auto-expunge warning when the check finds it on, and not once it is off', async () => {
+    api.answers = [gmail([AUTO_EXPUNGE]), gmail([])]
+
+    render(<SetupChecklistPage />)
+
+    expect(await screen.findByRole('heading', { name: 'Set up Gmail' })).toBeTruthy()
+    expect(within(await screen.findByRole('region', { name: 'Warnings' })).getByText(AUTO_EXPUNGE)).toBeTruthy()
+
+    await userEvent.click(await screen.findByRole('button', { name: 'Check again' }))
+
+    await screen.findByRole('button', { name: 'Check again' })
+    expect(screen.queryByText(AUTO_EXPUNGE)).toBeNull()
+    expect(screen.queryByRole('region', { name: 'Warnings' })).toBeNull()
+    expect(screen.getByText('Everything works. Mail can flow.')).toBeTruthy()
   })
 })

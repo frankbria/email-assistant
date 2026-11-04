@@ -1,10 +1,10 @@
 # backend/app/plugins/setup.py
-"""The guided Proton setup checklist (spec §6.2): each step is done, failing with its fix,
-or waiting on an earlier one, read from the plugin's layered health (spec §6.3)."""
+"""The guided setup checklists (Proton spec §6.2, Gmail §7): each step is done, failing with its
+fix, or waiting on an earlier one, read from the plugin's layered health (spec §6.3)."""
 
 from typing import Literal
 
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 from app.plugins.config import PluginConfig
 from app.plugins.diagnosis import WatchdogRead, WatchdogReport
@@ -27,6 +27,19 @@ STEPS = (
     ("Test the connection", "folders", ""),
 )
 
+# Gmail can't say which of the first three a rejected login was, so a failed login marks all three.
+GMAIL_STEPS = (
+    ("Turn on 2-Step Verification for the Google account", "imap_login",
+     "App passwords need it: Google Account → Security → 2-Step Verification."),
+    ("Create an app password and set it as GMAIL_APP_PASSWORD",
+     "imap_login",
+     "Create one at myaccount.google.com/apppasswords and use it, not your Google password."),
+    ("Check that IMAP is on in Gmail's settings", "imap_login",
+     "Personal accounts always have IMAP on; on a Google Workspace account, ask the admin to allow IMAP."),
+    ("Add the Gmail plugin to plugins.yaml", "plugin", "See plugins/gmail/README.md."),
+    ("Test the connection", "smtp", ""),
+)
+
 
 WATCHDOG_PROBLEMS = {
     "refused": "isn't running",
@@ -43,7 +56,9 @@ class SetupStep(BaseModel):
 
 class Checklist(BaseModel):
     plugin_id: str
+    title: str
     steps: list[SetupStep]
+    warnings: list[str] = Field(description="Problems that don't stop mail, e.g. Gmail's Auto-Expunge.")
 
 
 def install_step(title: str, fix: str, config: PluginConfig, state: PluginState, watchdog: WatchdogRead | None) -> SetupStep:
@@ -60,18 +75,34 @@ def install_step(title: str, fix: str, config: PluginConfig, state: PluginState,
     return SetupStep(title=title, status="done")
 
 
+def is_gmail(state: PluginState) -> bool:
+    # shortcut: a plugin that hasn't connected yet can't say what it is, so it gets the Proton
+    # checklist; let plugins.yaml name the kind if that confuses an owner.
+    return state.info is not None and state.info.plugin_name == "gmail"
+
+
 def build_checklist(
-    config: PluginConfig, state: PluginState, health: Health | None, watchdog: WatchdogRead | None
+    config: PluginConfig, state: PluginState, health: Health | None, watchdog: WatchdogRead | None,
+    warnings: list[str] | None = None,
 ) -> Checklist:
+    gmail = is_gmail(state)
     checks = {check.layer: check for check in health.checks} if health else {}
-    steps = []
-    for title, layer, fix in STEPS:
-        if layer == "plugin":
+    steps, explained = [], set()
+    for title, layer, fix in GMAIL_STEPS if gmail else STEPS:
+        if layer == "plugin" and gmail:
+            failing = state.status != "connected"
+            detail = f"{state.reason or 'The plugin is not answering.'} {fix}" if failing else None
+            steps.append(SetupStep(title=title, status="failing" if failing else "done", detail=detail))
+        elif layer == "plugin":
             steps.append(install_step(title, fix, config, state, watchdog))
         elif (check := checks.get(layer)) is None:
             steps.append(SetupStep(title=title, status="waiting"))
         elif check.ok:
             steps.append(SetupStep(title=title, status="done"))
         else:
-            steps.append(SetupStep(title=title, status="failing", detail=f"{check.detail} {fix}".strip()))
-    return Checklist(plugin_id=config.id, steps=steps)
+            # The plugin's words once, on the first step its layer fails; every step adds its own fix.
+            detail = fix if layer in explained else f"{check.detail} {fix}".strip()
+            explained.add(layer)
+            steps.append(SetupStep(title=title, status="failing", detail=detail))
+    title = "Set up Gmail" if gmail else "Set up Proton Mail"
+    return Checklist(plugin_id=config.id, title=title, steps=steps, warnings=warnings or [])

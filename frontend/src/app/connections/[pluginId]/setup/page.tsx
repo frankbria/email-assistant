@@ -69,7 +69,7 @@ export default function SetupChecklistPage() {
       <Link href="/connections" className="text-sm text-blue-700 underline underline-offset-4 dark:text-blue-300">
         Connections
       </Link>
-      <h1 className="mb-1 mt-2 text-xl font-semibold text-gray-900 dark:text-gray-100">Set up Proton Mail</h1>
+      <h1 className="mb-1 mt-2 text-xl font-semibold text-gray-900 dark:text-gray-100">{checklist?.title ?? 'Setup checklist'}</h1>
       <p className="mb-4 text-sm text-gray-500 dark:text-gray-400">Plugin: {pluginId}</p>
       {error && (
         <p role="alert" className="mb-4 rounded-lg bg-red-50 p-3 text-sm text-red-700">
@@ -85,6 +85,16 @@ export default function SetupChecklistPage() {
           </ol>
         )}
         {allDone && <p className="mt-4 font-medium text-green-700 dark:text-green-400">Everything works. Mail can flow.</p>}
+        {checklist && checklist.warnings.length > 0 && (
+          <section aria-label="Warnings" className="mt-4 flex flex-col gap-2">
+            {checklist.warnings.map((warning) => (
+              <p key={warning} data-slot="setup-warning" className="flex gap-2 rounded-lg bg-amber-50 p-3 text-sm text-amber-900 dark:bg-amber-950 dark:text-amber-200">
+                <HugeiconsIcon icon={Alert02Icon} className="mt-0.5 h-4 w-4 shrink-0" aria-hidden="true" />
+                {warning}
+              </p>
+            ))}
+          </section>
+        )}
       </div>
       <button
         type="button"

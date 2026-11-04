@@ -23,6 +23,7 @@ logger = logging.getLogger(__name__)
 
 CONNECT_TIMEOUT_SECONDS = 15
 CLOSE_TIMEOUT_SECONDS = 5
+SETUP_CHECK_TIMEOUT_SECONDS = 60  # a probe takes several IMAP round trips
 REFRESH_SECONDS = 60  # owner fixes show up within a minute (AC-P.4)
 
 
@@ -135,6 +136,20 @@ class PluginRegistry:
             await self._drop(plugin_id)
             self.states[plugin_id] = PluginState(id=plugin_id, status="failed", reason=f"Not answering: {error}")
             return None
+
+    async def setup_warnings(self, plugin_id: str) -> list[str]:
+        """The plugin's `setup_warnings` tool (Gmail's Auto-Expunge check), for the owner's setup check only."""
+        client = self.clients.get(plugin_id)
+        if client is None:
+            return []
+        try:
+            async with asyncio.timeout(SETUP_CHECK_TIMEOUT_SECONDS):
+                result = await client.call_tool("setup_warnings", {})
+        except Exception as error:
+            return [f"The plugin's setup checks didn't finish: {error}"]
+        if result.is_error or result.structured_content is None:
+            return [f"The plugin's setup checks failed: {result_text(result)}"]
+        return [str(warning) for warning in result.structured_content.get("warnings", [])]
 
     async def _drop(self, plugin_id: str) -> None:
         self.clients.pop(plugin_id, None)

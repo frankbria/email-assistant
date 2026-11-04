@@ -6,13 +6,27 @@ message out of INBOX (removes the Inbox label); restoring copies it from All Mai
 """
 
 import imaplib
+from collections.abc import Sequence
 import re
 from email.message import EmailMessage
+from email.utils import make_msgid
+
+from pydantic import BaseModel
 
 from imap_mailbox.mailbox import ImapMailbox, MailboxError
 from mailbox_contract import Capability, ErrorCode, MailboxInfo, MoveResult
 
 GMAIL_ID = re.compile(rb"X-GM-(MSGID|THRID) (\d+)")
+APPENDUID = re.compile(rb"\[APPENDUID (\d+) (\d+)\]")
+# A LIST line: (attributes) "delimiter" name, the name quoted or not.
+LIST_LINE = re.compile(rb'\((?P<attributes>[^)]*)\) (?:"[^"]*"|NIL) (?P<name>"(?:[^"\\]|\\.)*"|\S+)$')
+DEFAULT_TRASH = "[Gmail]/Trash"
+AUTO_EXPUNGE_SETTING = "Gmail → Settings → See all settings → Forwarding and POP/IMAP"
+AUTO_EXPUNGE_WARNING = (
+    "Gmail's Auto-Expunge is on: anything a mail app marks as deleted leaves that folder at once, with no "
+    "chance to undo it. This app never deletes or expunges mail, but other apps on this account can. To be "
+    f"safe, in {AUTO_EXPUNGE_SETTING} choose \"Auto-Expunge off\" and \"Archive the message\"."
+)
 LABEL_TOKEN = re.compile(rb'"(?:[^"\\]|\\.)*"|\)|[^\s()"]+')
 INBOX_LABEL = "\\inbox"
 # X-GM-MSGID is an unsigned 64-bit integer.
@@ -40,6 +54,36 @@ def gmail_labels(fetch_response: list[object]) -> set[str]:
             token = re.sub(rb'\\([\\"])', rb"\1", token[1:-1])
         labels.add(token.decode(errors="replace").lower())
     return labels
+
+
+def trash_folder(listing: Sequence[object]) -> str:
+    """The folder LIST marks \\Trash (SPECIAL-USE, so any interface language), else the English name."""
+    for line in listing:
+        if isinstance(line, bytes) and (match := LIST_LINE.match(line)) and b"\\trash" in match["attributes"].lower():
+            return match["name"].strip(b'"').decode()
+    return DEFAULT_TRASH
+
+
+def append_uid(response: Sequence[object]) -> tuple[str, int] | None:
+    """(UIDVALIDITY, UID) from an APPEND's [APPENDUID …] response code (UIDPLUS)."""
+    for item in response:
+        if isinstance(item, bytes) and (match := APPENDUID.search(item)):
+            return match[1].decode(), int(match[2])
+    return None
+
+
+def probe_expunged(fetch_response: Sequence[object]) -> bool:
+    """Whether the probe marked \\Deleted is gone (Auto-Expunge on) or still there, marked (off)."""
+    lines = [item for item in fetch_response if isinstance(item, bytes)]
+    if not lines:
+        return True
+    if b"\\Deleted" not in b" ".join(lines):
+        raise MailboxError(ErrorCode.UNAVAILABLE, "Gmail didn't mark the test message deleted.")
+    return False
+
+
+class SetupWarnings(BaseModel):
+    warnings: list[str]
 
 
 class GmailMailbox(ImapMailbox):
@@ -122,6 +166,47 @@ class GmailMailbox(ImapMailbox):
                 return MoveResult(ok=False, verified=False)
             after = self._labels(connection, ref)
             return MoveResult(ok=True, verified=after is not None and INBOX_LABEL in after[1])
+
+    # --- setup: the Auto-Expunge setting ----------------------------------------------------
+
+    def setup_warnings(self) -> SetupWarnings:
+        try:
+            on = self._auto_expunge_on()
+        except MailboxError as error:
+            return SetupWarnings(warnings=[
+                f"Couldn't check Gmail's Auto-Expunge setting: {error.message} Check it in {AUTO_EXPUNGE_SETTING}."
+            ])
+        return SetupWarnings(warnings=[AUTO_EXPUNGE_WARNING] if on else [])
+
+    def _auto_expunge_on(self) -> bool:
+        """IMAP doesn't report the setting, so probe it: append a message to the Trash, mark only that
+        message \\Deleted, and see whether Gmail drops it at once. The probe ends deleted (on) or in
+        the Trash, which Gmail empties after 30 days (off). No other message is touched."""
+        probe = EmailMessage()
+        probe["From"] = probe["To"] = self.settings.account
+        probe["Subject"] = "Email assistant setup check (safe to ignore)"
+        probe["Message-ID"] = make_msgid(domain="email-assistant.invalid")
+        probe.set_content("The email assistant's setup checklist added this to test Gmail's Auto-Expunge setting.")
+        with self._imap() as connection:
+            status, listing = connection.list('""', "*")
+            trash = trash_folder(listing if status == "OK" else ())
+            status, response = connection.append(f'"{trash}"', None, None, probe.as_bytes())
+            if status != "OK":
+                raise MailboxError(ErrorCode.UNAVAILABLE, f"Gmail wouldn't take a test message in {trash}.")
+            self._select(connection, trash, readonly=False)
+            appended = append_uid(response)
+            # Only ever the UID Gmail gave this probe, in this folder's current UID numbering.
+            if appended is None or appended[0] != str(connection.response("UIDVALIDITY")[1][0], "ascii"):
+                raise MailboxError(ErrorCode.UNAVAILABLE, "Gmail didn't say where it put the test message.")
+            uid = str(appended[1])
+            status, _ = connection.uid("STORE", uid, "+FLAGS.SILENT", "(\\Deleted)")
+            if status != "OK":
+                raise MailboxError(ErrorCode.UNAVAILABLE, "Gmail wouldn't mark the test message deleted.")
+            connection.noop()  # lets Gmail report the expunge
+            status, fetched = connection.uid("FETCH", uid, "(FLAGS)")
+            if status != "OK":
+                raise MailboxError(ErrorCode.UNAVAILABLE, "Gmail didn't answer about the test message.")
+            return probe_expunged(fetched)
 
     # --- tools ---------------------------------------------------------------------------
 
