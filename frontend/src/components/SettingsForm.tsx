@@ -115,6 +115,7 @@ export default function SettingsForm() {
           <HugeiconsIcon icon={Settings02Icon} className="h-5 w-5 text-primary" />
           <h2 className="text-xl font-semibold text-foreground">Assistant settings</h2>
         </div>
+        <fieldset disabled={saving} className="space-y-6">
         <Field name="ai_provider" label="AI provider" hint="Who reads your mail and drafts proposals." error={fieldErrors.ai_provider}>
           <select
             id="ai_provider"
@@ -162,6 +163,7 @@ export default function SettingsForm() {
             {...invalid("first_connect_days")}
           />
         </Field>
+        </fieldset>
         <Button type="submit" className={TOUCH_TARGET} disabled={saving}>
           Save settings
         </Button>

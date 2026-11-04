@@ -50,6 +50,17 @@ describe('SettingsForm', () => {
     });
   });
 
+  it('locks the fields while a save is pending, so the response cannot overwrite newer edits', async () => {
+    vi.spyOn(service, 'fetchUserSettings').mockResolvedValue(current);
+    vi.spyOn(service, 'updateUserSettings').mockReturnValue(new Promise(() => {}));
+    render(<SettingsForm />);
+
+    fireEvent.click(await screen.findByRole('button', { name: /save/i }));
+
+    expect(await screen.findByLabelText(/model/i)).toBeDisabled();
+    expect(screen.getByLabelText(/poll interval/i)).toBeDisabled();
+  });
+
   it("shows the server's validation error under the field it is about", async () => {
     vi.spyOn(service, 'fetchUserSettings').mockResolvedValue(current);
     vi.spyOn(service, 'updateUserSettings').mockRejectedValue(
