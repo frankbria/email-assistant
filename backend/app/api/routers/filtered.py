@@ -31,7 +31,7 @@ async def list_filtered(owner_id: OwnerId) -> list[FilteredCard]:
     out unseen, and a dismissal is the owner's own call."""
     # shortcut: the whole 30-day window, unpaged (like History); page it when an owner's noise volume shows it slow.
     entries = await ActionLogEntry.find(
-        ActionLogEntry.owner_id == owner_id, ActionLogEntry.action == "archived", {"ok": True},
+        ActionLogEntry.owner_id == owner_id, ActionLogEntry.action == "archived", {"undoable": True},  # it moved mail (a partly failed job too)
         ActionLogEntry.created_at >= datetime.now(UTC) - WINDOW,
     ).sort("-created_at", "-_id").to_list()
     noise_jobs = {job.id: job for job in await Job.find(In(Job.id, list({entry.job_id for entry in entries})), Job.verb == "archive_noise").to_list()}
