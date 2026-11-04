@@ -334,6 +334,15 @@ describe('Ask-owner card', () => {
     expect(within(card).queryByText('Second quote')).not.toBeInTheDocument()
   })
 
+  it('a choice that comes back failed stays in the queue', async () => {
+    const card = await renderQueue(askOwner)
+    mockFetch.mockResolvedValueOnce(Response.json({ ...askOwner.job, state: 'failed', problems: ['Still unsure'] }))
+
+    await userEvent.click(within(card).getByRole('button', { name: 'Reply' }))
+
+    expect(await screen.findByText('Still unsure')).toBeInTheDocument()
+  })
+
   it('picking a suggested verb turns the card into the proposed job', async () => {
     const card = await renderQueue(askOwner)
     mockFetch.mockResolvedValueOnce(

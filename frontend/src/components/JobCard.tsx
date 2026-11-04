@@ -29,7 +29,7 @@ export const ACTIONS: { verb: Verb; label: string }[] = [
 
 // snooze and follow-up wake on their due date, so they cannot lose it
 const DATED_VERBS: Verb[] = ['snooze', 'follow_up']
-const STILL_QUEUED: Job['state'][] = ['open', 'failed']
+export const STILL_QUEUED: Job['state'][] = ['open', 'failed']
 export const TOUCH_TARGET = 'min-h-11' // 44 px
 const TEXT_AREA =
   'w-full rounded-md border border-input bg-background px-3 py-2 text-sm focus-visible:outline-none focus-visible:ring-[3px] focus-visible:ring-ring/50'

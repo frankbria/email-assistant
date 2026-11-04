@@ -11,7 +11,7 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu'
-import { ACTIONS, TOUCH_TARGET } from '@/components/JobCard'
+import { ACTIONS, STILL_QUEUED, TOUCH_TARGET } from '@/components/JobCard'
 import { chooseVerb, dismissJob } from '@/services/jobsService'
 import { showToast } from '@/utils/toast'
 import type { Job, JobCard as QueuedJob } from '@/types/api'
@@ -33,7 +33,7 @@ export function AskOwnerCard({ card, onReplaced, onRemoved }: AskOwnerCardProps)
     setBusy(true)
     try {
       const updated = await action()
-      if (updated.state === 'open') onReplaced(updated)
+      if (STILL_QUEUED.includes(updated.state)) onReplaced(updated)
       else onRemoved(updated._id)
     } catch (error) {
       showToast.error(error instanceof Error ? error.message : failure)
