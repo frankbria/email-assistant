@@ -218,6 +218,11 @@ async def decide(message: Message, client: Client, provider: AIProvider, cap: in
         text = MessageDetail.model_validate(answer).text
     except ValidationError as error:
         return ask_owner_job(message, [f"couldn't read the message: {error.error_count()} invalid fields"], suggested)
+    return await decide_on(message, text, provider, cap, chosen)
+
+
+async def decide_on(message: Message, text: str, provider: AIProvider, cap: int | None, chosen: Verb | None = None) -> Job:
+    """`decide` once the message's text is read: rules, examples, the AI and validation."""
     rule = None if chosen else await matching_rule(message.owner_id, message)
     fixed_verb = chosen or (rule.verb if rule else None)
     suggested = [fixed_verb] if fixed_verb else []

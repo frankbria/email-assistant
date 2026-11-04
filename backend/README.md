@@ -120,6 +120,16 @@ Run with coverage report:
 uv run pytest --cov=app
 ```
 
+### Metrics over the calibration test set
+
+Re-decides every line of the test set (default `calibration/test_set.jsonl`, env `TEST_SET_FILE`) with the owner's
+other reactions as examples, in a scratch database, and prints each spec metric (AC-3.3, AC-3.4, AC-4.1, AC-4.2) as
+PASS or FAIL. Exits 1 on any FAIL. One paid AI call per line (requires `ANTHROPIC_API_KEY`):
+
+```bash
+uv run python -m app.metrics [path/to/test_set.jsonl]
+```
+
 ## 🛠️ Development Guidelines
 
 - Use async/await patterns throughout the codebase
