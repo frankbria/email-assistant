@@ -18,6 +18,7 @@ from app.models.ai_usage import AiUsage
 from app.models.job import Job, Verb
 from app.models.message import Message
 from app.permissions import level_for
+from app.pipeline.examples import similar_examples
 from app.pipeline.minimize import minimize
 from app.pipeline.propose import forward_candidates, propose
 from app.pipeline.rules import apply_rule, matching_rule
@@ -173,8 +174,9 @@ async def decide(message: Message, client: Client, provider: AIProvider, cap: in
     suggested = [fixed_verb] if fixed_verb else []
     if not await take_ai_call(cap):
         return ask_owner_job(message, ["the monthly AI cap is reached"], suggested)
+    examples = [] if fixed_verb else await example_summaries(message, text)
     try:
-        proposal = await propose(message, text, provider, fixed_verb=fixed_verb)
+        proposal = await propose(message, text, provider, fixed_verb=fixed_verb, examples=examples)
     except AIProposalError:
         return ask_owner_job(message, ["the AI gave no usable proposal"], suggested)
     except Exception:  # an outage or a failed local read isn't a used call; the message waits for the next pass
@@ -182,6 +184,16 @@ async def decide(message: Message, client: Client, provider: AIProvider, cap: in
         raise
     decided = proposal.model_copy(update={"needs_owner": False}) if chosen else apply_rule(proposal, rule)
     return to_job(message, decided, minimize(text, message.subject), await forward_candidates(message.owner_id))
+
+
+async def example_summaries(message: Message, text: str) -> list[str]:
+    """Similar past decisions for the prompt. They are optional context, so failing to read them
+    costs the message nothing but them."""
+    try:
+        return [example.summary() for example in await similar_examples(message, text)]
+    except Exception:
+        logger.exception("Couldn't read examples for message %s; proposing without them", message.id)
+        return []
 
 
 async def refund_ai_call() -> None:

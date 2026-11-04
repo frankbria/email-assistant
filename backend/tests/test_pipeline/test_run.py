@@ -5,16 +5,20 @@ import logging
 import httpx
 
 import pytest
+from beanie import PydanticObjectId
 from anthropic import APIConnectionError
 
 from app.models.ai_usage import AiUsage
+from app.models.example import Example
 from app.models.job import Job
 from app.models.message import Message
 from app.models.rule import Rule
+from app.pipeline.examples import record_example
 from app.pipeline.proposal import Proposal
 from app.services.ai_provider import AIProposalError
 from app.sync import SyncEngine
 from tests.conformance.test_mailbox_conformance import reference_imap_plugin
+from tests.test_pipeline.test_propose import block
 from tests.test_sync.test_inbox_sync import OWNER, add_owner, connected
 from tests.utils.fakes import FakeAIProvider
 from tests.utils.mail_server import Mailbox
@@ -108,6 +112,25 @@ async def test_a_stored_rule_decides_the_verb(test_db, mailbox: Mailbox):
     [job] = await jobs()
     assert (job.verb, job.ask_owner) == ("snooze", False)
     assert "already decided: snooze" in provider.prompts[0]
+
+
+async def test_the_proposal_request_carries_the_example_of_a_near_identical_message(test_db, mailbox: Mailbox):
+    """#82 AC, CI half: the retrieved context reaches the AI (the live corpus checks the AI follows it)."""
+    await add_owner(test_db)
+    earlier = Message.model_validate({
+        "_id": PydanticObjectId(), "owner_id": OWNER, "plugin_id": "reference-imap", "ref": "earlier", "message_id": "<earlier@x>",
+        "sender": {"email": "ana@example.com"}, "to": [], "cc": [], "date": "2026-10-02T12:00:00Z",
+        "subject": "Q3 budget", "snippet": "",
+    })
+    await record_example(earlier, BODY.replace("Q4", "Q3"), "reply", "ask_owner")
+    mailbox.deliver(sender="ana@example.com", subject="Q4 budget", body=BODY)
+    provider = FakeAIProvider(result=meeting())
+
+    await run_pass(test_db, mailbox, provider)
+
+    [prompt] = provider.prompts
+    examples = block(prompt, "examples")
+    assert examples == '- reply: from ana@example.com, subject "Q3 budget": Could we meet Thursday at 3pm to go over the Q3 budget?'
 
 
 async def test_when_the_ai_fails_the_owner_is_asked(test_db, mailbox: Mailbox):
@@ -209,3 +232,34 @@ async def test_pending_mail_handled_elsewhere_in_the_meantime_costs_nothing(test
 
     assert await jobs() == [] and provider.prompts == []
     assert [message.pipeline_done for message in await Message.find_all().to_list()] == [True]
+
+
+async def test_a_broken_example_store_still_yields_a_proposal(test_db, mailbox: Mailbox):
+    """Examples are optional context: failing to read them never costs the message its proposal."""
+    await add_owner(test_db)
+    await Example.get_pymongo_collection().insert_one({"owner_id": OWNER, "verb": "not a verb"})  # unreadable as an Example
+    mailbox.deliver(sender="ana@example.com", subject="Q4 budget", body=BODY)
+    provider = FakeAIProvider(result=meeting())
+
+    await run_pass(test_db, mailbox, provider)
+
+    [job] = await jobs()
+    assert (job.verb, job.ask_owner) == ("reply", False)
+    assert "similar mail" not in provider.prompts[0]
+
+
+async def test_a_rule_decided_message_is_proposed_without_examples(test_db, mailbox: Mailbox):
+    await add_owner(test_db)
+    await Rule(owner_id=OWNER, match="sender", value="ana@example.com", verb="reply").insert()
+    earlier = Message.model_validate({
+        "_id": PydanticObjectId(), "owner_id": OWNER, "plugin_id": "reference-imap", "ref": "earlier",
+        "message_id": "<earlier@x>", "sender": {"email": "ana@example.com"}, "to": [], "cc": [],
+        "date": "2026-10-02T12:00:00Z", "subject": "Q4 budget", "snippet": "",
+    })
+    await record_example(earlier, BODY, "digest", "ask_owner")
+    mailbox.deliver(sender="ana@example.com", subject="Q4 budget", body=BODY)
+    provider = FakeAIProvider(result=meeting())
+
+    await run_pass(test_db, mailbox, provider)
+
+    assert "similar mail" not in provider.prompts[0]

@@ -123,7 +123,7 @@ async def propose(
     fixed_verb: Verb | None = None,
     examples: Sequence[str] = (),
 ) -> Proposal:
-    """`body` is the message's `MessageDetail.text`; `examples` is the hook for similar past decisions (#82)."""
+    """`body` is the message's `MessageDetail.text`; `examples`: one-line summaries of similar past decisions (similar_examples)."""
     voice = await voice_samples(message.owner_id, message.sender.email)
     recipients = await forward_candidates(message.owner_id)
     prompt = proposal_prompt(message, body, fixed_verb, voice, recipients, examples)
