@@ -12,7 +12,7 @@ from app.models.message import Message
 from app.models.rule import Rule
 from app.permissions import PermissionSettings
 from app.pipeline.proposal import Proposal
-from app.pipeline.run import act_if_autonomous
+from app.pipeline.run import act_if_autonomous, attach_copy
 from tests.test_routes.test_corrections_api import DEALS, SHOP, newest_job, sync_pass
 from tests.test_routes.test_history_api import history
 from tests.conformance.test_mailbox_conformance import reference_imap_plugin
@@ -145,3 +145,17 @@ async def test_marking_the_stream_noise_again_lets_its_mail_be_archived_without_
     await async_client.post(f"/api/v1/jobs/{job.id}/correct", json={"kind": "noise"})
 
     assert await rules() == [("sender", ana.address.lower(), "archive_noise", False)]
+
+
+async def test_a_copy_joining_an_unfinished_job_brings_its_streams_ask_first_with_it(test_db, mailbox):
+    """An open job a copy joins (e.g. one an archive failed on, reopened) must not act on its own once the
+    copy's stream asks first."""
+    ana = new_mailbox()
+    job = await job_from(ana, mailbox, "archive_noise")
+    await Rule(owner_id=OWNER_ID, match="sender", value=ana.address.lower(), ask_first=True).insert()
+    copy = await Message.get(job.message_ids[0])
+    assert copy is not None and not copy.first_pass
+
+    joined = await attach_copy(job, copy)
+
+    assert joined.requires_approval

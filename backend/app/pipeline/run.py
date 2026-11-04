@@ -141,7 +141,8 @@ async def attach_copy(job: Job, message: Message) -> Job:
     """One job for every copy (spec §5.3). Returns the job as stored right after attaching, so a
     finish that landed meanwhile is seen (its archive may have missed this copy)."""
     attach: dict[str, object] = {"$addToSet": {"message_ids": message.id}}
-    if message.first_pass:  # a first-connect copy makes the shared job need the owner's approval (§5.3)
+    # A first-connect copy (§5.3), or one whose stream asks first (§10.4), makes the shared job need the owner's tap.
+    if message.first_pass or await asks_first(message):
         attach["$set"] = {"requires_approval": True}
     stored = await Job.get_pymongo_collection().find_one_and_update(
         {"_id": job.id}, attach, return_document=ReturnDocument.AFTER
