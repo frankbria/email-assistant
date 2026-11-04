@@ -182,3 +182,17 @@ async def test_a_must_ask_copy_already_attached_to_a_finished_job_gets_its_own_j
     waiting = await newest_job()
     assert waiting.message_ids == [copy_id] and (waiting.state, waiting.requires_approval) == ("open", True)
     assert copy_id not in (await Job.get(archived_elsewhere.id)).message_ids
+
+
+async def test_a_pending_job_from_before_the_lesson_waits_once_its_stream_asks_first(test_db, mailbox, plugins):
+    """A job stored before the owner's restore (e.g. a crash came before acting) is recovered later: the rule
+    learned meanwhile still holds it for the owner, whatever its stored requires_approval says."""
+    await PermissionSettings(owner_id=OWNER_ID, levels={"archive_noise": "autonomous"}).insert()
+    ana = new_mailbox()
+    pending = await job_from(ana, mailbox, "archive_noise", Artifacts(noise_rationale="A promotional mailing"))
+    await Rule(owner_id=OWNER_ID, match="sender", value=ana.address.lower(), ask_first=True).insert()
+
+    await act_if_autonomous(pending, plugins)
+
+    assert len(mailbox.messages("INBOX")) == 1 and mailbox.messages("Archive") == []
+    assert (await Job.get(pending.id)).state == "open"

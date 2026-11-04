@@ -108,6 +108,10 @@ async def act_if_autonomous(job: Job, plugins: PluginRegistry) -> None:
         return
     if await level_for(job.owner_id, job.verb) != "autonomous":
         return
+    # Read now, not only when the job was made: a recovered job predates any rule the owner taught since.
+    first = await Message.get(job.message_ids[0])
+    if first is None or await asks_first(first):
+        return
     actions: dict[str, Callable[[], Awaitable[Job]]] = {
         "archive_noise": lambda: finish(job_id, "done", plugins, verb="archive_noise", by="app", level="autonomous"),
         "snooze": lambda: defer(job_id, by="app", level="autonomous"),
