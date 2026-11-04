@@ -21,7 +21,7 @@ from app.permissions import level_for
 from app.pipeline.examples import similar_examples
 from app.pipeline.minimize import minimize
 from app.pipeline.propose import forward_candidates, propose
-from app.pipeline.rules import apply_rule, matching_rule
+from app.pipeline.rules import apply_rule, asks_first, matching_rule
 from app.pipeline.validate import ask_owner_job, to_job
 from app.plugins.calls import call_plugin, refs_in_inbox
 from app.plugins.registry import PluginRegistry
@@ -67,7 +67,7 @@ async def process(message: Message, client: Client, provider: AIProvider, cap: i
         job = await attach_copy(sibling, message)
     if job is None:
         job = await decide(message, client, provider, cap)
-        job.requires_approval = message.first_pass
+        job.requires_approval = message.first_pass or await asks_first(message)
         await job.insert()
         await act_if_autonomous(job, plugins)
     elif job.state == "open" and job.permission_level is None:
@@ -88,7 +88,7 @@ NO_REPLY = re.compile(r"^(?:no-?reply|do-?not-?reply|mailer-daemon|postmaster|bo
 
 async def act_if_autonomous(job: Job, plugins: PluginRegistry) -> None:
     """Spec §9: an `autonomous` verb acts without a tap; `ask` and `never_auto` wait for the owner. An
-    ask-owner card or first-connect mail (§5.3) always waits. A reply acts only with a draft, only to the
+    ask-owner card, first-connect mail (§5.3) or mail whose rule asks first (§10.4) always waits. A reply acts only with a draft, only to the
     original sender (execute never adds recipients), and never to a list (it would post to everyone) or a
     no-reply address. forward, todo and unsubscribe can't be autonomous. The executor records the level
     once the action took effect.

@@ -38,7 +38,7 @@ class Job(Document):
     ask_owner: bool = False
     suggested_verbs: list[Verb] = Field(default_factory=list)
     problems: list[str] = Field(default_factory=list)  # why validation sent it to the owner
-    # First-connect mail (§5.3): every decision on it is `ask`, whatever the verb's permission (#71 enforces).
+    # First-connect mail (§5.3), or mail whose rule asks first (§10.4): every decision on it is `ask`, whatever the verb's permission.
     requires_approval: bool = False
     edited: bool = False  # the owner changed its artifacts: approving it then restarts the promotion streak (§9)
     error: str | None = None  # why finishing it didn't go through, naming the plugin (§10.3, AC-1.3)

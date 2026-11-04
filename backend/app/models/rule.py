@@ -1,5 +1,6 @@
 """A stored, deterministic decision learned from the owner (spec §4 Rule): mail from this sender
-or list gets this verb. Rules outrank the AI (§8.3)."""
+or list gets this verb, or asks the owner before any action (a restore of the app's archive, §10.4). Rules outrank
+the AI (§8.3)."""
 
 import re
 from datetime import UTC, datetime
@@ -26,7 +27,8 @@ class Rule(Document):
     owner_id: str
     match: RuleMatch
     value: str  # normalized on creation, so every creator's rules match and case variants collide
-    verb: Verb
+    verb: Verb | None = None  # None: the AI still chooses the verb
+    ask_first: bool = False  # nothing is done to the stream's mail without the owner's tap, whatever the permissions
     created_at: datetime = Field(default_factory=lambda: datetime.now(UTC))
 
     @model_validator(mode="after")
