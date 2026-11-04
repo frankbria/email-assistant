@@ -4,6 +4,7 @@ import re
 from datetime import UTC, datetime
 
 import pytest
+from beanie import PydanticObjectId
 
 from app.models.message import Message
 from app.pipeline.proposal import Proposal
@@ -31,7 +32,7 @@ def words(text: str) -> set[str]:
 
 def inbox_message(case: ProposalCase) -> Message:
     return Message.model_validate({
-        "owner_id": "owner-1", "plugin_id": "proton", "ref": case.name, "message_id": f"<{case.name}@x>",
+        "_id": PydanticObjectId(), "owner_id": "owner-1", "plugin_id": "proton", "ref": case.name, "message_id": f"<{case.name}@x>",
         "sender": {"email": case.sender}, "to": [{"email": "frank@example.com"}], "cc": [],
         "date": datetime(2026, 11, 2, tzinfo=UTC), "subject": case.subject, "snippet": case.body[:200],
         "list_id": case.list_id,

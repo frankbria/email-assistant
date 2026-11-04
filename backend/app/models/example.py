@@ -3,7 +3,7 @@
 from datetime import UTC, datetime
 from typing import Literal
 
-from beanie import Document
+from beanie import Document, PydanticObjectId
 from pydantic import Field
 from pymongo import ASCENDING, DESCENDING, IndexModel
 
@@ -15,6 +15,7 @@ EXCERPT_CHARACTERS = 200
 
 class Example(Document):
     owner_id: str
+    message_id: PydanticObjectId  # one example per message: a later decision on it replaces the earlier
     sender: str  # rule_key-normalized, so it compares like a rule's
     list_id: str | None = None  # the List-Id's <identifier>, rule_key-normalized
     subject: str
@@ -24,10 +25,14 @@ class Example(Document):
     created_at: datetime = Field(default_factory=lambda: datetime.now(UTC))
 
     def summary(self) -> str:
-        """One line for the proposal prompt: which mail, and what the owner did with it."""
+        """One line for the proposal prompt. The owner's verb leads, so email text after it can't pose as the decision."""
+        subject = " ".join(self.subject.split())[:EXCERPT_CHARACTERS]
         excerpt = " ".join(self.text.split())[:EXCERPT_CHARACTERS]
-        return f'From {self.sender}, subject "{" ".join(self.subject.split())[:EXCERPT_CHARACTERS]}": {excerpt} -> {self.verb}'
+        return f'{self.verb}: from {self.sender}, subject "{subject}": {excerpt}'
 
     class Settings:
         name = "examples"
-        indexes = [IndexModel([("owner_id", ASCENDING), ("created_at", DESCENDING)])]
+        indexes = [
+            IndexModel([("owner_id", ASCENDING), ("created_at", DESCENDING)]),
+            IndexModel([("owner_id", ASCENDING), ("message_id", ASCENDING)], unique=True),
+        ]

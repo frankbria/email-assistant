@@ -172,9 +172,9 @@ async def decide(message: Message, client: Client, provider: AIProvider, cap: in
     rule = None if chosen else await matching_rule(message.owner_id, message)
     fixed_verb = chosen or (rule.verb if rule else None)
     suggested = [fixed_verb] if fixed_verb else []
-    examples = [example.summary() for example in await similar_examples(message, text)]
     if not await take_ai_call(cap):
         return ask_owner_job(message, ["the monthly AI cap is reached"], suggested)
+    examples = [] if fixed_verb else await example_summaries(message, text)
     try:
         proposal = await propose(message, text, provider, fixed_verb=fixed_verb, examples=examples)
     except AIProposalError:
@@ -184,6 +184,16 @@ async def decide(message: Message, client: Client, provider: AIProvider, cap: in
         raise
     decided = proposal.model_copy(update={"needs_owner": False}) if chosen else apply_rule(proposal, rule)
     return to_job(message, decided, minimize(text, message.subject), await forward_candidates(message.owner_id))
+
+
+async def example_summaries(message: Message, text: str) -> list[str]:
+    """Similar past decisions for the prompt. They are optional context, so failing to read them
+    costs the message nothing but them."""
+    try:
+        return [example.summary() for example in await similar_examples(message, text)]
+    except Exception:
+        logger.exception("Couldn't read examples for message %s; proposing without them", message.id)
+        return []
 
 
 async def refund_ai_call() -> None:

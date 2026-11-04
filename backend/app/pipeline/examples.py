@@ -4,6 +4,8 @@ similar to a new message for its proposal prompt. Corrections, ask-owner choices
 
 import re
 
+from pymongo import ReturnDocument
+
 from app.models.example import Example, ExampleSource
 from app.models.job import Verb
 from app.models.message import Message
@@ -15,14 +17,16 @@ STORED_TEXT_CHARACTERS = 1000
 CANDIDATES = 500
 MINIMUM_SIMILARITY = 0.3
 SAME_STREAM_BONUS = 0.2  # a sender's or list's issues share few words but usually get the same handling
-WORD = re.compile(r"[a-z0-9]{3,}")
+WORD = re.compile(r"\w{2,}")  # Unicode words; two letters keep "Q3" apart from "Q4"
 
 
 async def record_example(message: Message, body: str, verb: Verb, source: ExampleSource) -> Example:
-    """Stores the owner's decision on `message`. `body` is its `MessageDetail.text`, or its snippet
-    when the full text wasn't fetched."""
+    """Stores the owner's decision on `message`, replacing any earlier one on it. `body` is its
+    `MessageDetail.text`, or its snippet when the full text wasn't fetched."""
+    assert message.id is not None, "examples are of stored messages"
     example = Example(
         owner_id=message.owner_id,
+        message_id=message.id,
         sender=rule_key("sender", message.sender.email),
         list_id=rule_key("list_id", message.list_id) if message.list_id else None,
         subject=message.subject,
@@ -30,7 +34,13 @@ async def record_example(message: Message, body: str, verb: Verb, source: Exampl
         verb=verb,
         source=source,
     )
-    return await example.insert()
+    stored = await Example.get_pymongo_collection().find_one_and_update(
+        {"owner_id": example.owner_id, "message_id": example.message_id},
+        {"$set": example.model_dump(exclude={"id", "revision_id"})},
+        upsert=True, return_document=ReturnDocument.AFTER,
+    )
+    assert stored is not None  # an upsert returning the document after it always has one
+    return Example.model_validate(stored)
 
 
 async def similar_examples(message: Message, body: str) -> list[Example]:
@@ -54,4 +64,4 @@ async def similar_examples(message: Message, body: str) -> list[Example]:
 
 
 def words_of(subject: str, text: str) -> set[str]:
-    return set(WORD.findall(f"{subject} {text}".lower()))
+    return set(WORD.findall(f"{subject} {text}".casefold()))
