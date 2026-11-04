@@ -118,3 +118,20 @@ async def test_a_reaction_without_always_teaches_no_rule(async_client, test_db, 
 
     assert await rules() == [] and await Example.find_all().count() == 1
     assert json.loads(test_set.read_text())["owner_verb"] == "archive_noise"
+
+
+async def test_a_reaction_that_cant_be_saved_keeps_its_card(async_client, test_db, mailbox, plugins, ai, test_set):
+    await stored(new_mailbox(), mailbox, "Weekly deals", timedelta(days=1))
+    ai.result = NOISE
+    await async_client.post("/api/v1/calibration")
+    [card] = (await async_client.get("/api/v1/calibration")).json()
+    test_set.mkdir(parents=True)  # a directory where the file should be: the line can't be written
+
+    try:
+        failed = await async_client.post(f"/api/v1/calibration/{card['job']['_id']}/react", json={"verb": "archive_noise"})
+    finally:
+        test_set.rmdir()
+
+    assert failed.status_code == 502
+    assert [kept["job"]["_id"] for kept in (await async_client.get("/api/v1/calibration")).json()] == [card["job"]["_id"]]
+    assert await Example.find_all().count() == 0

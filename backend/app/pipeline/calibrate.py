@@ -38,6 +38,8 @@ async def calibrate(owner_id: str, plugins: PluginRegistry, provider: AIProvider
             logger.exception("Calibration left out message %s", message.id)
             continue
         proposed = None if job.ask_owner else job.verb
+        # one card per message, also when a second run started meanwhile
+        await CalibrationJob.find(CalibrationJob.owner_id == owner_id, CalibrationJob.message_ids == message.id).delete()
         # The AI's verb is the card's one-tap answer (the owner's 👍); another verb is the owner's fix.
         await CalibrationJob(
             **job.model_dump(exclude={"id", "revision_id", "ask_owner", "suggested_verbs"}),

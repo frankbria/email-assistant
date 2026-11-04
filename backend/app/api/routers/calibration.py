@@ -49,8 +49,12 @@ async def react(job_id: PydanticObjectId, choice: Choice, owner_id: OwnerId, set
     if taken is None:
         raise HTTPException(status_code=404, detail="Calibration card not found")
     calibration = CalibrationJob.model_validate(taken)
-    message = await message_of(calibration)
-    add_to_test_set(settings.test_set_file, message, calibration, choice.verb)
+    try:
+        message = await message_of(calibration)
+        add_to_test_set(settings.test_set_file, message, calibration, choice.verb)
+    except Exception as error:  # e.g. the test set isn't writable: the card comes back so the reaction isn't lost
+        await CalibrationJob.get_pymongo_collection().insert_one(taken)
+        raise HTTPException(status_code=502, detail="couldn't save the reaction, try again") from error
     await learn_from_answer(message, calibration.text or message.snippet, choice, "calibration")
     calibration.state = "done"
     return calibration
