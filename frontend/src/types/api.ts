@@ -133,3 +133,26 @@ export interface JobEdit {
   link?: string
   due?: string | null
 }
+
+export type HistoryAction = 'sent' | 'archived' | 'done' | 'snoozed' | 'dismissed' | 'restored'
+
+export interface ActionLogEntry {
+  _id: string
+  owner_id: string
+  action: HistoryAction
+  job_id: string
+  message_ids: string[]
+  by: 'app' | 'owner'
+  permission_level: PermissionLevel | null
+  ok: boolean
+  error: string | null
+  undoable: boolean
+  undone: boolean
+  created_at: string
+}
+
+export interface HistoryCard {
+  entry: ActionLogEntry
+  sender: { name: string | null; email: string }
+  subject: string
+}
