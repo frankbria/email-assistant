@@ -137,6 +137,12 @@ describe('Open jobs page', () => {
       'Cooking Weekly: Three soups.',
       'Cycling Digest: A new trail.',
     ])
+    // they would act on the first message alone, while done archives them all
+    for (const control of [/Other action/, /Correct/, /Edit/]) {
+      expect(within(card).queryByRole('button', { name: control })).not.toBeInTheDocument()
+    }
+    expect(within(card).getByRole('button', { name: /Approve/ })).toBeInTheDocument()
+    expect(within(card).getByRole('button', { name: /Dismiss/ })).toBeInTheDocument()
   })
 
   it('shows the empty state when there are no open jobs', async () => {

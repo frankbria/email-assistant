@@ -3,9 +3,12 @@
 # plugin; FakeAIProvider proposing `digest`; real SyncEngine passes after an empty first pass.
 import pytest
 
-from app.models.job import Job
+from app.models.example import Example
+from app.models.job import Artifacts, Job
+from app.models.message import Message
 from app.models.rule import Rule
 from app.pipeline.proposal import Proposal
+from app.pipeline.run import join_open_digest
 from tests.test_routes.test_corrections_api import sync_pass
 from tests.test_routes.test_history_api import history
 from tests.test_sync.test_inbox_sync import add_owner
@@ -75,3 +78,54 @@ async def test_mail_of_a_stream_that_asks_first_makes_the_digest_it_joins_wait_f
     digest = await three_newsletters_in_one_digest(test_db, mailbox, plugins)
 
     assert len(digest.message_ids) == 3 and digest.requires_approval
+
+
+@pytest.mark.parametrize(("method", "path", "body"), [
+    ("post", "choose", {"verb": "reply"}),
+    ("post", "correct", {"kind": "noise"}),
+    ("post", "correct", {"kind": "wrong_action", "verb": "todo"}),
+    ("patch", "", {"link": "https://x.example"}),
+])
+async def test_a_digest_of_several_messages_refuses_actions_meant_for_one_message(
+    async_client, test_db, mailbox, plugins, ai, method, path, body
+):
+    """Another action, a correction or an edit would act on the first message alone while done archives them all."""
+    digest = await three_newsletters_in_one_digest(test_db, mailbox, plugins)
+
+    response = await getattr(async_client, method)(f"/api/v1/jobs/{digest.id}/{path}".rstrip("/"), json=body)
+
+    assert response.status_code == 409
+    assert response.json()["detail"] == "a digest speaks for several messages; approve or dismiss it, or archive them one by one"
+    assert await Job.get(digest.id) == digest
+    assert len(mailbox.messages("INBOX")) == 3 and mailbox.messages("Archive") == []
+    assert await Rule.find_all().to_list() == [] and await Example.find_all().to_list() == []
+
+
+async def test_the_first_line_of_a_digest_without_a_summary_has_no_blank_line_before_it(test_db, mailbox, plugins):
+    """An open digest carrying only a reason (no summary yet) gains its first line without a leading newline."""
+    await three_newsletters_in_one_digest(test_db, mailbox, plugins)
+    [digest] = await Job.find_all().to_list()
+    await Job.find(Job.id == digest.id).update({"$set": {"artifacts.digest": None}})
+    newcomer = Job(owner_id=OWNER_ID, verb="digest", title="t", artifacts=Artifacts(digest="A short story."),
+                   message_ids=digest.message_ids[:1])
+
+    joined = await join_open_digest(newcomer, await message_of_digest(digest))
+
+    assert joined.artifacts.digest == f"{NEWSLETTERS[0]}: A short story."
+
+
+async def message_of_digest(digest: Job) -> Message:
+    message = await Message.get(digest.message_ids[0])
+    assert message is not None
+    return message
+
+
+async def test_the_history_of_a_digests_archive_names_its_message_count(async_client, test_db, mailbox, plugins):
+    digest = await three_newsletters_in_one_digest(test_db, mailbox, plugins)
+    await async_client.post(f"/api/v1/jobs/{digest.id}/approve", json={})
+    await Message.find(Message.id == digest.message_ids[0]).delete()  # the first message is gone; the entry stays
+
+    [card] = (await async_client.get("/api/v1/history")).json()
+
+    assert (card["entry"]["action"], card["subject"]) == ("archived", "3 messages")
+    assert card["sender"]["email"] == NEWSLETTERS[1]

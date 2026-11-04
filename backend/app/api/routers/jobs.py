@@ -82,6 +82,14 @@ async def owned(job_id: PydanticObjectId, owner_id: str) -> Job:
     return job
 
 
+async def for_one_message(job_id: PydanticObjectId, owner_id: str) -> Job:
+    """Another action, a correction or an edit is about one message, while a digest's done archives all of them."""
+    job = await owned(job_id, owner_id)
+    if job.verb == "digest" and len(job.message_ids) > 1:
+        raise HTTPException(status_code=409, detail="a digest speaks for several messages; approve or dismiss it, or archive them one by one")
+    return job
+
+
 async def acting(action: Callable[[], Awaitable[Job]]) -> Job:
     """Runs an executor transition; its refusals become the owner's plain-words answer."""
     try:
@@ -109,7 +117,7 @@ async def list_jobs(owner_id: OwnerId) -> list[JobCard]:
 
 @router.patch("/{job_id}", response_model=Job)
 async def edit_job(job_id: PydanticObjectId, edit: JobEdit, owner_id: OwnerId) -> Job:
-    await owned(job_id, owner_id)
+    await for_one_message(job_id, owner_id)
     sent = edit.model_dump(exclude_unset=True)
     if not sent:
         raise HTTPException(status_code=422, detail="nothing to change")
@@ -163,7 +171,7 @@ async def choose_action(
     """Spec §10.2: an ask-owner card's answer is kept as an example, and "always" teaches a rule, once the job
     has the chosen proposal. Another action chosen for a proposed job is no answer to a question, so it's no example;
     teaching from it is the correction's job (§10.4)."""
-    job = await owned(job_id, owner_id)
+    job = await for_one_message(job_id, owner_id)
     message = await message_of(job)
     chosen = await propose_instead(job, message, choice.verb, plugins, provider, settings)
     if not job.ask_owner:  # another action for a proposed job answers no question; teaching from it is /correct's
@@ -235,7 +243,7 @@ async def correct_job(
     """Spec §10.4: the job is put right first; only then does the correction teach a rule for the mail's sender
     or list, effective on the next matching message, and an example. "This isn't noise" names no verb, so it
     forgets the noise rule and leaves the choice, and the example, to the owner's ask-owner card."""
-    job = await owned(job_id, owner_id)
+    job = await for_one_message(job_id, owner_id)
     message = await message_of(job)
     if correction.kind == "not_noise":
         if job.verb != "archive_noise" or job.ask_owner:

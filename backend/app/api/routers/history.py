@@ -31,14 +31,18 @@ class HistoryCard(BaseModel):
 async def list_history(owner_id: OwnerId) -> list[HistoryCard]:
     # shortcut: returns the whole history; page it (e.g. a `before` timestamp) once it gets long enough to be slow.
     entries = await ActionLogEntry.find(ActionLogEntry.owner_id == owner_id).sort("-created_at", "-_id").to_list()
-    messages = await Message.find(In(Message.id, [entry.message_ids[0] for entry in entries if entry.message_ids])).to_list()
+    messages = await Message.find(In(Message.id, list({message_id for entry in entries for message_id in entry.message_ids}))).to_list()
     by_id = {message.id: message for message in messages}
-    return [
-        HistoryCard(entry=entry, sender=by_id[entry.message_ids[0]].sender, subject=by_id[entry.message_ids[0]].subject)
-        for entry in entries
-        if entry.message_ids and entry.message_ids[0] in by_id
-    ]
-
+    cards = []
+    for entry in entries:
+        found = [by_id[message_id] for message_id in entry.message_ids if message_id in by_id]
+        if not found:
+            continue
+        # A digest's entry spans several mails; copies of one mail in several accounts still read as that mail.
+        several = len({message.message_id for message in found}) > 1
+        subject = f"{len(entry.message_ids)} messages" if several else found[0].subject
+        cards.append(HistoryCard(entry=entry, sender=found[0].sender, subject=subject))
+    return cards
 
 @router.post("/{entry_id}/undo", response_model=ActionLogEntry)
 async def undo_entry(entry_id: PydanticObjectId, owner_id: OwnerId, plugins: PluginRegistry = Depends(plugin_registry)) -> ActionLogEntry:

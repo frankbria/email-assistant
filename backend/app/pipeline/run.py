@@ -178,7 +178,11 @@ async def join_open_digest(job: Job, message: Message) -> Job:
         {"owner_id": job.owner_id, "verb": "digest", "state": "open", "ask_owner": False},
         [{"$set": {
             "message_ids": {"$concatArrays": ["$message_ids", [message.id]]},
-            "artifacts.digest": {"$concat": [{"$ifNull": ["$artifacts.digest", ""]}, "\n", line]},
+            "artifacts.digest": {"$cond": [
+                {"$gt": [{"$strLenCP": {"$ifNull": ["$artifacts.digest", ""]}}, 0]},
+                {"$concat": ["$artifacts.digest", "\n", line]},
+                line,
+            ]},
             "requires_approval": {"$or": ["$requires_approval", job.requires_approval]},
         }}],
         sort=[("created_at", 1)],
