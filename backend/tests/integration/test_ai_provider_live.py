@@ -5,7 +5,8 @@ from typing import Literal
 import pytest
 from pydantic import BaseModel
 
-from app.services.ai_provider import get_ai_provider
+from app.config import get_settings
+from app.services.ai_provider import provider_for
 
 pytestmark = [
     pytest.mark.integration,
@@ -27,7 +28,7 @@ async def test_anthropic_provider_returns_schema_valid_result():
         "Propose the single best action."
     )
 
-    proposal = await get_ai_provider().propose(prompt, Proposal)
+    proposal = await provider_for(get_settings().ai_provider, get_settings().ai_model).propose(prompt, Proposal)
 
     assert isinstance(proposal, Proposal)
     assert proposal.verb == "schedule"

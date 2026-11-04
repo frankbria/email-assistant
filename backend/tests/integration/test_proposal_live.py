@@ -8,7 +8,8 @@ import pytest
 from app.models.message import Message
 from app.pipeline.proposal import Proposal
 from app.pipeline.propose import propose
-from app.services.ai_provider import get_ai_provider
+from app.config import get_settings
+from app.services.ai_provider import provider_for
 from tests.fixtures.proposal_corpus import CORPUS, ProposalCase
 
 pytestmark = [
@@ -36,7 +37,7 @@ async def test_each_proposal_is_schema_valid_with_a_message_specific_title(test_
         "list_id": case.list_id,
     })
 
-    proposal = await propose(message, case.body, get_ai_provider())
+    proposal = await propose(message, case.body, provider_for(get_settings().ai_provider, get_settings().ai_model))
 
     assert isinstance(proposal, Proposal)  # parsed against the schema by the provider
     assert proposal.title.strip().lower() not in BARE_TITLES
