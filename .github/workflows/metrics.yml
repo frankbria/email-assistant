@@ -1,0 +1,51 @@
+# AC-4.3: the metrics command over the committed synthetic test set, with the paid AI.
+# Only this workflow sees the ANTHROPIC_API_KEY secret, and never on push or pull_request.
+name: Metrics
+on:
+  schedule:
+    - cron: "0 6 * * 1"  # Mondays 06:00 UTC
+  workflow_dispatch:
+
+concurrency:
+  group: metrics
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  metrics:
+    # shortcut: same mongod kernel limit as ci.yml (see #105).
+    runs-on: ubuntu-22.04
+    timeout-minutes: 30
+    defaults:
+      run:
+        working-directory: backend
+    services:
+      mongodb:
+        image: mongo:8
+        ports: ["27017:27017"]
+        options: >-
+          --health-cmd "mongosh --quiet --eval 'db.runCommand({ping: 1})'"
+          --health-interval 5s
+          --health-retries 12
+    steps:
+      # A skipped run would hide that AC-4.3 isn't being checked, so a missing secret fails the job.
+      - name: require the ANTHROPIC_API_KEY secret
+        run: |
+          if [ -z "$ANTHROPIC_API_KEY" ]; then
+            echo "::error::Add the ANTHROPIC_API_KEY repository secret (Settings > Secrets and variables > Actions); the metrics job needs it to call the AI."
+            exit 1
+          fi
+        working-directory: .
+        env:
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+      - uses: actions/checkout@v7
+      - uses: astral-sh/setup-uv@v10.3.3 # no floating major tag upstream
+        with:
+          python-version: "3.14"
+      - run: uv sync --locked
+      - name: metrics over the synthetic test set
+        run: uv run python -m app.metrics tests/fixtures/synthetic_test_set.jsonl
+        env:
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}

@@ -130,6 +130,11 @@ PASS or FAIL. Exits 1 on any FAIL. One paid AI call per line (requires `ANTHROPI
 uv run python -m app.metrics [path/to/test_set.jsonl]
 ```
 
+CI never sees the owner's set. The `Metrics` workflow (`.github/workflows/metrics.yml`, weekly and on manual
+dispatch, never on push or pull request) runs the command against the committed synthetic set
+`tests/fixtures/synthetic_test_set.jsonl`: 70 fictional emails covering every verb, 50 of them needs-me and 20
+noise. It needs the `ANTHROPIC_API_KEY` repository secret and fails without it.
+
 ## 🛠️ Development Guidelines
 
 - Use async/await patterns throughout the codebase
