@@ -12,6 +12,7 @@ import {
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu'
 import { ACTIONS, STILL_QUEUED, TOUCH_TARGET } from '@/components/JobCard'
+import { reactToCalibration } from '@/services/calibrationService'
 import { chooseVerb, dismissJob } from '@/services/jobsService'
 import { showToast } from '@/utils/toast'
 import type { Job, JobCard as QueuedJob } from '@/types/api'
@@ -20,6 +21,8 @@ interface AskOwnerCardProps {
   card: QueuedJob
   onReplaced: (job: Job) => void
   onRemoved: (jobId: string) => void
+  // A calibration proposal (spec §10.7): the answer is a reaction that teaches, and there is no job to dismiss.
+  calibrating?: boolean
 }
 
 // "Garden deals <deals.shop.example>" is the Garden deals list; a List-Id without a name goes by its identifier.
@@ -27,7 +30,7 @@ function listName(listId: string): string {
   return listId.replace(/<.*>/, '').replaceAll('"', '').trim() || listId.replace(/[<>]/g, '').trim()
 }
 
-export function AskOwnerCard({ card, onReplaced, onRemoved }: AskOwnerCardProps) {
+export function AskOwnerCard({ card, onReplaced, onRemoved, calibrating = false }: AskOwnerCardProps) {
   const { job, sender, subject, list_id } = card
   const [busy, setBusy] = useState(false)
   const [always, setAlways] = useState(false)
@@ -48,7 +51,8 @@ export function AskOwnerCard({ card, onReplaced, onRemoved }: AskOwnerCardProps)
   }
 
   function choose(verb: Job['verb']) {
-    return act(() => chooseVerb(job._id, verb, always), 'Failed to choose the action')
+    const answer = calibrating ? reactToCalibration : chooseVerb
+    return act(() => answer(job._id, verb, always), 'Failed to choose the action')
   }
 
   return (
@@ -96,16 +100,18 @@ export function AskOwnerCard({ card, onReplaced, onRemoved }: AskOwnerCardProps)
             ))}
           </DropdownMenuContent>
         </DropdownMenu>
-        <Button
-          variant="ghost"
-          className={TOUCH_TARGET}
-          disabled={busy || always}
-          title={always ? 'Choose an action to make it a rule; dismissing teaches nothing' : undefined}
-          onClick={() => act(() => dismissJob(job._id, job.verb === 'digest' ? job.message_ids : undefined), 'Failed to dismiss the job')}
-        >
-          <HugeiconsIcon icon={Cancel01Icon} />
-          Dismiss
-        </Button>
+        {!calibrating && (
+          <Button
+            variant="ghost"
+            className={TOUCH_TARGET}
+            disabled={busy || always}
+            title={always ? 'Choose an action to make it a rule; dismissing teaches nothing' : undefined}
+            onClick={() => act(() => dismissJob(job._id, job.verb === 'digest' ? job.message_ids : undefined), 'Failed to dismiss the job')}
+          >
+            <HugeiconsIcon icon={Cancel01Icon} />
+            Dismiss
+          </Button>
+        )}
       </CardFooter>
     </Card>
   )

@@ -54,6 +54,10 @@ class Settings(BaseSettings):
     # The readable per-verb permissions file, kept in sync with the settings screen (env PERMISSIONS_FILE).
     permissions_file: str = "permissions.yaml"
 
+    # The calibration test set (spec §10.7): the owner's real mail, so it stays local; git ignores its directory
+    # (env TEST_SET_FILE).
+    test_set_file: str = "calibration/test_set.jsonl"
+
     # CORS settings
     allow_origins: List[str] = [
         origin

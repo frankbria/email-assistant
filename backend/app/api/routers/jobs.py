@@ -16,6 +16,7 @@ from pydantic import BaseModel, Field, model_validator
 from app.auth import OwnerId
 from app.config import Settings, get_settings
 from app.executor import STALE_SENDING, JobNotOpen, defer, execute, finish, unsubscribe, unsubscribe_target_of
+from app.models.example import ExampleSource
 from app.models.job import Artifacts, Job, PermissionLevel, Verb
 from app.models.message import Message
 from app.permissions import level_for, record_approval
@@ -202,18 +203,23 @@ async def choose_action(
     chosen = await propose_instead(job, message, choice.verb, plugins, provider, settings)
     if not job.ask_owner:  # another action for a proposed job answers no question; teaching from it is /correct's
         return chosen
-    # The choice is already made, so a failed lesson mustn't become an error; each lesson stands on its own.
+    await learn_from_answer(message, message.snippet, choice, "ask_owner")
+    return chosen
+
+
+async def learn_from_answer(message: Message, body: str, choice: Choice, source: ExampleSource) -> None:
+    """The ask-owner card's answer is an example, and "always" a rule. The choice is already made, so a failed lesson
+    mustn't become an error; each lesson stands on its own."""
     try:
-        await record_example(message, message.snippet, choice.verb, "ask_owner")
+        await record_example(message, body, choice.verb, source)
     except Exception:
-        logger.exception("Couldn't record the example for job %s", job_id)
+        logger.exception("Couldn't record the example for message %s", message.id)
     if choice.always:
         try:
             # the card names the stream ("for <list or sender>"), so the rule keys on it, not on a broader rule
             await learn_rule(message, choice.verb, correct_the_deciding_rule=False)
         except Exception:
-            logger.exception("Couldn't learn the rule for job %s", job_id)
-    return chosen
+            logger.exception("Couldn't learn the rule for message %s", message.id)
 
 
 async def message_of(job: Job) -> Message:
