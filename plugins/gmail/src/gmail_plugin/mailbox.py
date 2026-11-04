@@ -25,8 +25,8 @@ def gmail_ids(fetch_line: bytes) -> dict[str, str]:
 
 
 def gmail_labels(fetch_response: list[object]) -> set[str]:
-    """The labels in an `X-GM-LABELS (…)` FETCH response, lowercased, quotes removed. Literal
-    label names (sent as {n}) are skipped: system labels such as \\Inbox are always atoms."""
+    """The labels in an `X-GM-LABELS (…)` FETCH response, lowercased, quotes removed. A label
+    sent as a literal shows only as its `{n}` marker: system labels such as \\Inbox never are."""
     line = b" ".join(item[0] if isinstance(item, tuple) else item for item in fetch_response if isinstance(item, (bytes, tuple)))
     _, found, rest = line.partition(b"X-GM-LABELS (")
     if not found:
@@ -36,7 +36,8 @@ def gmail_labels(fetch_response: list[object]) -> set[str]:
         if token == b")":
             break
         if token.startswith(b'"'):
-            token = re.sub(rb"\\(.)", rb"\1", token[1:-1])
+            # Only \\ and \" are escapes (RFC 3501); a loosely quoted "\Inbox" keeps its backslash.
+            token = re.sub(rb'\\([\\"])', rb"\1", token[1:-1])
         labels.add(token.decode(errors="replace").lower())
     return labels
 

@@ -591,6 +591,7 @@ name = "imap-mailbox"
 version = "0.1.0"
 source = { editable = "../packages/imap-mailbox" }
 dependencies = [
+    { name = "anyio" },
     { name = "mailbox-contract" },
     { name = "mcp" },
     { name = "pydantic" },
@@ -599,6 +600,7 @@ dependencies = [
 
 [package.metadata]
 requires-dist = [
+    { name = "anyio" },
     { name = "mailbox-contract", editable = "../packages/mailbox-contract" },
     { name = "mcp", specifier = ">=2.3" },
     { name = "pydantic", specifier = ">=2" },

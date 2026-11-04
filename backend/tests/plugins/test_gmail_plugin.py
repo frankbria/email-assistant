@@ -77,11 +77,12 @@ def test_refs_that_arent_gmail_ids_are_not_found_without_reaching_the_server(ref
     [
         ([b"3 (X-GM-LABELS (\\Inbox \\Important) UID 12)"], {"\\inbox", "\\important"}),
         ([b'3 (X-GM-LABELS ("\\\\Inbox" "\\\\Sent" Work) UID 12)'], {"\\inbox", "\\sent", "work"}),
+        ([b'3 (X-GM-LABELS ("\\Inbox" "\\Important") UID 12)'], {"\\inbox", "\\important"}),
         ([b"3 (UID 12 X-GM-LABELS ())"], set()),
         ([b'3 (X-GM-LABELS ("Inbox (old)" "say \\"hi\\"") UID 12)'], {"inbox (old)", 'say "hi"'}),
         ([(b"3 (X-GM-LABELS (\\Important {6}", b"R\xc3\xa9sum"), b" \\Inbox) UID 12)"], {"\\important", "{6}", "\\inbox"}),
     ],
-    ids=["atoms", "quoted", "archived", "user-labels", "literal"],
+    ids=["atoms", "quoted", "loosely-quoted", "archived", "user-labels", "literal"],
 )
 def test_labels_are_parsed_from_gmail_responses(response: list[object], labels: set[str]):
     assert gmail_labels(response) == labels

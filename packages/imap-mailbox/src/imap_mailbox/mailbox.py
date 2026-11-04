@@ -261,7 +261,8 @@ class ImapMailbox:
             raise MailboxError(ErrorCode.UNAVAILABLE, "The IMAP server didn't return the message.")
         message = message_from_bytes(item[1], policy=policy.default)
         assert isinstance(message, EmailMessage)
-        self._add_server_headers(message, item[0])
+        # Items can come after the body literal too, in the response's trailing piece.
+        self._add_server_headers(message, item[0] + b"".join(part for part in data[1:] if isinstance(part, bytes)))
         return message
 
     def _add_server_headers(self, message: EmailMessage, fetch_line: bytes) -> None:
