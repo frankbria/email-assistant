@@ -39,8 +39,8 @@ export function approveJob(jobId: string, forwardTo?: string): Promise<Job> {
   return postJson(`/api/v1/jobs/${encodeURIComponent(jobId)}/approve`, { forward_to: forwardTo }, 'Failed to approve the job')
 }
 
-export function chooseVerb(jobId: string, verb: Verb): Promise<Job> {
-  return postJson(`/api/v1/jobs/${encodeURIComponent(jobId)}/choose`, { verb }, 'Failed to choose the action')
+export function chooseVerb(jobId: string, verb: Verb, always?: boolean): Promise<Job> {
+  return postJson(`/api/v1/jobs/${encodeURIComponent(jobId)}/choose`, { verb, always }, 'Failed to choose the action')
 }
 
 export function dismissJob(jobId: string): Promise<Job> {

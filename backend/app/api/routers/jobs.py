@@ -42,6 +42,7 @@ class JobCard(BaseModel):
     job: Job
     sender: Address
     subject: str
+    list_id: str | None  # the raw List-Id header: an "always" rule keys on it before the sender
 
 
 class JobEdit(BaseModel):
@@ -60,6 +61,7 @@ class Approval(BaseModel):
 
 class Choice(BaseModel):
     verb: Verb
+    always: bool = False  # "always do this for this sender/list": a rule decides their next messages
 
 
 class Correction(BaseModel):
@@ -99,9 +101,9 @@ async def list_jobs(owner_id: OwnerId) -> list[JobCard]:
     messages = await Message.find(In(Message.id, [job.message_ids[0] for job in jobs])).to_list()
     by_id = {message.id: message for message in messages}
     return [
-        JobCard(job=job, sender=by_id[job.message_ids[0]].sender, subject=by_id[job.message_ids[0]].subject)
+        JobCard(job=job, sender=message.sender, subject=message.subject, list_id=message.list_id)
         for job in jobs
-        if job.message_ids[0] in by_id
+        if (message := by_id.get(job.message_ids[0]))
     ]
 
 
@@ -158,8 +160,26 @@ async def choose_action(
     provider: AIProvider = Depends(get_ai_provider),
     settings: Settings = Depends(get_settings),
 ) -> Job:
+    """Spec §10.2: an ask-owner card's answer is kept as an example, and "always" teaches a rule, once the job
+    has the chosen proposal. Another action chosen for a proposed job is no answer to a question, so it's no example;
+    teaching from it is the correction's job (§10.4)."""
     job = await owned(job_id, owner_id)
-    return await propose_instead(job, await message_of(job), choice.verb, plugins, provider, settings)
+    message = await message_of(job)
+    chosen = await propose_instead(job, message, choice.verb, plugins, provider, settings)
+    if not job.ask_owner:  # another action for a proposed job answers no question; teaching from it is /correct's
+        return chosen
+    # The choice is already made, so a failed lesson mustn't become an error; each lesson stands on its own.
+    try:
+        await record_example(message, message.snippet, choice.verb, "ask_owner")
+    except Exception:
+        logger.exception("Couldn't record the example for job %s", job_id)
+    if choice.always:
+        try:
+            # the card names the stream ("for <list or sender>"), so the rule keys on it, not on a broader rule
+            await learn_rule(message, choice.verb, correct_the_deciding_rule=False)
+        except Exception:
+            logger.exception("Couldn't learn the rule for job %s", job_id)
+    return chosen
 
 
 async def message_of(job: Job) -> Message:

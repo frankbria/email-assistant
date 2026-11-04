@@ -22,9 +22,15 @@ interface AskOwnerCardProps {
   onRemoved: (jobId: string) => void
 }
 
+// "Garden deals <deals.shop.example>" is the Garden deals list; a List-Id without a name goes by its identifier.
+function listName(listId: string): string {
+  return listId.replace(/<.*>/, '').replaceAll('"', '').trim() || listId.replace(/[<>]/g, '').trim()
+}
+
 export function AskOwnerCard({ card, onReplaced, onRemoved }: AskOwnerCardProps) {
-  const { job, sender, subject } = card
+  const { job, sender, subject, list_id } = card
   const [busy, setBusy] = useState(false)
+  const [always, setAlways] = useState(false)
   // the AI ranks its suggestions, so keep its order
   const suggested = job.suggested_verbs.flatMap((verb) => ACTIONS.filter((action) => action.verb === verb))
   const others = ACTIONS.filter(({ verb }) => !job.suggested_verbs.includes(verb))
@@ -42,7 +48,7 @@ export function AskOwnerCard({ card, onReplaced, onRemoved }: AskOwnerCardProps)
   }
 
   function choose(verb: Job['verb']) {
-    return act(() => chooseVerb(job._id, verb), 'Failed to choose the action')
+    return act(() => chooseVerb(job._id, verb, always), 'Failed to choose the action')
   }
 
   return (
@@ -59,6 +65,17 @@ export function AskOwnerCard({ card, onReplaced, onRemoved }: AskOwnerCardProps)
         <p className="text-muted-foreground">{job.problems.join(' ')}</p>
       </CardContent>
       <CardFooter className="flex-wrap gap-2">
+        {/* a rule keys on the List-Id before the sender, as the backend's learn_rule does */}
+        <label className={`${TOUCH_TARGET} flex w-full items-center gap-2 text-sm`}>
+          <input
+            type="checkbox"
+            className="size-5 accent-primary"
+            checked={always}
+            disabled={busy}
+            onChange={(event) => setAlways(event.target.checked)}
+          />
+          Always do this for {list_id ? listName(list_id) : sender.email}
+        </label>
         {suggested.map(({ verb, label }) => (
           <Button key={verb} className={TOUCH_TARGET} disabled={busy} onClick={() => choose(verb)}>
             {label}
@@ -82,7 +99,8 @@ export function AskOwnerCard({ card, onReplaced, onRemoved }: AskOwnerCardProps)
         <Button
           variant="ghost"
           className={TOUCH_TARGET}
-          disabled={busy}
+          disabled={busy || always}
+          title={always ? 'Choose an action to make it a rule; dismissing teaches nothing' : undefined}
           onClick={() => act(() => dismissJob(job._id), 'Failed to dismiss the job')}
         >
           <HugeiconsIcon icon={Cancel01Icon} />

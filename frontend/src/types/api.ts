@@ -127,6 +127,7 @@ export interface JobCard {
   job: Job
   sender: { name: string | null; email: string }
   subject: string
+  list_id: string | null // the raw List-Id header
 }
 
 export interface JobEdit {
