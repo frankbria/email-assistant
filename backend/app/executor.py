@@ -225,12 +225,13 @@ async def undo(entry: ActionLogEntry, plugins: PluginRegistry) -> ActionLogEntry
 async def execute(
     job_id: PydanticObjectId, plugins: PluginRegistry, body: str | None = None, forward_to: str | None = None,
     *, by: Actor, level: PermissionLevel, unsubscribe_request: UnsubscribeMail | None = None,
+    unsubscribe_source: PydanticObjectId | None = None,
 ) -> Job:
     """The owner approved a reply, forward or unsubscribe email: send it from the account that received the mail,
     then finish the job (archive-on-done). A failed send leaves the job `failed` and the mail in the inbox
     (AC-2.2); calling this again retries, and once it was sent a retry only archives. `body` is the
     owner's text (None: the draft); `forward_to` is the recipient the owner confirmed; `unsubscribe_request` is the
-    mailto the owner confirmed (see unsubscribe)."""
+    mailto the owner confirmed (see unsubscribe), and `unsubscribe_source` the copy it was read from."""
     job = await Job.get(job_id)
     if job is None or job.verb not in ("reply", "forward", "unsubscribe"):
         raise ValueError(f"only reply, forward and unsubscribe jobs send; job {job_id} isn't one")
@@ -243,6 +244,8 @@ async def execute(
         {"state": {"$in": ["open", "failed"]}},
         {"state": "sending", "sending_since": {"$lt": now - STALE_SENDING}},
     ]}
+    if unsubscribe_source is not None:  # send goes through message_ids[0]: the account whose header named the target
+        claimable["message_ids.0"] = unsubscribe_source
     # Out of open/failed first, so a sync pass can't close it as handled elsewhere mid-send.
     claimed = await Job.get_pymongo_collection().find_one_and_update(
         claimable, {"$set": {"state": "sending", "sending_since": now, "error": None}}, return_document=ReturnDocument.AFTER
@@ -323,12 +326,15 @@ async def unsubscribe(job_id: PydanticObjectId, plugins: PluginRegistry, confirm
     """The owner's tap on an unsubscribe job, so always `by` the owner (spec §4: never_auto). The target is read from
     the mail again and must be the one the owner was shown: an https link was opened by their browser, so the job
     only finishes; a mailto is sent to its one address."""
+    job = await Job.get(job_id)
+    source = job.message_ids[0] if job and job.message_ids else None  # before the read: a later change fails the claim
     target = await unsubscribe_target_of(job_id, plugins)
     if target != confirmed_target:
         raise ValueError("confirm the unsubscribe target this mail names")
     if is_https(target):
         return await finish(job_id, "done", plugins, verb="unsubscribe", by="owner", level=level)
-    return await execute(job_id, plugins, by="owner", level=level, unsubscribe_request=unsubscribe_mail(target))
+    return await execute(job_id, plugins, by="owner", level=level, unsubscribe_request=unsubscribe_mail(target),
+                         unsubscribe_source=source)
 
 
 async def unsubscribe_target_of(job_id: PydanticObjectId, plugins: PluginRegistry) -> str:

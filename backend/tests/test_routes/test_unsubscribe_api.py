@@ -6,7 +6,7 @@ from datetime import UTC, datetime
 
 import pytest
 
-from app.executor import execute
+from app.executor import JobNotOpen, execute
 from app.models.action_log import ActionLogEntry
 from app.models.job import Artifacts, Job
 from app.models.message import Message
@@ -125,3 +125,19 @@ async def test_an_unsubscribe_request_never_sends_a_job_that_became_a_reply_mean
         await execute(job.id, plugins, by="owner", level="never_auto", unsubscribe_request=request)
 
     assert ana.messages("INBOX") == [] and (await Job.get(job.id)).state == "open"
+
+
+async def test_an_unsubscribe_request_never_goes_out_through_another_copy_than_the_one_read(test_db, mailbox, plugins):
+    """The target was read from one copy, then a sync dropped that copy from the job: sending through the copy left
+    would mail another account's unsubscribe from the wrong mailbox."""
+    leave = new_mailbox()
+    job = await unsubscribe_job(mailbox, f"<mailto:{leave.address}>")
+    read_copy = job.message_ids[0]
+    other = await unsubscribe_job(mailbox, f"<mailto:{leave.address}>")
+    await Job.get_pymongo_collection().update_one({"_id": job.id}, {"$set": {"message_ids": other.message_ids}})
+
+    with pytest.raises(JobNotOpen):
+        await execute(job.id, plugins, by="owner", level="never_auto",
+                      unsubscribe_request=unsubscribe_mail(f"mailto:{leave.address}"), unsubscribe_source=read_copy)
+
+    assert leave.messages("INBOX") == [] and await still_open(job)
