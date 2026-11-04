@@ -42,8 +42,11 @@ TIME_LANGUAGE = re.compile(  # no "may", "sat", "sun", "wed" or "mar": they're e
     r"\d{1,2}(:\d{2})?\s*[ap]\.?m\.?|\d{1,2}:\d{2}|o'clock)\b",
     re.IGNORECASE,
 )
-SCHEDULING = re.compile(r"\b(meet(ing)?s?|call|schedul\w*|reschedul\w*|calendar|appointment|availab\w*|time slots?)\b",
-                        re.IGNORECASE)
+SCHEDULING = re.compile(  # meeting words, or a clock time the job made up
+    r"\b(meet(ing)?s?|call|schedul\w*|reschedul\w*|calendar|appointment|availab\w*|time slots?|"
+    r"\d{1,2}(:\d{2})?\s*[ap]\.?m\.?|\d{1,2}:\d{2})\b",
+    re.IGNORECASE,
+)
 
 Line = dict[str, Any]
 
@@ -88,12 +91,12 @@ def rate(name: str, count: int, total: int, threshold: float, at_most: bool) -> 
 def measure(lines: Sequence[Line], jobs: Sequence[Job]) -> list[Metric]:
     """`jobs[i]` is the decision on `lines[i]`. An ask-owner card proposes nothing, so it classifies nothing."""
     pairs = list(zip(lines, jobs, strict=True))
-    proposals = [(line, job) for line, job in pairs if not job.ask_owner and job.verb not in NOISE]
+    proposals = [(line, job) for line, job in pairs if proposes(job)]
     verbs = Counter(job.verb for _, job in proposals)
     top, most = verbs.most_common(1)[0] if verbs else ("none", 0)
     accepted = sum(job.verb == line["owner_verb"] for line, job in proposals)
     timeless = [(line, job) for line, job in pairs if not TIME_LANGUAGE.search(f"{line['subject']} {line['text']}")]
-    scheduling = [line["subject"] for line, job in timeless if not job.ask_owner and SCHEDULING.search(job_text(job))]
+    scheduling = [line["subject"] for line, job in timeless if proposes(job) and SCHEDULING.search(job_text(job))]
     as_noise = [not job.ask_owner and job.verb in NOISE for _, job in pairs]
     needs_me = [noise for (line, _), noise in zip(pairs, as_noise) if line["owner_verb"] not in NOISE]
     owner_noise = [noise for (line, _), noise in zip(pairs, as_noise) if line["owner_verb"] in NOISE]
@@ -105,6 +108,11 @@ def measure(lines: Sequence[Line], jobs: Sequence[Job]) -> list[Metric]:
         rate("AC-4.1 owner-marked needs-me classified as noise", sum(needs_me), len(needs_me), NEEDS_ME_AS_NOISE, at_most=True),
         rate("AC-4.2 owner-marked noise classified as noise", sum(owner_noise), len(owner_noise), NOISE_FOUND, at_most=False),
     ]
+
+
+def proposes(job: Job) -> bool:
+    """A non-noise proposal: noise schedules nothing, whatever its title says."""
+    return not job.ask_owner and job.verb not in NOISE
 
 
 def job_text(job: Job) -> str:

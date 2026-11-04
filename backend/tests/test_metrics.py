@@ -8,7 +8,9 @@ from pathlib import Path
 import pytest
 from beanie import PydanticObjectId
 from pydantic import BaseModel
+from pymongo import AsyncMongoClient
 
+from app.config import get_settings
 from app.metrics import Metric, evaluate, measure, run
 from app.models.job import Artifacts, Job, Verb
 from app.pipeline.proposal import Proposal
@@ -83,6 +85,10 @@ def test_ac_3_4_no_scheduling_job_for_mail_without_meeting_or_time_language():
     assert outcome(measure(lines, [job("reply"), job("reply", draft=scheduling)]), "AC-3.4").passed
     failed = outcome(measure(lines, [job("reply", draft=scheduling), job("reply")]), "AC-3.4")
     assert not failed.passed and "Order shipped" in failed.detail
+    made_up_time = outcome(measure(lines, [job("reply", draft="Does Tuesday 3pm suit you?"), job("reply")]), "AC-3.4")
+    assert not made_up_time.passed
+    noise_title = [job("archive_noise", title="The shop's meeting-room furniture sale"), job("reply")]
+    assert outcome(measure(lines, noise_title), "AC-3.4").passed  # noise schedules nothing
 
 
 def test_ac_4_1_at_most_two_percent_of_needs_me_mail_is_classified_as_noise():
@@ -135,3 +141,5 @@ async def test_one_command_reports_every_metric_and_fails_on_any_fail(tmp_path: 
     assert await run(str(test_set), ai) == 1
     failing = capsys.readouterr().out
     assert "FAIL  AC-4.2" in failing and "FAIL  AC-3.3 verb spread" in failing
+    databases = await AsyncMongoClient(get_settings().current_mongodb_uri).list_database_names()
+    assert not [name for name in databases if name.endswith("_metrics")]  # the scratch database is gone
