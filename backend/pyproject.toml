@@ -3,7 +3,7 @@ name = "email-assistant-backend"
 version = "0.1.0"
 description = "Backend API for an AI email assistant that processes emails, classifies them, and generates actionable task cards."
 readme = "README.md"
-requires-python = ">=3.13"
+requires-python = ">=3.14"
 dependencies = [
     "anthropic>=2.3.0",
     "beanie>=2",

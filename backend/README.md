@@ -14,7 +14,7 @@ The backend API for an executive-style AI assistant that processes emails, class
 
 ### Prerequisites
 
-- Python 3.13+
+- Python 3.14+
 - MongoDB instance (local or Atlas)
 - [uv](https://docs.astral.sh/uv/) installed (for dependency management)
 

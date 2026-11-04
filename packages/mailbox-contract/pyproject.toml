@@ -2,7 +2,7 @@
 name = "mailbox-contract"
 version = "1.0.0"
 description = "The mailbox/1 MCP plugin contract: tool schemas, error codes, version rules."
-requires-python = ">=3.13"
+requires-python = ">=3.14"
 dependencies = ["pydantic>=2"]
 
 [build-system]

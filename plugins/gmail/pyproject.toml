@@ -2,7 +2,7 @@
 name = "gmail-mailbox-plugin"
 version = "0.1.0"
 description = "mailbox/1 plugin for Gmail over IMAP/SMTP with an app password."
-requires-python = ">=3.13"
+requires-python = ">=3.14"
 dependencies = ["imap-mailbox", "mailbox-contract", "mcp>=2.3", "pydantic-settings>=2"]
 
 [project.scripts]

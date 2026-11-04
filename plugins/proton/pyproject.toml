@@ -2,7 +2,7 @@
 name = "proton-mailbox-plugin"
 version = "0.1.0"
 description = "mailbox/1 plugin for Proton Mail through Proton Mail Bridge."
-requires-python = ">=3.13"
+requires-python = ">=3.14"
 dependencies = ["imap-mailbox", "mailbox-contract", "mcp>=2.3", "pydantic-settings>=2", "uvicorn"]
 
 [project.scripts]

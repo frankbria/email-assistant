@@ -54,7 +54,7 @@ v1 is in progress; see the [open issues](https://github.com/frankbria/email-assi
 | Layer | Tech |
 |---|---|
 | Frontend | Next.js 16 + Tailwind CSS (Node.js 24) |
-| Backend | FastAPI + Beanie (MongoDB ODM), Python 3.13+ |
+| Backend | FastAPI + Beanie (MongoDB ODM), Python 3.14+ |
 | Database | MongoDB (Atlas, or a local container) |
 | Auth | Better Auth (single owner); the API verifies its JWTs |
 | AI | Anthropic Claude behind a provider interface |

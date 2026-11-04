@@ -2,7 +2,7 @@
 name = "imap-mailbox"
 version = "0.1.0"
 description = "Reference mailbox/1 MCP plugin over IMAP/SMTP; the base of the Proton and Gmail plugins."
-requires-python = ">=3.13"
+requires-python = ">=3.14"
 dependencies = ["anyio", "mailbox-contract", "mcp>=2.3", "pydantic>=2", "pydantic-settings>=2"]
 
 [project.scripts]
