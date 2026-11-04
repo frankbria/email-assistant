@@ -562,4 +562,14 @@ describe('Ask-owner card', () => {
     await waitFor(() => expect(screen.queryByRole('article', { name: 'Q4 budget' })).not.toBeInTheDocument())
     expect(requestTo(1).url).toMatch(/\/api\/v1\/jobs\/job-1\/dismiss$/)
   })
+
+  it('dismissing an ask-owner digest names the messages it showed, as the server requires', async () => {
+    const card = await renderQueue({ ...askOwner, job: { ...askOwner.job, verb: 'digest', message_ids: ['m1'] } })
+    mockFetch.mockResolvedValueOnce(Response.json({ ...askOwner.job, state: 'dismissed' }))
+
+    await userEvent.click(within(card).getByRole('button', { name: 'Dismiss' }))
+
+    await waitFor(() => expect(mockFetch).toHaveBeenCalledTimes(2))
+    expect(requestTo(1).body).toEqual({ message_ids: ['m1'] })
+  })
 })

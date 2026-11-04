@@ -101,7 +101,7 @@ export function AskOwnerCard({ card, onReplaced, onRemoved }: AskOwnerCardProps)
           className={TOUCH_TARGET}
           disabled={busy || always}
           title={always ? 'Choose an action to make it a rule; dismissing teaches nothing' : undefined}
-          onClick={() => act(() => dismissJob(job._id), 'Failed to dismiss the job')}
+          onClick={() => act(() => dismissJob(job._id, job.verb === 'digest' ? job.message_ids : undefined), 'Failed to dismiss the job')}
         >
           <HugeiconsIcon icon={Cancel01Icon} />
           Dismiss

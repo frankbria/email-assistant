@@ -2,6 +2,7 @@
 # it archives every message, and undoing that archive restores them all. Real MongoDB; GreenMail + the reference IMAP
 # plugin; FakeAIProvider proposing `digest`; real SyncEngine passes after an empty first pass.
 import pytest
+from beanie.operators import In
 from fastapi import HTTPException
 
 from app.api.routers.jobs import archive_as_noise, replace_proposal
@@ -213,3 +214,12 @@ async def test_copies_of_one_email_in_two_accounts_are_one_message_to_the_guard(
     chosen = await async_client.patch(f"/api/v1/jobs/{job.id}", json={"options": ["a"]})
 
     assert chosen.status_code == 200
+
+
+async def test_emails_without_a_message_id_are_never_taken_for_copies_of_one(async_client, test_db, mailbox, plugins):
+    digest = await three_newsletters_in_one_digest(test_db, mailbox, plugins)
+    await Message.find(In(Message.id, digest.message_ids)).update({"$set": {"message_id": ""}})
+
+    corrected = await async_client.post(f"/api/v1/jobs/{digest.id}/correct", json={"kind": "noise"})
+
+    assert corrected.status_code == 409 and len(mailbox.messages("INBOX")) == 3
