@@ -278,8 +278,11 @@ async def archive_as_noise(job: Job, message: Message, plugins: PluginRegistry) 
     noise: dict[str, object] = {"verb": "archive_noise", "title": message.subject.strip() or "(no subject)", "evidence": [], "due": None,
              "ask_owner": False, "suggested_verbs": [], "problems": [], "edited": False, "error": None, "reminder": None,
              "artifacts": Artifacts(noise_rationale="you marked this as noise").model_dump()}
-    marked = await Job.find({"_id": job_id, "state": {"$in": IN_QUEUE}, "sent_at": None}).update({"$set": noise})
+    # Only over the mail the owner judged: a digest may have gathered more since the guard (see replace_proposal).
+    marked = await Job.find(
+        {"_id": job_id, "state": {"$in": IN_QUEUE}, "sent_at": None, "message_ids": job.message_ids}
+    ).update({"$set": noise})
     if not marked.matched_count:
-        raise HTTPException(status_code=409, detail=f"job {job_id} isn't open")
+        raise HTTPException(status_code=409, detail=f"job {job_id} isn't open or its mail changed, try again")
     level = await tapped_level(job.owner_id, "archive_noise")
     return await acting(lambda: finish(job_id, "done", plugins, claim_from=("open", "failed"), verb="archive_noise", by="owner", level=level))

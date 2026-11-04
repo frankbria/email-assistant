@@ -4,7 +4,7 @@
 import pytest
 from fastapi import HTTPException
 
-from app.api.routers.jobs import replace_proposal
+from app.api.routers.jobs import archive_as_noise, replace_proposal
 from app.models.example import Example
 from app.models.job import Artifacts, Job
 from app.models.message import Message
@@ -157,3 +157,14 @@ async def test_a_proposal_is_not_stored_over_a_job_whose_messages_changed_while_
 
     assert refused.value.status_code == 409
     assert (await Job.get(digest.id)).verb == "digest"
+
+
+async def test_a_noise_correction_is_not_stored_over_a_job_whose_messages_changed_meanwhile(test_db, mailbox, plugins):
+    digest = await three_newsletters_in_one_digest(test_db, mailbox, plugins)
+    snapshot = digest.model_copy(update={"message_ids": digest.message_ids[:1]})
+
+    with pytest.raises(HTTPException) as refused:
+        await archive_as_noise(snapshot, await message_of_digest(digest), plugins)
+
+    assert refused.value.status_code == 409
+    assert (await Job.get(digest.id)).verb == "digest" and len(mailbox.messages("INBOX")) == 3
