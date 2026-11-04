@@ -27,8 +27,9 @@ export async function updateUserSettings(settings: AssistantSettings): Promise<A
     body: JSON.stringify(settings),
   });
   if (res.status === 422) {
-    const detail: ValidationDetail = (await res.json()).detail;
-    // FastAPI's loc is ["body", field]; the field is last.
+    const detail: ValidationDetail | string | undefined = (await res.json().catch(() => ({}))).detail;
+    // Only FastAPI's request validation sends a list; its loc is ["body", field], so the field is last.
+    if (!Array.isArray(detail)) throw new Error(typeof detail === "string" ? detail : "Failed to save settings");
     throw new SettingsRejected(Object.fromEntries(detail.map(({ loc, msg }) => [String(loc[loc.length - 1]), msg])));
   }
   if (!res.ok) throw new Error("Failed to save settings");

@@ -62,6 +62,7 @@ async def test_settings_the_forwarding_model_used_are_gone_even_from_a_document_
         {"ai_provider": "openai"},
         {"ai_model": ""},
         {"ai_model": "   "},
+        {"ai_model": "m" * 201},
         {"poll_seconds": 4},
         {"poll_seconds": 86401},
         {"first_connect_days": 0},

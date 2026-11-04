@@ -8,7 +8,7 @@ from pydantic import BaseModel, Field, StringConstraints
 
 from app.config import AIProviderName, get_settings
 
-AIModel = Annotated[str, StringConstraints(strip_whitespace=True, min_length=1)]
+AIModel = Annotated[str, StringConstraints(strip_whitespace=True, min_length=1, max_length=200)]
 PollSeconds = Annotated[float, Field(ge=5, le=86_400)]  # 5 s to a day
 FirstConnectDays = Annotated[int, Field(ge=1, le=365)]
 

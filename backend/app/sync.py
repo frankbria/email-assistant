@@ -184,9 +184,18 @@ class SyncEngine:
         if owner is None:
             return self.poll_seconds  # nobody has signed up yet, so there is no one to sync for
         owner_id = str(owner["_id"])
-        saved = await UserSettings.find_one(UserSettings.user_id == owner_id)
+        # Mail sync must not depend on reading settings: on a failure use the defaults, and leave mail pending.
+        try:
+            saved = await UserSettings.find_one(UserSettings.user_id == owner_id)
+        except Exception:
+            logger.exception("Reading the owner's settings failed; using the defaults this pass")
+            saved = None
         window_days = saved.first_connect_days if saved else self.first_connect_days
-        provider = await self.ai_provider_for(owner_id) if self.ai_provider_for is not None else None
+        try:
+            provider = await self.ai_provider_for(owner_id) if self.ai_provider_for is not None else None
+        except Exception:
+            logger.exception("Choosing the AI provider failed; new mail stays pending until the next pass")
+            provider = None
         if self.permissions_file is not None:
             try:  # before the pipeline, so an edited permissions.yaml applies to this pass's mail
                 await sync_permissions_file(owner_id, self.permissions_file)

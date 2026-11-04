@@ -11,6 +11,7 @@ const requests: RecordedRequest[] = []
 let signedIn = true
 let tokenEndpointBroken = false
 let rejectSettings = false
+let rejectSettingsWithReason: string | null = null
 let server: Server
 
 function readBody(request: IncomingMessage): Promise<string> {
@@ -37,6 +38,11 @@ beforeAll(async () => {
       return
     }
     requests.push({ method: request.method ?? '', url, authorization: request.headers.authorization, body })
+    if (rejectSettingsWithReason !== null) {
+      response.statusCode = 422 // an HTTPException, not request validation
+      response.end(JSON.stringify({ detail: rejectSettingsWithReason }))
+      return
+    }
     if (rejectSettings) {
       response.statusCode = 422 // FastAPI's validation error shape
       response.end(JSON.stringify({ detail: [{ loc: ['body', 'poll_seconds'], msg: 'Input should be greater than or equal to 5', type: 'greater_than_equal' }] }))
@@ -58,6 +64,7 @@ beforeEach(() => {
   signedIn = true
   tokenEndpointBroken = false
   rejectSettings = false
+  rejectSettingsWithReason = null
 })
 
 async function callEveryService() {
@@ -124,6 +131,16 @@ describe('frontend → FastAPI requests', () => {
 
     expect(failure).toBeInstanceOf(settings.SettingsRejected)
     expect(failure).toMatchObject({ fieldErrors: { poll_seconds: 'Input should be greater than or equal to 5' } })
+  })
+
+  it('show the server reason for a 422 that is not field validation', async () => {
+    rejectSettingsWithReason = 'settings are locked'
+    const settings = await import('@/services/settingsService')
+
+    const failure = await settings.updateUserSettings(CHOSEN).catch((error: unknown) => error)
+
+    expect(failure).not.toBeInstanceOf(settings.SettingsRejected)
+    expect(failure).toMatchObject({ message: 'settings are locked' })
   })
 
   it('are not sent at all without a session', async () => {
