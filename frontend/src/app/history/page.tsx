@@ -35,8 +35,8 @@ function HistoryRow({ card, onUndone }: { card: HistoryCard; onUndone: (restore:
     setBusy(true)
     try {
       const restore = await undoEntry(entry._id)
-      if (restore.ok) onUndone({ entry: restore, sender, subject })
-      else showToast.error(restore.error ?? 'Failed to undo')
+      onUndone({ entry: restore, sender, subject })
+      if (!restore.ok) showToast.error(restore.error ?? 'Failed to undo')
     } catch (error) {
       showToast.error(error instanceof Error ? error.message : 'Failed to undo')
     }
@@ -99,7 +99,7 @@ function Timeline() {
   const markUndone = useCallback((undoneId: string, restore: HistoryCard) => {
     setCards((current) => [
       restore,
-      ...current.map((card) => (card.entry._id === undoneId ? { ...card, entry: { ...card.entry, undone: true } } : card)),
+      ...current.map((card) => (restore.entry.ok && card.entry._id === undoneId ? { ...card, entry: { ...card.entry, undone: true } } : card)),
     ])
   }, [])
 

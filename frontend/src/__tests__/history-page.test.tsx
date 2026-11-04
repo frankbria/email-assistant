@@ -75,7 +75,7 @@ function rowFor(subject: string) {
 
 describe('History page', () => {
   beforeEach(() => {
-    vi.clearAllMocks()
+    mockFetch.mockReset()
   })
 
   it('labels each entry with what happened, the message, who did it and why it failed', async () => {
@@ -145,9 +145,11 @@ describe('History page', () => {
 
     await userEvent.click(screen.getByRole('button', { name: 'Undo' }))
 
-    expect(await screen.findByText("couldn't restore the message")).toBeInTheDocument()
+    // once in the toast, once on the failed restore's row
+    expect(await screen.findAllByText("couldn't restore the message")).toHaveLength(2)
     expect(screen.getByRole('button', { name: 'Undo' })).toBeEnabled()
-    expect(historyRows()).toHaveLength(1)
+    // the failed restore is on the server's timeline too, so it shows here
+    expect(historyRows()).toHaveLength(2)
   })
 
   it('a refused undo shows the reason', async () => {

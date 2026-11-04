@@ -13,7 +13,7 @@ function historyRow(page: Page, subject: string, label: string) {
 }
 
 function ownerInboxSubjects(): string[] {
-  return inbox(process.env.E2E_MAILBOX_ACCOUNT ?? '').map((mail) => mail.subject)
+  return inbox(ownerAccount()).map((mail) => mail.subject)
 }
 
 test('a sent reply cannot be unsent, and undoing its archive puts the mail back in the inbox', async ({ page }) => {
@@ -21,7 +21,7 @@ test('a sent reply cannot be unsent, and undoing its archive puts the mail back 
   await page.goto('/')
   await page.getByRole('article', { name: job.title }).getByRole('button', { name: 'Approve' }).click()
   await expect(page.getByRole('article', { name: job.title })).toHaveCount(0)
-  expect(ownerInboxSubjects()).not.toContain(job.title)
+  await expect.poll(ownerInboxSubjects, { timeout: 30_000, intervals: [1_000] }).not.toContain(job.title)
 
   await page.goto('/history')
   const sent = historyRow(page, job.title, 'Sent reply')
@@ -40,3 +40,9 @@ test('a sent reply cannot be unsent, and undoing its archive puts the mail back 
   await expect(historyRow(page, job.title, 'Restored')).toBeVisible()
   await expect.poll(ownerInboxSubjects, { timeout: 30_000, intervals: [1_000] }).toContain(job.title)
 })
+
+function ownerAccount(): string {
+  const account = process.env.E2E_MAILBOX_ACCOUNT
+  if (!account) throw new Error('E2E_MAILBOX_ACCOUNT is unset: the owner setup project must run first')
+  return account
+}

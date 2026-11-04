@@ -125,6 +125,8 @@ class Mailbox:
             parsed = []
             for uid in data[0].split():
                 _, fetched = connection.uid("FETCH", uid, "(RFC822)")
+                if fetched[0] is None:  # moved out between SEARCH and FETCH by a concurrent archive
+                    continue
                 raw = fetched[0][1]
                 assert isinstance(raw, bytes)
                 message = message_from_bytes(raw, policy=policy.default)
