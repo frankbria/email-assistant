@@ -2,8 +2,11 @@
 # placeholders in the AI's answer become the real values again. Pure text: no services needed.
 from datetime import UTC, datetime
 
+import pytest
+
 from app.pipeline.proposal import Proposal
 from app.pipeline.redact import Redaction
+from app.services.ai_provider import AIProposalError
 
 MAIL = """Hi Frank,
 
@@ -58,7 +61,7 @@ def test_a_placeholder_already_in_the_mail_is_never_reused_or_restored_to_someth
     redacted = redaction.redact("Literal EMAIL_1 and real a@x.example")
 
     assert redacted == "Literal EMAIL_1 and real EMAIL_2"
-    assert redaction.restore("EMAIL_1 EMAIL_2 PERSON_7") == "EMAIL_1 a@x.example PERSON_7"
+    assert redaction.restore("EMAIL_1 EMAIL_2") == "EMAIL_1 a@x.example"
 
 
 def test_every_text_field_of_a_proposal_is_restored():
@@ -74,3 +77,43 @@ def test_every_text_field_of_a_proposal_is_restored():
     assert (restored.title, restored.evidence, restored.draft) == ("Pay Ana Lopez's invoice", ["pay at https://acme.example/pay"], "Hi Ana Lopez")
     assert (restored.options, restored.forward_to, restored.link) == (["Yes, Ana Lopez"], "ana@acme.example", "https://acme.example/pay")
     assert restored.due == proposal.due
+
+
+def test_links_without_a_scheme_and_national_phone_numbers_are_caught():
+    text = "Pay at acme.example/pay/42 or bit.ly/Xy12, see acme.com. Ring 020 7946 0958, 07700 900123 or 06 12 34 56 78."
+
+    redacted = Redaction([]).redact(text)
+
+    for real in ("acme.example", "bit.ly", "acme.com", "020 7946 0958", "07700 900123", "06 12 34 56 78"):
+        assert real not in redacted, real
+
+
+def test_a_word_like_code_or_pin_never_eats_a_date_and_european_dates_are_no_phones():
+    text = "I'll pin this down by 2026-12-31; code word by 2026-12-31; meet 05.12.2026 or 05-12-2026, file report.pdf."
+
+    assert Redaction([]).redact(text) == text
+
+
+def test_a_link_with_parentheses_restores_exactly():
+    redaction = Redaction([])
+    text = "See https://en.wikipedia.org/wiki/Function_(math) for more."
+
+    redacted = redaction.redact(text)
+
+    assert "wikipedia" not in redacted and redaction.restore(redacted) == text
+
+
+def test_greeting_and_sign_off_names_with_accents_or_apostrophes_and_only_one_word_after_a_greeting():
+    redacted = Redaction([]).redact("Hi José Please find it attached, Please.\n\nRegards,\n\nSeán O'Brien")
+
+    assert "José" not in redacted and "Seán" not in redacted and "O'Brien" not in redacted
+    assert redacted.count("Please") == 2
+
+
+def test_a_placeholder_the_ai_made_up_is_refused_rather_than_shown_to_the_owner():
+    redaction = Redaction([])
+    redaction.redact("Literal PERSON_4 and a@x.example")
+
+    assert redaction.restore("PERSON_4 EMAIL_1") == "PERSON_4 a@x.example"
+    with pytest.raises(AIProposalError):
+        redaction.restore("Hi PERSON_9")

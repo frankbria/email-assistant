@@ -11,25 +11,42 @@ from typing import TypeVar
 
 from pydantic import BaseModel
 
+from app.services.ai_provider import AIProposalError
+
 ModelT = TypeVar("ModelT", bound=BaseModel)
 
 PLACEHOLDER = re.compile(r"\b(?:PERSON|EMAIL|PHONE|URL|ACCOUNT|CODE)_\d+\b")
-URL_END = r"[^\s<>\"'()\[\]]*[^\s<>\"'()\[\].,;:!?]"
+# Like validate.URL: anything up to whitespace or <>, less the prose punctuation after it, so a restored link passes whole_link.
+URL_REST = r"[^\s<>]*[^\s<>.,;:!?)\]'\"]"
+DOMAIN = r"(?<![\w@.-])(?:[a-z0-9-]+\.)+"
+BARE_TLDS = "com|org|net|edu|gov|io|co|uk|us|ca|de|fr|es|it|nl|au|ly|me|app|dev|info|biz"
 # Most specific first: an email's or URL's digits are never read as a phone or an account.
 PATTERNS = [
     ("EMAIL", re.compile(r"[\w.+-]+@[\w-]+(?:\.[\w-]+)+")),
-    ("URL", re.compile(rf"\bhttps?://{URL_END}|\bwww\.{URL_END}", re.IGNORECASE)),
+    # With a scheme or www., a bare domain with a path (bit.ly/x), or a bare domain on a common TLD (acme.com).
+    ("URL", re.compile(
+        rf"(?<![\w@.-])(?:https?://|www\.){URL_REST}|{DOMAIN}[a-z]{{2,}}/{URL_REST}|{DOMAIN}(?:{BARE_TLDS})\b(?![.-]?\w)",
+        re.IGNORECASE,
+    )),
     # Card numbers in groups of four, IBANs, and any long run of digits (account, card, reference).
     ("ACCOUNT", re.compile(r"\b\d{4}(?:[ -]\d{4}){2,3}\b|\b[A-Z]{2}\d{2}[A-Z0-9]{10,30}\b|\b\d{8,19}\b")),
-    # Only the digits after a word that names a code: "code is 482913", "PIN: 1234".
-    ("CODE", re.compile(r"\b(?:code|passcode|OTP|PIN)\b\D{0,20}?\b(\d{4,8})\b", re.IGNORECASE)),
-    # International (+44 20 7946 0958) or North American ((555) 123-4567, 555.123.4567); a date's 4-2-2 never fits.
-    ("PHONE", re.compile(r"\+\d{1,3}(?:[ .-]?\(?\d{2,4}\)?){2,5}(?!\w)|(?<![\w+])(?:\(\d{3}\) ?|\d{3}[ .-]?)\d{3}[ .-]?\d{4}(?!\w)")),
+    # Only digits right after a word that names a code ("code is 482913", "PIN: 1234"), and never part of a date.
+    ("CODE", re.compile(r"\b(?:code|passcode|OTP|PIN)\b(?:\s*(?:is|was|[:=#])\s*|\s+)(\d{4,8})(?![\w/.-]?\d)", re.IGNORECASE)),
+    # International (+44 20 7946 0958), North American ((555) 123-4567) or national with a trunk 0 (020 7946 0958);
+    # PHONE_DIGITS keeps dates (05.12.2026) out.
+    ("PHONE", re.compile(
+        r"\+\d{1,3}(?:[ .-]?\(?\d{2,4}\)?){2,5}(?!\w)|(?<![\w+])(?:\(\d{3}\) ?|\d{3}[ .-]?)\d{3}[ .-]?\d{4}(?!\w)"
+        r"|(?<![\w+.-])0\d{1,4}(?:[ .-]?\d{2,4}){2,4}(?![\w.-]?\d)"
+    )),
 ]
-NAME = r"[A-Z][a-z'’-]+(?: [A-Z][a-z'’-]+)?"
+PHONE_DIGITS = 9
+WORD = r"[A-ZÀ-Þ](?:[^\W\d_]|['’-](?=[^\W\d_]))+"  # José, O'Brien
 # Who a mail is to or from, by its greeting ("Hi Frank,") or sign-off ("Best regards,\nAna").
-GREETING = re.compile(rf"\b(?:Hi|Hello|Hey|Dear|Thanks|Thank you|Cheers)[ ,]+({NAME})\b")
-SIGN_OFF = re.compile(rf"\b(?:[Rr]egards|Thanks|Cheers|Best|Sincerely|Yours|Love)[,!.]?[ \t]*\n[ \t]*({NAME})[ \t]*$", re.MULTILINE)
+GREETING = re.compile(rf"\b(?:Hi|Hello|Hey|Dear|Thanks|Thank you|Cheers)[ ,]+({WORD})\b")
+SIGN_OFF = re.compile(
+    rf"\b(?:[Rr]egards|Thanks|Cheers|Best|Sincerely|Yours|Love)[,!.]?[ \t]*(?:\n[ \t]*){{1,2}}({WORD}(?: {WORD})?)[ \t]*$",
+    re.MULTILINE,
+)
 
 
 class Redaction:
@@ -54,6 +71,8 @@ class Redaction:
         return text
 
     def swap(self, match: re.Match[str], kind: str) -> str:
+        if kind == "PHONE" and sum(character.isdigit() for character in match.group(0)) < PHONE_DIGITS:
+            return match.group(0)
         group = 1 if match.re.groups else 0
         value = match.group(group)
         if value not in self.placeholders:
@@ -68,7 +87,17 @@ class Redaction:
         return whole[: start - match.start()] + self.placeholders[value] + whole[end - match.start():]
 
     def restore(self, text: str) -> str:
-        return PLACEHOLDER.sub(lambda match: self.values.get(match.group(0), match.group(0)), text)
+        """Raises AIProposalError for a placeholder the AI made up: the owner must never see "Hi PERSON_9"."""
+
+        def value(match: re.Match[str]) -> str:
+            placeholder = match.group(0)
+            if placeholder in self.taken:
+                return placeholder  # it was in the mail itself
+            if placeholder not in self.values:
+                raise AIProposalError(f"the AI answered with an unknown placeholder {placeholder}")
+            return self.values[placeholder]
+
+        return PLACEHOLDER.sub(value, text)
 
     def restore_model(self, model: ModelT) -> ModelT:
         """Every text in the AI's structured answer, restored; dates and numbers are left as they are."""
