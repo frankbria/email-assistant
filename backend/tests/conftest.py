@@ -2,6 +2,7 @@
 
 import os
 import sys
+from datetime import UTC
 
 
 # Ensure imports resolve properly
@@ -56,7 +57,7 @@ async def test_db():
 
     # pytest-asyncio (auto mode) runs this fixture and the test in the same
     # function-scoped loop, so the client lives and dies with that loop.
-    client: AsyncMongoClient[dict[str, object]] = AsyncMongoClient(mongo_uri)
+    client: AsyncMongoClient[dict[str, object]] = AsyncMongoClient(mongo_uri, tz_aware=True, tzinfo=UTC)
 
     db = client[test_db_name]
 

@@ -23,6 +23,7 @@ from app.sync import SyncEngine
 import logging
 import asyncio
 import os
+from datetime import UTC
 
 # Configure logging manually
 LOG_LEVEL = os.getenv("LOG_LEVEL", "INFO").upper()
@@ -55,6 +56,8 @@ async def init_db(settings: Settings | None = None):
         socketTimeoutMS=5000,
         connectTimeoutMS=5000,
         tls=settings.current_mongodb_uri.startswith("mongodb+srv://"),
+        tz_aware=True,  # naive datetimes reach the API without an offset and browsers read them as local time
+        tzinfo=UTC,
     )
     await init_beanie(
         database=client[settings.current_mongodb_db],

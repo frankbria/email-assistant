@@ -72,7 +72,7 @@ async def process(message: Message, client: Client, provider: AIProvider, cap: i
     elif job.state == "open" and job.permission_level is None:
         await act_if_autonomous(job, plugins)  # stored, then a crash before acting: act now
     elif job.state == "sending":  # an autonomous send a crash interrupted: retry once its claim is stale
-        if job.sending_since and job.sending_since.replace(tzinfo=UTC) > datetime.now(UTC) - STALE_SENDING:
+        if job.sending_since and job.sending_since > datetime.now(UTC) - STALE_SENDING:
             return job  # still claimed: the message stays pending for a later pass
         await act_if_autonomous(job, plugins)
     elif job.state in ("done", "dismissed"):
