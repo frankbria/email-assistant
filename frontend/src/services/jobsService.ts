@@ -3,7 +3,7 @@
 import type { Job, JobCard, JobEdit, Verb } from '../types/api'
 import { apiFetch } from './apiClient'
 
-async function responseBody<T>(res: Response, failure: string): Promise<T> {
+export async function responseBody<T>(res: Response, failure: string): Promise<T> {
   if (res.status === 404 || res.status === 409 || res.status === 422) {
     const { detail } = await res.json()
     // FastAPI validation errors carry an array here, which is not a reason the owner can read
