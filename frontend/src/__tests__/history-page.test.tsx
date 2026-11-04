@@ -161,8 +161,8 @@ describe('History page', () => {
     expect(await screen.findByText('already undone')).toBeInTheDocument()
   })
 
-  it('reads the API zoneless timestamps as UTC', async () => {
-    await renderHistory(historyCard({ created_at: '2026-11-02T10:00:00.123000' }))
+  it("shows when each action happened in the owner's time zone", async () => {
+    await renderHistory(historyCard({ created_at: '2026-11-02T10:00:00.123000Z' }))
 
     expect(within(historyRows()[0]).getByText(new RegExp(new Date('2026-11-02T10:00:00.123Z').toLocaleString()))).toBeInTheDocument()
   })

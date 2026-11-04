@@ -22,11 +22,6 @@ const ACTION_LABELS: Record<HistoryAction, string> = {
   restored: 'Restored',
 }
 
-// MongoDB hands the backend naive datetimes, so the API's UTC timestamps arrive without a zone.
-function localTime(utcTimestamp: string): string {
-  return new Date(/Z|[+-]\d\d:\d\d$/.test(utcTimestamp) ? utcTimestamp : `${utcTimestamp}Z`).toLocaleString()
-}
-
 function HistoryRow({ card, onUndone }: { card: HistoryCard; onUndone: (restore: HistoryCard) => void }) {
   const { entry, sender, subject } = card
   const [busy, setBusy] = useState(false)
@@ -51,7 +46,7 @@ function HistoryRow({ card, onUndone }: { card: HistoryCard; onUndone: (restore:
           {sender.name ?? sender.email} - {subject}
         </p>
         <p className="text-muted-foreground">
-          {entry.by === 'owner' ? 'You' : 'Assistant'} · {localTime(entry.created_at)}
+          {entry.by === 'owner' ? 'You' : 'Assistant'} · {new Date(entry.created_at).toLocaleString()}
         </p>
         {entry.error && <p className="text-red-600">{entry.error}</p>}
       </div>

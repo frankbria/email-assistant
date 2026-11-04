@@ -15,7 +15,7 @@ from app.permissions import PermissionSettings
 from app.pipeline.run import act_if_autonomous
 from app.plugins.registry import PluginRegistry
 from app.sync import SyncEngine
-from tests.test_routes.test_jobs_api import archived, job_from
+from tests.test_routes.test_jobs_api import archived, datetimes_without_an_offset, job_from
 from tests.test_sync.test_inbox_sync import PLUGIN, add_owner
 from tests.utils.auth import OWNER_ID
 from tests.utils.fakes import FakeAIProvider
@@ -165,3 +165,14 @@ async def test_a_partly_failed_undo_can_be_retried_and_restores_the_rest(async_c
     assert (partly.json()["ok"], partly.json()["error"]) == (False, "elsewhere isn't connected, so the message is still archived")
     assert (retried.json()["ok"], retried.json()["error"]) == (True, None)
     assert len(mailbox.messages("INBOX")) == 2 and mailbox.messages("Archive") == []
+
+
+async def test_every_datetime_in_the_timeline_carries_its_utc_offset(async_client, test_db, mailbox, plugins):
+    job = await job_from(new_mailbox(), mailbox, "todo", Artifacts(link="https://pay.example"))
+    await async_client.post(f"/api/v1/jobs/{job.id}/approve", json={})
+
+    response = await async_client.get("/api/v1/history")
+
+    [card] = response.json()
+    assert card["entry"]["created_at"]
+    assert datetimes_without_an_offset(card) == []

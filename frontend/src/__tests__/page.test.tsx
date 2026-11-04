@@ -187,6 +187,20 @@ describe('Job queue actions', () => {
     })
   })
 
+  it('saving an untouched due date keeps the same moment', async () => {
+    const followUp = cardWith({ verb: 'follow_up', due: '2026-11-09T09:00:00Z' }) // as the API serializes it
+    const card = await renderQueue(followUp)
+    mockFetch.mockResolvedValueOnce(Response.json({ ...followUp.job, edited: true }))
+
+    await userEvent.click(within(card).getByRole('button', { name: 'Edit' }))
+    expect(new Date().getTimezoneOffset()).not.toBe(0)
+    expect(within(card).getByLabelText('Due')).toHaveValue('2026-11-09T04:00')
+    await userEvent.click(within(card).getByRole('button', { name: 'Save' }))
+
+    await waitFor(() => expect(mockFetch).toHaveBeenCalledTimes(2))
+    expect(requestTo(1).body).toEqual({ due: '2026-11-09T09:00:00.000Z' })
+  })
+
   it('clearing a to-do deadline removes it', async () => {
     const todo = cardWith({ verb: 'todo', due: '2026-11-01T09:00:00.000Z' })
     const card = await renderQueue(todo)

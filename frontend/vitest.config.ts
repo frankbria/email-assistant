@@ -9,6 +9,7 @@ export default defineConfig({
     environment: 'jsdom',
     setupFiles: ['./src/__tests__/setup.ts'],
     globals: true,
+    env: { TZ: 'America/New_York' }, // a non-UTC zone, so a timestamp misread as local time fails a test
     exclude: [...configDefaults.exclude, 'e2e/**'], // Playwright's
     coverage: {
       provider: 'v8',

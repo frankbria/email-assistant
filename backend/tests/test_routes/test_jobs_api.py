@@ -1,5 +1,6 @@
 # The jobs API behind the job queue (spec §10.1, §10.2): list the owner's open jobs; approve, edit, choose another
 # action, dismiss. Real MongoDB; GreenMail + the reference IMAP plugin for sends and archives; FakeAIProvider.
+import re
 from collections.abc import Iterator
 from datetime import UTC, datetime, timedelta
 
@@ -46,6 +47,19 @@ async def job_from(
               artifacts=artifacts or Artifacts(), message_ids=[message.id], **fields)
     await job.insert()
     return job
+
+
+ISO_DATETIME = re.compile(r"^\d{4}-\d\d-\d\dT\d\d:\d\d")
+UTC_OFFSET = re.compile(r"(Z|[+-]\d\d:\d\d)$")
+
+
+def datetimes_without_an_offset(payload: object) -> list[str]:
+    """Every datetime string in an API response that a browser would misread as local time."""
+    if isinstance(payload, dict):
+        return [found for value in payload.values() for found in datetimes_without_an_offset(value)]
+    if isinstance(payload, list):
+        return [found for value in payload for found in datetimes_without_an_offset(value)]
+    return [payload] if isinstance(payload, str) and ISO_DATETIME.match(payload) and not UTC_OFFSET.search(payload) else []
 
 
 def archived(mailbox: Mailbox) -> bool:
@@ -111,7 +125,7 @@ async def test_an_edit_changes_only_the_fields_sent(async_client, test_db, mailb
     stored = await Job.get(job.id)
     assert response.status_code == 200 and stored is not None
     assert stored.artifacts.link == "https://pay.example/invoice" and stored.due is not None
-    assert stored.due.replace(tzinfo=UTC) == due and stored.edited
+    assert stored.due == due and stored.edited
 
 
 async def test_a_forward_goes_to_the_recipient_the_owner_confirmed(async_client, test_db, mailbox, plugins):
@@ -286,3 +300,14 @@ async def test_a_send_interrupted_by_a_crash_comes_back_to_the_queue_and_can_be_
 
     assert [card["job"]["_id"] for card in listed] == [str(stuck.id)]  # a send still in flight stays out
     assert retried.json()["state"] == "done" and "Thursday works." in ana.messages("INBOX")[0].get_content()
+
+
+async def test_every_datetime_in_the_queue_carries_its_utc_offset(async_client, test_db, mailbox):
+    """A zoneless timestamp is read as local time by the browser, shifting the due date the owner sees and saves."""
+    await job_from(new_mailbox(), mailbox, "follow_up", due=datetime(2026, 12, 1, 9, tzinfo=UTC), sending_since=datetime.now(UTC))
+
+    response = await async_client.get("/api/v1/jobs")
+
+    [card] = response.json()
+    assert card["job"]["due"] and card["job"]["created_at"]
+    assert datetimes_without_an_offset(card) == []
