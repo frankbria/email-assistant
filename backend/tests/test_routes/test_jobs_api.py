@@ -1,7 +1,6 @@
 # The jobs API behind the job queue (spec §10.1, §10.2): list the owner's open jobs; approve, edit, choose another
 # action, dismiss. Real MongoDB; GreenMail + the reference IMAP plugin for sends and archives; FakeAIProvider.
 import re
-from collections.abc import Iterator
 from datetime import UTC, datetime, timedelta
 
 import pytest
@@ -9,27 +8,16 @@ from beanie import PydanticObjectId
 from beanie.operators import In
 
 from app.executor import STALE_SENDING, JobNotOpen, defer, execute, finish
-from app.main import app
 from app.models.job import Artifacts, Job, JobState, Verb
 from app.models.message import Message
 from app.permissions import ApprovalStreak
 from app.pipeline.proposal import Proposal
-from app.services.ai_provider import get_ai_provider
 from tests.test_sync.test_inbox_sync import PLUGIN
 from tests.utils.auth import OWNER_ID, bearer_headers
-from tests.utils.fakes import FakeAIProvider
 from tests.utils.mail_server import Mailbox, new_mailbox
 
 pytestmark = pytest.mark.usefixtures("mail_server")
 QUESTION = "Could we meet Thursday at 3pm?"
-
-
-@pytest.fixture
-def ai() -> Iterator[FakeAIProvider]:
-    provider = FakeAIProvider()
-    app.dependency_overrides[get_ai_provider] = lambda: provider
-    yield provider
-    app.dependency_overrides.pop(get_ai_provider)
 
 
 async def job_from(

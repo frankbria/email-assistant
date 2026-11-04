@@ -46,3 +46,9 @@ export function chooseVerb(jobId: string, verb: Verb): Promise<Job> {
 export function dismissJob(jobId: string): Promise<Job> {
   return postJson(`/api/v1/jobs/${encodeURIComponent(jobId)}/dismiss`, undefined, 'Failed to dismiss the job')
 }
+
+export type Correction = { kind: 'noise' } | { kind: 'not_noise' } | { kind: 'wrong_action'; verb: Verb }
+
+export function correctJob(jobId: string, correction: Correction): Promise<Job> {
+  return postJson(`/api/v1/jobs/${encodeURIComponent(jobId)}/correct`, correction, 'Failed to correct the job')
+}

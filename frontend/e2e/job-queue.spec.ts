@@ -53,13 +53,25 @@ test('dismissing a job removes it from the queue for good', async ({ page }) => 
   expect(inbox(job.sender)).toEqual([])
 })
 
+test('marking a job as noise removes it from the queue for good', async ({ page }) => {
+  const job = seedJob('reply', { draft: 'Sure.' })
+  await openQueue(page)
+
+  await cardTitled(page, job.title).getByRole('button', { name: 'Correct' }).click()
+  await page.getByRole('menuitem', { name: 'This is noise' }).click()
+  await expect(cardTitled(page, job.title)).toHaveCount(0)
+
+  await openQueue(page)
+  await expect(cardTitled(page, job.title)).toHaveCount(0)
+})
+
 test('a card fits the screen with its actions in reach', async ({ page }) => {
   const job = seedJob('forward', { draft: 'FYI, see below.', forwardTo: 'finance@test.example' })
   await openQueue(page)
   const card = cardTitled(page, job.title)
 
   await expect(card.getByRole('textbox', { name: 'Forward to' })).toHaveValue('finance@test.example')
-  for (const name of ['Approve', 'Edit', 'Other action', 'Dismiss']) {
+  for (const name of ['Approve', 'Edit', 'Other action', 'Correct', 'Dismiss']) {
     const button = card.getByRole('button', { name })
     await expect(button).toBeVisible()
     expect((await button.boundingBox())?.height).toBeGreaterThanOrEqual(44)
