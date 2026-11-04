@@ -5,11 +5,14 @@
 from datetime import UTC, datetime
 
 import pytest
+from beanie import PydanticObjectId
 
+from app import executor
 from app.executor import JobNotOpen, execute
 from app.models.action_log import ActionLogEntry
 from app.models.job import Artifacts, Job
 from app.models.message import Message
+from app.plugins.registry import PluginRegistry
 from app.unsubscribe import unsubscribe_mail
 from tests.test_routes.test_jobs_api import archived, job_from
 from tests.test_sync.test_inbox_sync import PLUGIN
@@ -141,3 +144,23 @@ async def test_an_unsubscribe_request_never_goes_out_through_another_copy_than_t
                       unsubscribe_request=unsubscribe_mail(f"mailto:{leave.address}"), unsubscribe_source=read_copy)
 
     assert leave.messages("INBOX") == [] and await still_open(job)
+
+
+async def test_an_https_tap_never_finishes_a_job_whose_copies_changed_while_its_target_was_read(test_db, mailbox, plugins, monkeypatch):
+    """The owner opened the link from the copy read; a sync swapping that copy out meanwhile leaves another account's
+    copy, still subscribed: the tap must not finish the job and archive that one."""
+    job = await unsubscribe_job(mailbox, "<https://shop.example/u?id=7>")
+    other = await unsubscribe_job(mailbox, "<https://shop.example/u?id=8>")
+    read_target = executor.unsubscribe_target_of
+
+    async def read_then_sync_swaps_the_copy(job_id: PydanticObjectId, registry: PluginRegistry) -> str:
+        target = await read_target(job_id, registry)
+        await Job.get_pymongo_collection().update_one({"_id": job.id}, {"$set": {"message_ids": other.message_ids}})
+        return target
+
+    monkeypatch.setattr(executor, "unsubscribe_target_of", read_then_sync_swaps_the_copy)
+
+    with pytest.raises(JobNotOpen):
+        await executor.unsubscribe(job.id, plugins, "https://shop.example/u?id=7", level="never_auto")
+
+    assert (await Job.get(job.id)).state == "open" and not archived(mailbox)

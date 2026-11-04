@@ -327,14 +327,14 @@ async def unsubscribe(job_id: PydanticObjectId, plugins: PluginRegistry, confirm
     the mail again and must be the one the owner was shown: an https link was opened by their browser, so the job
     only finishes; a mailto is sent to its one address."""
     job = await Job.get(job_id)
-    source = job.message_ids[0] if job and job.message_ids else None  # before the read: a later change fails the claim
+    copies = job.message_ids if job else []  # before the read: copies changed meanwhile fail the claim below
     target = await unsubscribe_target_of(job_id, plugins)
     if target != confirmed_target:
         raise ValueError("confirm the unsubscribe target this mail names")
     if is_https(target):
-        return await finish(job_id, "done", plugins, verb="unsubscribe", by="owner", level=level)
+        return await finish(job_id, "done", plugins, verb="unsubscribe", by="owner", level=level, messages=copies)
     return await execute(job_id, plugins, by="owner", level=level, unsubscribe_request=unsubscribe_mail(target),
-                         unsubscribe_source=source)
+                         unsubscribe_source=copies[0] if copies else None)
 
 
 async def unsubscribe_target_of(job_id: PydanticObjectId, plugins: PluginRegistry) -> str:
