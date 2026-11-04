@@ -27,4 +27,5 @@ plugins:
       command: uv
       args: [run, --directory, ../plugins/gmail, gmail-plugin]
       env_from:
-        GMAIL_APP_PASSWORD: GMAIL_APP_PASSWORD
+        MAILBOX_ACCOUNT: GMAIL_ADDRESS
+        MAILBOX_PASSWORD: GMAIL_APP_PASSWORD

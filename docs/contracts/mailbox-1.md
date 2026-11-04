@@ -153,7 +153,9 @@ Events are not replayed, so a missed push only delays mail until the next poll.
 A plugin is **supported** only when it passes `backend/tests/conformance/` (spec §5.5):
 every tool, cursor paging that survives a restart, the `archive` → `restore` round trip,
 `inbox_contains` answering exactly the requested refs, error shapes, a threaded reply,
-and **after every tool has run, every seeded message still exists** (AC-1.1). A static
+a `push` event on new mail (for plugins listing `push`), and **after every tool has run,
+every seeded message still exists** (AC-1.1). Tests learn refs from `list_messages`, so a
+plugin's refs need not be Message-IDs. A static
 check fails on any unscoped expunge in the app, packages or plugins, and on any
 delete-like tool name (AC-1.2).
 
@@ -166,7 +168,9 @@ uv run pytest tests/conformance
 
 It runs against each entry in `TARGETS` (a plugin config, plus mail seeded on the
 GreenMail test server). The reference IMAP/SMTP plugin, `packages/imap-mailbox`, is the
-first target. Each plugin adds its own.
+first target. Each plugin adds its own. The Gmail target needs Gmail's IMAP extensions, so it
+runs only live against a disposable account (`GMAIL_ADDRESS`, `GMAIL_APP_PASSWORD`; see
+`plugins/gmail/README.md`) and is skipped otherwise.
 
 ## Reference plugin: `packages/imap-mailbox`
 

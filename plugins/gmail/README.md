@@ -1,0 +1,61 @@
+# Gmail mailbox plugin
+
+`mailbox/1` plugin for Gmail over IMAP (`imap.gmail.com:993`, TLS) and SMTP
+(`smtp.gmail.com:465`, or `587` with STARTTLS), signing in with the address and a Google
+**app password**. Built on the reference IMAP/SMTP plugin (`packages/imap-mailbox`); the app
+starts it over stdio.
+
+## Settings
+
+Secrets come from environment variables, never from `plugins.yaml` (which names them with
+`env_from`):
+
+| Variable | Meaning |
+|---|---|
+| `MAILBOX_ACCOUNT` | The Gmail address (also the IMAP/SMTP username) |
+| `MAILBOX_PASSWORD` | An app password (needs 2-Step Verification), not your Google password |
+| `MAILBOX_SMTP_PORT` | `465` (default, TLS) or `587` (STARTTLS, picked automatically) |
+| `MAILBOX_FOLDER_ARCHIVE`, `MAILBOX_FOLDER_SENT` | Only if Gmail's folders aren't `[Gmail]/All Mail` and `[Gmail]/Sent Mail` (other interface languages, `[Google Mail]` accounts) |
+
+Unencrypted connections are refused.
+
+## How it maps Gmail
+
+- **Refs** are Gmail's `X-GM-MSGID`, which never changes when labels do. `get_message`'s
+  headers include `X-GM-MSGID` and `X-GM-THRID` (Gmail's thread id) as the server reports them;
+  copies of those headers inside the mail itself are replaced.
+- **Archive** is `UID MOVE` from `INBOX` to `[Gmail]/All Mail` (removing the Inbox label), and
+  counts only when `X-GM-LABELS` no longer lists `\Inbox`.
+- **Restore** copies the message from All Mail back to `INBOX` (adding the label) and counts only
+  when `X-GM-LABELS` lists `\Inbox` again. It never moves anything out of All Mail, and the plugin
+  never issues `EXPUNGE`: in Gmail either can send mail to the Trash.
+- **Push**: the plugin keeps an IMAP IDLE on the inbox and publishes `mailbox://inbox` on new
+  mail, so the app polls at once instead of waiting for its interval.
+
+## Running
+
+`python -m gmail_plugin.server` (or the `gmail-plugin` script). In `plugins.yaml`:
+
+```yaml
+- id: gmail
+  transport:
+    type: stdio
+    command: uv
+    args: [run, --directory, ../plugins/gmail, gmail-plugin]
+    env_from:
+      MAILBOX_ACCOUNT: GMAIL_ADDRESS
+      MAILBOX_PASSWORD: GMAIL_APP_PASSWORD
+```
+
+## Conformance
+
+The CI mail server has no Gmail extensions, so the Gmail half of the conformance suite runs
+live, against a **disposable** account (the suite archives everything in its inbox before each
+test, and sends mail to itself):
+
+```bash
+cd backend
+GMAIL_ADDRESS=… GMAIL_APP_PASSWORD=… uv run pytest tests/conformance -k gmail -rs
+```
+
+Without those variables the Gmail target is skipped.

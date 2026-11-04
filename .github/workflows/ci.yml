@@ -48,7 +48,7 @@ jobs:
       - name: ruff
         run: uv run ruff check . ../packages ../plugins
       - name: mypy
-        run: uv run mypy app ../packages/mailbox-contract/src ../packages/imap-mailbox/src ../plugins/proton/src
+        run: uv run mypy app ../packages/mailbox-contract/src ../packages/imap-mailbox/src ../plugins/proton/src ../plugins/gmail/src
       - name: pytest
         run: uv run pytest -q
 
