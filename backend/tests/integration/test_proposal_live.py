@@ -6,11 +6,11 @@ from datetime import UTC, datetime
 import pytest
 from beanie import PydanticObjectId
 
-from app.models.message import Message
-from app.pipeline.proposal import Proposal
-from app.pipeline.examples import record_example, similar_examples
-from app.pipeline.propose import propose
 from app.config import get_settings
+from app.models.message import Message
+from app.pipeline.examples import record_example, similar_examples
+from app.pipeline.proposal import Proposal
+from app.pipeline.propose import propose
 from app.services.ai_provider import provider_for
 from tests.fixtures.proposal_corpus import CORPUS, EARLIER_RIDE, NEXT_RIDE, ProposalCase
 

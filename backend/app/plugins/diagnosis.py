@@ -7,11 +7,11 @@ from datetime import UTC, datetime
 from typing import Literal
 
 import httpx
+from mailbox_contract import Health
 from pydantic import BaseModel
 
 from app.plugins.config import WatchdogConfig
 from app.plugins.state import PluginState
-from mailbox_contract import Health
 
 Kind = Literal[
     "ok",

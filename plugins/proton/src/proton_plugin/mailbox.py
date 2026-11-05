@@ -1,10 +1,10 @@
 import re
 import socket
-from collections.abc import Callable
-from contextlib import AbstractContextManager
 import ssl
 import subprocess
 import time
+from collections.abc import Callable
+from contextlib import AbstractContextManager
 from typing import Literal
 
 from imap_mailbox.mailbox import ImapMailbox, MailboxError

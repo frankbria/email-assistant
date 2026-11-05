@@ -3,13 +3,13 @@ from datetime import UTC, datetime
 
 import pytest
 from beanie import PydanticObjectId
+from mailbox_contract import Address
 from pydantic import ValidationError
 from pymongo.errors import DuplicateKeyError
 
 from app.models.job import Artifacts, Job
 from app.models.message import Message
 from app.models.sync_cursor import SyncCursor
-from mailbox_contract import Address
 from tests.utils.auth import OWNER_ID
 
 

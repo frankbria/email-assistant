@@ -8,20 +8,19 @@ from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
 import pytest
+from mailbox_contract import ListMessagesOutput, MessageSummary
 from pydantic import ValidationError
 from pymongo import AsyncMongoClient
 from pymongo.asynchronous.database import AsyncDatabase
-
-from app.plugins import calls
 
 from app.config import Settings
 from app.models.message import Message
 from app.models.sync_cursor import SyncCursor
 from app.models.user_settings import UserSettings
+from app.plugins import calls
 from app.plugins.config import PluginConfig, StdioTransport
 from app.plugins.registry import PluginRegistry
 from app.sync import SyncEngine, SyncError, store_page, sync_folder
-from mailbox_contract import ListMessagesOutput, MessageSummary
 from tests.conformance.test_mailbox_conformance import reference_imap_plugin
 from tests.utils.mail_server import Mailbox
 

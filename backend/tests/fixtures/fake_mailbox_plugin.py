@@ -14,10 +14,8 @@ import os
 import sys
 
 import anyio
-
-from mcp.server.mcpserver import Context, MCPServer
-
 from mailbox_contract import INBOX_URI, Capability, Folders, Health, HealthCheck, ListMessagesOutput, MailboxInfo, MoveResult
+from mcp.server.mcpserver import Context, MCPServer
 
 server = MCPServer("fake-mailbox")
 

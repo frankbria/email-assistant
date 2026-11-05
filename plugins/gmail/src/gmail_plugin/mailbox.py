@@ -6,15 +6,14 @@ message out of INBOX (removes the Inbox label); restoring copies it from All Mai
 """
 
 import imaplib
-from collections.abc import Sequence
 import re
+from collections.abc import Sequence
 from email.message import EmailMessage
 from email.utils import make_msgid
 
-from pydantic import BaseModel
-
 from imap_mailbox.mailbox import ImapMailbox, MailboxError
 from mailbox_contract import Capability, ErrorCode, MailboxInfo, MoveResult
+from pydantic import BaseModel
 
 GMAIL_ID = re.compile(rb"X-GM-(MSGID|THRID) (\d+)")
 APPENDUID = re.compile(rb"\[APPENDUID (\d+) (\d+)\]")

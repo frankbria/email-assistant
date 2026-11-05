@@ -9,13 +9,14 @@ import sys
 import time
 import urllib.request
 from collections.abc import Iterator
+from itertools import pairwise
 from pathlib import Path
 from urllib.error import HTTPError
 
 import pytest
-
 from proton_plugin.settings import ProtonSettings
 from proton_plugin.watchdog import BACKOFF_SECONDS, Watchdog, serve_status
+
 from tests.utils.mail_server import wait_until_ready
 from tests.utils.tls_relay import write_certificate
 
@@ -152,7 +153,7 @@ def test_restarts_back_off_then_escalate(tmp_path: Path):
         if len(list(marker_dir.iterdir())) > before:
             restart_times.append(now)
 
-    gaps = [later - earlier for earlier, later in zip(restart_times, restart_times[1:])]
+    gaps = [later - earlier for earlier, later in pairwise(restart_times)]
     assert gaps == [round_up(seconds) for seconds in BACKOFF_SECONDS[:-1]]
     assert len(restart_times) == len(BACKOFF_SECONDS)
     assert watchdog.status()["bridge"]["state"] == "needs_owner"
@@ -191,6 +192,6 @@ def test_crash_looping_plugin_backs_off_then_asks_for_the_owner(bridge_layout):
         if watchdog.plugin_process is not None:
             watchdog.plugin_process.wait(timeout=10)
 
-    gaps = [later - earlier for earlier, later in zip(starts[1:], starts[2:])]
+    gaps = [later - earlier for earlier, later in pairwise(starts[1:])]
     assert gaps == [round_up(seconds) for seconds in BACKOFF_SECONDS[:-1]]
     assert watchdog.status()["plugin"]["state"] == "needs_owner"

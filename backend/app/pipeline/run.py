@@ -7,10 +7,10 @@ import re
 from collections.abc import Awaitable, Callable
 from datetime import UTC, datetime
 
+from beanie.operators import In, NotIn
+from mailbox_contract import MessageDetail
 from mcp import Client
 from pydantic import ValidationError
-
-from beanie.operators import In, NotIn
 from pymongo import ReturnDocument
 
 from app.executor import STALE_SENDING, ArchiveFailed, JobNotOpen, archive, defer, execute, finish, record, reopen
@@ -26,7 +26,6 @@ from app.pipeline.validate import ask_owner_job, to_job
 from app.plugins.calls import call_plugin, refs_in_inbox
 from app.plugins.registry import PluginRegistry
 from app.services.ai_provider import AIProposalError, AIProvider
-from mailbox_contract import MessageDetail
 
 logger = logging.getLogger(__name__)
 

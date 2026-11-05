@@ -4,9 +4,9 @@ import logging
 
 import pytest
 
-from app.plugins import calls
 from app.models.job import Artifacts, Job, JobState
 from app.models.message import Message
+from app.plugins import calls
 from app.sync import SyncEngine, SyncError, close_handled_elsewhere
 from tests.conformance.test_mailbox_conformance import reference_imap_plugin
 from tests.test_sync.test_inbox_sync import OWNER, add_owner, connected, fake_plugin

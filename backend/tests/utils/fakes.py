@@ -16,7 +16,7 @@ class FakeAIProvider:
         self.error = error
         self.prompts: list[str] = []
 
-    async def __call__(self, owner_id: str) -> "FakeAIProvider":
+    async def __call__(self, owner_id: str) -> FakeAIProvider:
         return self
 
     async def propose(self, prompt: str, schema: type[SchemaT]) -> SchemaT:

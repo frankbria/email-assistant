@@ -8,15 +8,15 @@ from pathlib import Path
 
 import pytest
 from fastapi.testclient import TestClient
+from mailbox_contract import Folders, Health, HealthCheck, MailboxInfo
+from proton_plugin.settings import ProtonSettings
+from proton_plugin.watchdog import Watchdog, serve_status
 
 from app.main import app
 from app.plugins.config import PluginConfig, StdioTransport, WatchdogConfig
 from app.plugins.diagnosis import WatchdogReport
 from app.plugins.setup import build_checklist
 from app.plugins.state import PluginState
-from mailbox_contract import Folders, Health, HealthCheck, MailboxInfo
-from proton_plugin.settings import ProtonSettings
-from proton_plugin.watchdog import Watchdog, serve_status
 from tests.plugins.test_proton_health import AUTH_IMAP_PORT, AUTH_SMTP_PORT, SECRET, USERNAME, closed_port
 from tests.test_plugins.test_diagnosis import TOKEN, TOKEN_ENV, free_port
 from tests.utils.auth import bearer_headers

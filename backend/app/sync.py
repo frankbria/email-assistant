@@ -6,25 +6,25 @@ import asyncio
 import contextlib
 import logging
 from collections.abc import Awaitable, Callable
-from pathlib import Path
 from datetime import UTC, datetime, timedelta
+from pathlib import Path
 from typing import Literal
 
 from beanie.operators import In
+from mailbox_contract import INBOX_URI, Capability, ListMessagesOutput
 from mcp import Client
 from pymongo.asynchronous.collection import AsyncCollection
 
+from app.executor import wake_due
 from app.models.job import Job
 from app.models.message import Message
 from app.models.sync_cursor import SyncCursor
 from app.models.user_settings import UserSettings
-from app.executor import wake_due
 from app.permissions import sync_permissions_file
 from app.pipeline.run import process_pending
 from app.plugins.calls import InvalidCursor, SyncError, call_plugin, refs_in_inbox
 from app.plugins.registry import PluginRegistry
 from app.services.ai_provider import AIProvider
-from mailbox_contract import INBOX_URI, Capability, ListMessagesOutput
 
 logger = logging.getLogger(__name__)
 

@@ -7,6 +7,7 @@ if owners need that, at the cost of a much larger image."""
 
 import re
 from collections.abc import Iterable
+from functools import partial
 from typing import TypeVar
 
 from pydantic import BaseModel
@@ -87,7 +88,7 @@ class Redaction:
         self.taken |= set(PLACEHOLDER.findall(text))
         names = self.names | {found for pattern in (GREETING, SIGN_OFF) for found in pattern.findall(text)}
         for kind, pattern in PATTERNS:
-            text = pattern.sub(lambda match: self.swap(match, kind), text)
+            text = pattern.sub(partial(self.swap, kind=kind), text)
         parts = {part for name in names for part in re.split(r"[\s,]+", name) if len(part) > 1 and part[0].isupper()}
         # Whole names before their parts, so "Ana Lopez" is one person rather than two.
         for name in sorted(names | parts, key=lambda name: (-len(name), name)):

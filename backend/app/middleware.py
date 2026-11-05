@@ -1,10 +1,11 @@
 # backend/app/middleware.py
 
-from fastapi.middleware.cors import CORSMiddleware
-from fastapi import FastAPI
-from dotenv import load_dotenv
-import os
 import logging
+import os
+
+from dotenv import load_dotenv
+from fastapi import FastAPI
+from fastapi.middleware.cors import CORSMiddleware
 
 # Load environment variables
 load_dotenv()

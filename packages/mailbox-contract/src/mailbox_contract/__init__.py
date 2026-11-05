@@ -200,7 +200,7 @@ class ToolError(ContractModel):
     retryable: bool = Field(description="Fixed by code: true for unavailable, rate_limited, internal.")
 
     @model_validator(mode="after")
-    def retryable_matches_code(self) -> "ToolError":
+    def retryable_matches_code(self) -> ToolError:
         if self.retryable != (self.code in RETRYABLE_CODES):
             raise ValueError(f"retryable must be {self.code in RETRYABLE_CODES} for {self.code}")
         return self

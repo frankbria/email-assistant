@@ -5,13 +5,13 @@ from datetime import UTC, datetime, timedelta
 
 from beanie.operators import In
 from fastapi import APIRouter
+from mailbox_contract import Address
 from pydantic import BaseModel
 
 from app.auth import OwnerId
 from app.models.action_log import ActionLogEntry
 from app.models.job import Job
 from app.models.message import Message
-from mailbox_contract import Address
 
 router = APIRouter(prefix="/api/v1/filtered", tags=["filtered"])
 WINDOW = timedelta(days=30)

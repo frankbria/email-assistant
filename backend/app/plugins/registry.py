@@ -9,6 +9,7 @@ from contextlib import AsyncExitStack
 from dataclasses import dataclass
 
 import httpx2
+from mailbox_contract import SUPPORTED_MAJOR, Health, MailboxInfo, is_supported
 from mcp import Client, StdioServerParameters
 from mcp.client import Transport
 from mcp.client.streamable_http import streamable_http_client
@@ -17,7 +18,6 @@ from mcp.types import CallToolResult, TextContent
 from app.plugins.config import HttpTransport, PluginConfig, StdioTransport
 from app.plugins.diagnosis import ConnectionState, diagnose
 from app.plugins.state import PluginState
-from mailbox_contract import SUPPORTED_MAJOR, Health, MailboxInfo, is_supported
 
 logger = logging.getLogger(__name__)
 
@@ -190,7 +190,7 @@ class PluginRegistry:
         return PluginState(id=config.id, status="connected", info=info)
 
     @classmethod
-    async def _hold(cls, config: PluginConfig, opened: "asyncio.Future[Client]", closing: asyncio.Event) -> None:
+    async def _hold(cls, config: PluginConfig, opened: asyncio.Future[Client], closing: asyncio.Event) -> None:
         try:
             async with AsyncExitStack() as connection:
                 client = await connection.enter_async_context(Client(await cls._target(config.transport, connection)))

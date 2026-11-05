@@ -9,13 +9,13 @@ from collections.abc import Iterator
 from pathlib import Path
 
 import pytest
+from proton_plugin.mailbox import ProtonMailbox
+from proton_plugin.mutf7 import decode_mutf7
+from proton_plugin.settings import ProtonSettings, load_settings
 from pydantic import ValidationError
 
 from app.plugins.config import HttpTransport, PluginConfig, StdioTransport
 from app.plugins.registry import PluginRegistry
-from proton_plugin.mailbox import ProtonMailbox
-from proton_plugin.mutf7 import decode_mutf7
-from proton_plugin.settings import ProtonSettings, load_settings
 from tests.utils.mail_server import Mailbox
 from tests.utils.tls_relay import fake_bridge
 

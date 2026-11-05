@@ -7,8 +7,8 @@ Secrets are never inline: transports name the environment variable that holds th
 import logging
 import re
 from pathlib import Path
-from urllib.parse import urlsplit
 from typing import Annotated, Literal
+from urllib.parse import urlsplit
 
 import yaml
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator

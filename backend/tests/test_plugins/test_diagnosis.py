@@ -5,12 +5,12 @@ import socket
 from pathlib import Path
 
 import pytest
+from proton_plugin.settings import ProtonSettings
+from proton_plugin.watchdog import Watchdog, serve_status
 
 from app.plugins.config import PluginConfig, StdioTransport, WatchdogConfig
 from app.plugins.diagnosis import diagnose
 from app.plugins.registry import PluginRegistry, PluginState
-from proton_plugin.settings import ProtonSettings
-from proton_plugin.watchdog import Watchdog, serve_status
 from tests.utils.tls_relay import write_certificate
 
 TOKEN_ENV = "DIAGNOSIS_TEST_WATCHDOG_TOKEN"

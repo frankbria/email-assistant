@@ -2,9 +2,9 @@
 import time
 
 import pytest
+from imap_mailbox.mailbox import html_to_text
 
 from app.pipeline.minimize import minimize
-from imap_mailbox.mailbox import html_to_text
 
 
 @pytest.mark.parametrize(

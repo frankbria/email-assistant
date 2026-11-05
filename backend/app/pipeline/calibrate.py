@@ -7,6 +7,7 @@ import logging
 from datetime import UTC, datetime
 from pathlib import Path
 
+from mailbox_contract import MessageDetail
 from pymongo.errors import DuplicateKeyError
 
 from app.models.calibration import CalibrationJob
@@ -17,7 +18,6 @@ from app.pipeline.run import decide
 from app.plugins.calls import call_plugin
 from app.plugins.registry import PluginRegistry
 from app.services.ai_provider import AIProvider
-from mailbox_contract import MessageDetail
 
 logger = logging.getLogger(__name__)
 SAMPLE = 100

@@ -4,9 +4,9 @@ import ast
 from pathlib import Path
 
 import pytest
+from mailbox_contract import Header
 
 from app.unsubscribe import UnsubscribeMail, unsubscribe_mail, unsubscribe_target
-from mailbox_contract import Header
 
 
 def header(value: str) -> list[Header]:

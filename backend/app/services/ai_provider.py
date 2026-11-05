@@ -1,6 +1,6 @@
 # backend/app/services/ai_provider.py
-from functools import lru_cache
 from collections.abc import Callable
+from functools import lru_cache
 from typing import Protocol, TypeVar
 
 from anthropic import AsyncAnthropic

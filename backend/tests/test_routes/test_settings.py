@@ -8,8 +8,8 @@ import pytest
 
 from app.config import get_settings
 from app.main import app
-from app.models.sync_cursor import SyncCursor
 from app.models.message import Message
+from app.models.sync_cursor import SyncCursor
 from app.services.ai_provider import AnthropicProvider, get_ai_provider
 from app.sync import SyncEngine
 from tests.conformance.test_mailbox_conformance import reference_imap_plugin

@@ -6,10 +6,10 @@ from contextlib import contextmanager
 from datetime import UTC, datetime, timedelta
 
 import pytest
-
 from imap_mailbox.mailbox import ImapMailbox, MailboxError
-from mailbox_contract import ErrorCode
 from imap_mailbox.settings import ImapMailboxSettings
+from mailbox_contract import ErrorCode
+
 from tests.utils.mail_server import IMAP_PORT, MAIL_HOST, SMTP_PORT, Mailbox
 
 

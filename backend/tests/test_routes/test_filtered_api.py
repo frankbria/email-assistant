@@ -7,8 +7,8 @@ import pytest
 from app.models.action_log import ActionLogEntry
 from app.models.job import Artifacts
 from app.permissions import PermissionSettings
-from tests.test_routes.test_digest_api import seen
 from tests.test_routes.test_corrections_api import DEALS, SHOP, newest_job, sync_pass
+from tests.test_routes.test_digest_api import seen
 from tests.test_routes.test_jobs_api import archived, job_from
 from tests.test_routes.test_restore_learning_api import NOISE
 from tests.test_sync.test_inbox_sync import add_owner

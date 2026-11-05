@@ -4,12 +4,12 @@ fix, or waiting on an earlier one, read from the plugin's layered health (spec Â
 
 from typing import Literal
 
+from mailbox_contract import Health
 from pydantic import BaseModel, Field
 
 from app.plugins.config import PluginConfig, StdioTransport
 from app.plugins.diagnosis import WatchdogRead, WatchdogReport
 from app.plugins.state import PluginState
-from mailbox_contract import Health
 
 # (title, health layer, what to do when that layer fails), in the order the owner works.
 STEPS = (

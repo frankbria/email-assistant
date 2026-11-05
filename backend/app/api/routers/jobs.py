@@ -11,6 +11,7 @@ from typing import Literal, Self
 from beanie import PydanticObjectId
 from beanie.operators import In
 from fastapi import APIRouter, Depends, HTTPException, Request
+from mailbox_contract import Address
 from pydantic import BaseModel, Field, model_validator
 
 from app.auth import OwnerId
@@ -26,7 +27,6 @@ from app.pipeline.run import decide
 from app.pipeline.validate import ask_owner_job
 from app.plugins.registry import PluginRegistry
 from app.services.ai_provider import AIProvider, get_ai_provider
-from mailbox_contract import Address
 
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/api/v1/jobs", tags=["jobs"])

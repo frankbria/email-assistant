@@ -10,11 +10,11 @@ from contextlib import asynccontextmanager
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 
+import mailbox_contract as contract
 import pytest
 from mcp import Client
 from pydantic import BaseModel
 
-import mailbox_contract as contract
 from app.plugins.config import PluginConfig, StdioTransport
 from app.plugins.registry import PluginRegistry
 from tests.conformance.test_no_permanent_remove import DESTRUCTIVE_NAME

@@ -13,10 +13,10 @@ from app.models.rule import Rule
 from app.permissions import PermissionSettings
 from app.pipeline.proposal import Proposal
 from app.pipeline.run import act_if_autonomous, attach_copy
-from tests.test_routes.test_corrections_api import DEALS, SHOP, newest_job, sync_pass
-from tests.test_routes.test_history_api import history
 from tests.conformance.test_mailbox_conformance import reference_imap_plugin
 from tests.test_pipeline.test_shared_message import HOME, WORK, deliver_to_both
+from tests.test_routes.test_corrections_api import DEALS, SHOP, newest_job, sync_pass
+from tests.test_routes.test_history_api import history
 from tests.test_routes.test_jobs_api import archived, job_from
 from tests.test_sync.test_inbox_sync import add_owner, connected
 from tests.utils.auth import OWNER_ID

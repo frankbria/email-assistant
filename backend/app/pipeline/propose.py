@@ -109,7 +109,7 @@ def schema_for(fixed_verb: Verb | None) -> type[Proposal]:
     """With a rule, the schema itself only allows its verb, so structured output can't pick another."""
     if fixed_verb is None:
         return Proposal
-    return create_model("Proposal", __base__=Proposal, verb=(Literal[fixed_verb], ...))  # type: ignore[valid-type]  # the rule's verb is only known at run time
+    return create_model("Proposal", __base__=Proposal, verb=(Literal[fixed_verb], ...))  # the rule's verb is only known at run time
 
 
 def own_words(snippet: str) -> str:

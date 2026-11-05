@@ -11,10 +11,12 @@ from typing import Literal
 
 from beanie import PydanticObjectId
 from beanie.operators import In, NotIn
+from mailbox_contract import MessageDetail, MoveResult, SendResult
 from mcp import Client
 from mcp.shared.exceptions import MCPError
 from pydantic import ValidationError
 from pymongo import ReturnDocument
+from pymongo.results import UpdateResult
 
 from app.models.action_log import Action, ActionLogEntry, Actor
 from app.models.job import Job, JobState, PermissionLevel, Verb
@@ -22,7 +24,6 @@ from app.models.message import Message
 from app.plugins.calls import InvalidCursor, SyncError, call_plugin, refs_in_inbox
 from app.plugins.registry import PluginRegistry
 from app.unsubscribe import UnsubscribeMail, is_https, unsubscribe_mail, unsubscribe_target
-from mailbox_contract import MessageDetail, MoveResult, SendResult
 
 logger = logging.getLogger(__name__)
 
@@ -456,7 +457,9 @@ async def wake(job: Job, plugins: PluginRegistry) -> int:
         return 1
     if job.state == "open":
         return 0  # a reminder still without an answer: it stays as it is
-    claimed = await Job.find(Job.id == job.id, Job.state == "snoozed").update({"$set": {"state": "open", "reminder": reminder}})
+    claimed: UpdateResult = await Job.find(Job.id == job.id, Job.state == "snoozed").update(
+        {"$set": {"state": "open", "reminder": reminder}}
+    )
     return claimed.modified_count
 
 

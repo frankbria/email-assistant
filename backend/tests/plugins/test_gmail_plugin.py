@@ -9,10 +9,6 @@ from email import message_from_bytes, policy
 from email.message import EmailMessage
 
 import pytest
-from pydantic import ValidationError
-
-from app.plugins.config import PluginConfig, StdioTransport
-from app.plugins.registry import PluginRegistry
 from gmail_plugin.mailbox import (
     GmailMailbox,
     append_uid,
@@ -24,6 +20,10 @@ from gmail_plugin.mailbox import (
 from gmail_plugin.settings import GmailSettings
 from imap_mailbox.mailbox import MailboxError
 from mailbox_contract import INBOX_URI, Capability, ErrorCode, MailboxInfo
+from pydantic import ValidationError
+
+from app.plugins.config import PluginConfig, StdioTransport
+from app.plugins.registry import PluginRegistry
 from tests.conformance.test_no_permanent_remove import DESTRUCTIVE_NAME
 from tests.utils.mail_server import Mailbox
 from tests.utils.tls_relay import fake_bridge

@@ -84,11 +84,11 @@ async def evaluate(lines: Sequence[Line], provider: AIProvider) -> list[Job]:
     # A missing Message-ID ("" from IMAP) says nothing about sameness, so each such line is its own email.
     keys = [line["message_id"].strip() or f"line {number}" for number, line in enumerate(lines)]
     ids = {key: PydanticObjectId() for key in keys}
-    messages = [message_of(line, ids[key]) for line, key in zip(lines, keys)]
-    for message, line in zip(messages, lines):
+    messages = [message_of(line, ids[key]) for line, key in zip(lines, keys, strict=True)]
+    for message, line in zip(messages, lines, strict=True):
         await record_example(message, line["text"], line["owner_verb"], "calibration")
     jobs = []
-    for message, line in zip(messages, lines):
+    for message, line in zip(messages, lines, strict=True):
         await Example.find(Example.owner_id == OWNER, Example.message_id == message.id).delete()
         jobs.append(await decide_on(message, line["text"], provider, cap=None))
         await record_example(message, line["text"], line["owner_verb"], "calibration")
@@ -113,8 +113,8 @@ def measure(lines: Sequence[Line], jobs: Sequence[Job]) -> list[Metric]:
     timeless = [(line, job) for line, job in pairs if not TIME_LANGUAGE.search(f"{line['subject']} {line['text']}")]
     scheduling = [line["subject"] for line, job in timeless if proposes(job) and SCHEDULING.search(job_text(job))]
     as_noise = [not job.ask_owner and job.verb in NOISE for _, job in pairs]
-    needs_me = [noise for (line, _), noise in zip(pairs, as_noise) if line["owner_verb"] not in NOISE]
-    owner_noise = [noise for (line, _), noise in zip(pairs, as_noise) if line["owner_verb"] in NOISE]
+    needs_me = [noise for (line, _), noise in zip(pairs, as_noise, strict=True) if line["owner_verb"] not in NOISE]
+    owner_noise = [noise for (line, _), noise in zip(pairs, as_noise, strict=True) if line["owner_verb"] in NOISE]
     return [
         rate(f"AC-3.3 verb spread: largest non-noise verb {top}", most, len(proposals), MOST_FOR_ONE_VERB, at_most=True),
         rate("AC-3.3 acceptance: non-noise proposals with the owner's verb", accepted, len(proposals), ACCEPTED, at_most=False),

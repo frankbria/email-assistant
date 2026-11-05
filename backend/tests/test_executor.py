@@ -5,7 +5,6 @@ import asyncio
 from datetime import UTC, datetime
 
 import pytest
-
 from beanie import PydanticObjectId
 
 from app.executor import JobNotOpen, finish, undo

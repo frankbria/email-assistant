@@ -1,12 +1,13 @@
 # backend/app/config.py
 
+import os
+import sys
+from functools import lru_cache
+from typing import Literal
+
+from dotenv import load_dotenv
 from pydantic import Field
 from pydantic_settings import BaseSettings
-from functools import lru_cache
-from typing import List, Literal
-import os
-from dotenv import load_dotenv
-import sys
 
 # Load environment variables
 load_dotenv()
@@ -57,7 +58,7 @@ class Settings(BaseSettings):
     test_set_file: str = "calibration/test_set.jsonl"
 
     # CORS settings
-    allow_origins: List[str] = [
+    allow_origins: list[str] = [
         origin
         for origin in [
             os.getenv("FRONTEND_ORIGIN"),
@@ -93,7 +94,7 @@ class Settings(BaseSettings):
         extra = "ignore"
 
 
-@lru_cache()
+@lru_cache
 def get_settings() -> Settings:
     """Get cached settings instance"""
     return Settings()

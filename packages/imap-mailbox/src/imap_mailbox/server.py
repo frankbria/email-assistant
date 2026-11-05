@@ -16,6 +16,7 @@ from typing import Literal
 import anyio
 import anyio.from_thread
 import anyio.lowlevel
+from mailbox_contract import INBOX_URI, RETRYABLE_CODES, Address, Capability, ErrorCode, ToolError
 from mcp.server.mcpserver import MCPServer
 from mcp.server.subscriptions import InMemorySubscriptionBus, ResourceUpdated
 from mcp.types import CallToolResult, TextContent
@@ -23,7 +24,6 @@ from pydantic import BaseModel
 
 from imap_mailbox.mailbox import ImapMailbox, MailboxError
 from imap_mailbox.settings import ImapMailboxSettings
-from mailbox_contract import INBOX_URI, Address, Capability, ErrorCode, RETRYABLE_CODES, ToolError
 
 logger = logging.getLogger(__name__)
 
@@ -139,7 +139,7 @@ def build_server(mailbox: ImapMailbox, name: str = "imap-mailbox") -> MCPServer:
 
 
 def main() -> None:
-    settings = ImapMailboxSettings()  # type: ignore[call-arg]  # required fields come from the environment
+    settings = ImapMailboxSettings()
     server = build_server(ImapMailbox(settings), name=settings.plugin_name)
     if sys.argv[1:2] == ["http"]:
         server.run(transport="streamable-http", host="127.0.0.1", port=int(sys.argv[2]))

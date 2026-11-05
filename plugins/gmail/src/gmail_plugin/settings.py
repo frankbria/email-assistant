@@ -1,8 +1,7 @@
 from typing import Any, Literal
 
-from pydantic import field_validator, model_validator
-
 from imap_mailbox.settings import ImapMailboxSettings
+from pydantic import field_validator, model_validator
 
 
 class GmailSettings(ImapMailboxSettings):

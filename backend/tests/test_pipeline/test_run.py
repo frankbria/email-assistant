@@ -3,10 +3,9 @@
 import logging
 
 import httpx
-
 import pytest
-from beanie import PydanticObjectId
 from anthropic import APIConnectionError
+from beanie import PydanticObjectId
 
 from app.models.ai_usage import AiUsage
 from app.models.example import Example
