@@ -54,14 +54,14 @@ Run it once with Auto-Expunge on and once with it off (`GMAIL_AUTO_EXPUNGE=off`)
 
 ## Running
 
-`python -m gmail_plugin.server` (or the `gmail-plugin` script). In `plugins.yaml`:
+The plugin is a runtime dependency of the backend, so its `gmail-plugin` script is on the backend's
+path, both in the Docker image and under `uv run` locally. In `plugins.yaml`:
 
 ```yaml
 - id: gmail
   transport:
     type: stdio
-    command: uv
-    args: [run, --directory, ../plugins/gmail, gmail-plugin]
+    command: gmail-plugin
     env_from:
       MAILBOX_ACCOUNT: GMAIL_ADDRESS
       MAILBOX_PASSWORD: GMAIL_APP_PASSWORD
