@@ -33,6 +33,11 @@ PATTERNS = [
     ("ACCOUNT", re.compile(r"\b[A-Z]{2}\d{2}(?: ?[A-Z0-9]{4}){2,7}(?: ?[A-Z0-9]{1,3})?\b|\b\d{4}(?:[ -]\d{4}){2,3}\b|\b\d{4}[ -]\d{6}[ -]\d{5}\b|\b\d{8,19}\b")),
     # Only digits right after a word that names a code ("code is 482913", "PIN: 1234"), and never part of a date.
     ("CODE", re.compile(r"\b(?:code|passcode|OTP|PIN)\b(?:\s+(?:is|was))?\s*[:=#]?\s*(\d{3,4}[ -]\d{3,4}|\d{4,8})(?![\w/.-]?\d)", re.IGNORECASE)),
+    # …or before the words that name it, within the sentence ("482913 is your verification code", "Use 482913 as your PIN").
+    ("CODE", re.compile(
+        r"(?<![\w/.-])(\d{3,4}[ -]\d{3,4}|\d{4,8})(?![\w/.-]?\d)(?=[^.\n]{0,40}?\b(?:code|passcode|OTP|PIN)\b)",
+        re.IGNORECASE,
+    )),
     # International (+44 20 7946 0958), North American ((555) 123-4567) or national with a trunk 0 (020 7946 0958);
     # PHONE_DIGITS keeps dates (05.12.2026) out.
     ("PHONE", re.compile(

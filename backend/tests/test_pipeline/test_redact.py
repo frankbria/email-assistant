@@ -180,3 +180,10 @@ def test_a_bare_domain_link_keeps_its_query_or_fragment_inside_the_placeholder(l
     redacted = redaction.redact(f"Open {link} now.")
 
     assert redacted == "Open URL_1 now." and redaction.restore("URL_1") == link
+
+
+@pytest.mark.parametrize("wording", ["482913 is your verification code", "482913 is your Acme login code",
+                                     "482-913 is the passcode", "Use 482913 as your one-time PIN"])
+def test_a_one_time_code_named_after_its_digits_is_redacted(wording: str):
+    redacted = Redaction([]).redact(f"{wording}.")
+    assert "482" not in redacted and "913" not in redacted
