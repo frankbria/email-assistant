@@ -39,9 +39,7 @@ def write_certificate(directory: Path, name: str) -> tuple[Path, Path]:
     )
     cert_path, key_path = directory / f"{name}.pem", directory / f"{name}.key"
     cert_path.write_bytes(certificate.public_bytes(serialization.Encoding.PEM))
-    key_path.write_bytes(
-        key.private_bytes(serialization.Encoding.PEM, serialization.PrivateFormat.PKCS8, serialization.NoEncryption())
-    )
+    key_path.write_bytes(key.private_bytes(serialization.Encoding.PEM, serialization.PrivateFormat.PKCS8, serialization.NoEncryption()))
     return cert_path, key_path
 
 
@@ -71,7 +69,7 @@ def start_tls_relay(target_port: int, cert_path: Path, key_path: Path, listen_po
     def handle(client: socket.socket) -> None:
         try:
             secure = context.wrap_socket(client, server_side=True)
-        except (ssl.SSLError, OSError):
+        except ssl.SSLError, OSError:
             client.close()
             return
         relay(secure, socket.create_connection(("127.0.0.1", target_port)))

@@ -5,12 +5,12 @@ import socket
 from pathlib import Path
 
 import pytest
+from proton_plugin.settings import ProtonSettings
+from proton_plugin.watchdog import Watchdog, serve_status
 
 from app.plugins.config import PluginConfig, StdioTransport, WatchdogConfig
 from app.plugins.diagnosis import diagnose
 from app.plugins.registry import PluginRegistry, PluginState
-from proton_plugin.settings import ProtonSettings
-from proton_plugin.watchdog import Watchdog, serve_status
 from tests.utils.tls_relay import write_certificate
 
 TOKEN_ENV = "DIAGNOSIS_TEST_WATCHDOG_TOKEN"
@@ -41,8 +41,12 @@ def watchdog_token(monkeypatch: pytest.MonkeyPatch) -> None:
 def running_watchdog(tmp_path: Path):
     cert, _ = write_certificate(tmp_path, "bridge")
     settings = ProtonSettings(
-        account="a@b.c", username="a", password="x", ca_cert_path=str(cert),
-        imap_port=free_port(), smtp_port=free_port(),
+        account="a@b.c",
+        username="a",
+        password="x",
+        ca_cert_path=str(cert),
+        imap_port=free_port(),
+        smtp_port=free_port(),
     )
     watchdog = Watchdog(settings, plugin_command=None)
     port = free_port()

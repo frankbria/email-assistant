@@ -9,13 +9,13 @@ from collections.abc import Iterator
 from pathlib import Path
 
 import pytest
+from proton_plugin.mailbox import ProtonMailbox
+from proton_plugin.mutf7 import decode_mutf7
+from proton_plugin.settings import ProtonSettings, load_settings
 from pydantic import ValidationError
 
 from app.plugins.config import HttpTransport, PluginConfig, StdioTransport
 from app.plugins.registry import PluginRegistry
-from proton_plugin.mailbox import ProtonMailbox
-from proton_plugin.mutf7 import decode_mutf7
-from proton_plugin.settings import ProtonSettings, load_settings
 from tests.utils.mail_server import Mailbox
 from tests.utils.tls_relay import fake_bridge
 
@@ -28,8 +28,13 @@ def bridge(mail_server: None) -> dict[str, object]:
 
 def proton_settings(mailbox: Mailbox, bridge: dict[str, object], cert: str = "cert") -> ProtonSettings:
     return ProtonSettings(
-        account=mailbox.address, username=mailbox.address, password="unused", tls="ssl",
-        imap_port=bridge["imap_port"], smtp_port=bridge["smtp_port"], smtp_login=False,
+        account=mailbox.address,
+        username=mailbox.address,
+        password="unused",
+        tls="ssl",
+        imap_port=bridge["imap_port"],
+        smtp_port=bridge["smtp_port"],
+        smtp_login=False,
         ca_cert_path=str(bridge[cert]),
     )
 
@@ -119,9 +124,13 @@ def test_wrong_security_mode_fails_in_plain_language(mailbox: Mailbox, bridge: d
 
 def plugin_environment(mailbox: Mailbox, bridge: dict[str, object]) -> dict[str, str]:
     return {
-        "MAILBOX_ACCOUNT": mailbox.address, "MAILBOX_USERNAME": mailbox.address, "MAILBOX_PASSWORD": "unused",
-        "MAILBOX_TLS": "ssl", "MAILBOX_IMAP_PORT": str(bridge["imap_port"]),
-        "MAILBOX_SMTP_PORT": str(bridge["smtp_port"]), "MAILBOX_CA_CERT_PATH": str(bridge["cert"]),
+        "MAILBOX_ACCOUNT": mailbox.address,
+        "MAILBOX_USERNAME": mailbox.address,
+        "MAILBOX_PASSWORD": "unused",
+        "MAILBOX_TLS": "ssl",
+        "MAILBOX_IMAP_PORT": str(bridge["imap_port"]),
+        "MAILBOX_SMTP_PORT": str(bridge["smtp_port"]),
+        "MAILBOX_CA_CERT_PATH": str(bridge["cert"]),
     }
 
 
@@ -132,7 +141,9 @@ async def test_app_connects_over_stdio_and_reads_mailbox_info(mailbox: Mailbox, 
     config = PluginConfig(
         id="proton",
         transport=StdioTransport(
-            type="stdio", command=sys.executable, args=["-m", "proton_plugin.server"],
+            type="stdio",
+            command=sys.executable,
+            args=["-m", "proton_plugin.server"],
             env_from={name: f"PROTON_TEST_{name}" for name in environment},
         ),
     )
@@ -153,8 +164,11 @@ def http_plugin(mailbox: Mailbox, bridge: dict[str, object]) -> Iterator[str]:
         probe.bind(("127.0.0.1", 0))
         port = probe.getsockname()[1]
     environment = {
-        **os.environ, **plugin_environment(mailbox, bridge),
-        "MAILBOX_HTTP_HOST": "127.0.0.1", "MAILBOX_HTTP_PORT": str(port), "MAILBOX_HTTP_TOKEN": "plugin-test-token",
+        **os.environ,
+        **plugin_environment(mailbox, bridge),
+        "MAILBOX_HTTP_HOST": "127.0.0.1",
+        "MAILBOX_HTTP_PORT": str(port),
+        "MAILBOX_HTTP_TOKEN": "plugin-test-token",
     }
     process = subprocess.Popen([sys.executable, "-m", "proton_plugin.server", "http"], env=environment)
     deadline = time.monotonic() + 15
@@ -178,9 +192,7 @@ async def test_app_connects_over_http_only_with_the_bearer_token(
     http_plugin: str, monkeypatch: pytest.MonkeyPatch, token: str, status: str
 ):
     monkeypatch.setenv("PROTON_HTTP_TOKEN", token)
-    config = PluginConfig(
-        id="proton", transport=HttpTransport(type="http", url=http_plugin, bearer_token_env="PROTON_HTTP_TOKEN")
-    )
+    config = PluginConfig(id="proton", transport=HttpTransport(type="http", url=http_plugin, bearer_token_env="PROTON_HTTP_TOKEN"))
     registry = PluginRegistry()
     await registry.connect_all([config])
     try:
@@ -191,7 +203,9 @@ async def test_app_connects_over_http_only_with_the_bearer_token(
 
 def test_settings_load_from_the_env_file_the_logon_task_points_at(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
     env_file = tmp_path / "proton.env"
-    env_file.write_text("MAILBOX_ACCOUNT=me@proton.me\nMAILBOX_USERNAME=me\nMAILBOX_PASSWORD=x\nMAILBOX_CA_CERT_PATH=/c.pem\nMAILBOX_IMAP_PORT=1144\n")
+    env_file.write_text(
+        "MAILBOX_ACCOUNT=me@proton.me\nMAILBOX_USERNAME=me\nMAILBOX_PASSWORD=x\nMAILBOX_CA_CERT_PATH=/c.pem\nMAILBOX_IMAP_PORT=1144\n"
+    )
     monkeypatch.setenv("MAILBOX_ENV_FILE", str(env_file))
 
     settings = load_settings()

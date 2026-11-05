@@ -4,31 +4,29 @@ import os
 import sys
 from datetime import UTC
 
-
 # Ensure imports resolve properly
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
 
 
-import pytest
 import httpx
-from dotenv import load_dotenv
+import pytest
 from beanie import init_beanie
-from pymongo import AsyncMongoClient
+from dotenv import load_dotenv
 from fastapi.testclient import TestClient
-
+from pymongo import AsyncMongoClient
 
 # App imports
 from app.main import app
-from app.models.user_settings import UserSettings
-from app.models.job import Job
 from app.models.action_log import ActionLogEntry
-from app.models.message import Message
 from app.models.ai_usage import AiUsage
-from app.models.rule import Rule
-from app.models.example import Example
 from app.models.calibration import CalibrationJob
-from app.permissions import ApprovalStreak, PermissionSettings
+from app.models.example import Example
+from app.models.job import Job
+from app.models.message import Message
+from app.models.rule import Rule
 from app.models.sync_cursor import SyncCursor
+from app.models.user_settings import UserSettings
+from app.permissions import ApprovalStreak, PermissionSettings
 from app.services.ai_provider import provider_for
 from tests.utils.auth import AUTH_BASE_URL, bearer_headers
 
@@ -64,10 +62,20 @@ async def test_db():
 
     db = client[test_db_name]
 
-    document_models = [UserSettings, Message, Job, SyncCursor, Rule, AiUsage, PermissionSettings, ApprovalStreak, ActionLogEntry, Example, CalibrationJob]
-    await init_beanie(
-        database=db, document_models=document_models, allow_index_dropping=True
-    )
+    document_models = [
+        UserSettings,
+        Message,
+        Job,
+        SyncCursor,
+        Rule,
+        AiUsage,
+        PermissionSettings,
+        ApprovalStreak,
+        ActionLogEntry,
+        Example,
+        CalibrationJob,
+    ]
+    await init_beanie(database=db, document_models=document_models, allow_index_dropping=True)
     # Clear documents instead of dropping the database: re-creating indexes after
     # a drop takes seconds per collection on slow disks. Clearing at setup also
     # covers data left behind by an aborted run.
@@ -103,7 +111,6 @@ async def async_client():
         follow_redirects=True,
         headers=bearer_headers(),
     ) as client:
-
         yield client
 
 

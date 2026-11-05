@@ -13,11 +13,7 @@ PUBLIC_ROUTES = {("GET", "/")}
 
 # The OpenAPI schema is the API's public contract: every route, its parameters and body.
 OPENAPI = app.openapi()
-OPERATIONS = [
-    (method.upper(), path, operation)
-    for path, methods in OPENAPI["paths"].items()
-    for method, operation in methods.items()
-]
+OPERATIONS = [(method.upper(), path, operation) for path, methods in OPENAPI["paths"].items() for method, operation in methods.items()]
 
 
 def protected_requests() -> list[tuple[str, str]]:
@@ -60,9 +56,7 @@ def test_health_route_is_public(anonymous_client):
     assert anonymous_client.get("/").status_code == 200
 
 
-@pytest.mark.parametrize(
-    ("method", "path", "operation"), OPERATIONS, ids=[f"{m} {p}" for m, p, _ in OPERATIONS]
-)
+@pytest.mark.parametrize(("method", "path", "operation"), OPERATIONS, ids=[f"{m} {p}" for m, p, _ in OPERATIONS])
 def test_no_route_accepts_a_user_id(method, path, operation):
     assert not {name for name in request_field_names(operation) if "user_id" in name.lower()}
 
@@ -75,9 +69,7 @@ def test_valid_token_identifies_the_owner(anonymous_client):
 
 
 def test_user_id_query_param_cannot_switch_user(anonymous_client):
-    response = anonymous_client.get(
-        "/api/v1/settings?user_id=someone-else", headers=bearer_headers("owner-a")
-    )
+    response = anonymous_client.get("/api/v1/settings?user_id=someone-else", headers=bearer_headers("owner-a"))
 
     assert response.json()["user_id"] == "owner-a"
 
@@ -93,7 +85,5 @@ def test_user_id_query_param_cannot_switch_user(anonymous_client):
     ids=["foreign-key", "expired", "wrong-issuer", "garbage"],
 )
 def test_bad_token_is_401(anonymous_client, token):
-    response = anonymous_client.get(
-        "/api/v1/settings", headers={"Authorization": f"Bearer {token}"}
-    )
+    response = anonymous_client.get("/api/v1/settings", headers={"Authorization": f"Bearer {token}"})
     assert response.status_code == 401

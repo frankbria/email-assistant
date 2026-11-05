@@ -2,10 +2,8 @@ import ipaddress
 import os
 from typing import Literal
 
-from pydantic import Field, field_validator
-
 from imap_mailbox.settings import ImapMailboxSettings
-
+from pydantic import Field, field_validator
 
 # Tailscale assigns addresses from these ranges; anything else could be a LAN or public interface.
 TAILSCALE_NETWORKS = (ipaddress.ip_network("100.64.0.0/10"), ipaddress.ip_network("fd7a:115c:a1e0::/48"))
@@ -57,4 +55,4 @@ class ProtonSettings(ImapMailboxSettings):
 def load_settings() -> ProtonSettings:
     """Settings from the environment, plus MAILBOX_ENV_FILE if set (how the logon task and the
     systemd unit pass them; the plugin process inherits the variable from the watchdog)."""
-    return ProtonSettings(_env_file=os.environ.get("MAILBOX_ENV_FILE"))  # type: ignore[call-arg]  # required fields come from env
+    return ProtonSettings(_env_file=os.environ.get("MAILBOX_ENV_FILE"))

@@ -7,6 +7,7 @@ if owners need that, at the cost of a much larger image."""
 
 import re
 from collections.abc import Iterable
+from functools import partial
 from typing import TypeVar
 
 from pydantic import BaseModel
@@ -25,25 +26,42 @@ BARE_TLDS = "com|org|net|edu|gov|io|co|uk|us|ca|de|fr|es|it|nl|au|ly|me|app|dev|
 PATTERNS = [
     ("EMAIL", re.compile(r"[\w.+-]+@[\w-]+(?:\.[\w-]+)+")),
     # With a scheme or www., a bare domain with a path (bit.ly/x), or a bare domain on a common TLD (acme.com).
-    ("URL", re.compile(
-        rf"(?<![\w@.-])(?:https?://|www\.){URL_REST}|{DOMAIN}[a-z]{{2,}}/{URL_REST}|{DOMAIN}(?:{BARE_TLDS})\b(?![.-]?\w)(?:[?#]{URL_REST})?",
-        re.IGNORECASE,
-    )),
+    (
+        "URL",
+        re.compile(
+            rf"(?<![\w@.-])(?:https?://|www\.){URL_REST}|{DOMAIN}[a-z]{{2,}}/{URL_REST}|{DOMAIN}(?:{BARE_TLDS})\b(?![.-]?\w)(?:[?#]{URL_REST})?",
+            re.IGNORECASE,
+        ),
+    ),
     # IBANs (whole, also in groups of four) before card numbers (groups of four, or Amex 4-6-5) and long digit runs.
-    ("ACCOUNT", re.compile(r"\b[A-Z]{2}\d{2}(?: ?[A-Z0-9]{4}){2,7}(?: ?[A-Z0-9]{1,3})?\b|\b\d{4}(?:[ -]\d{4}){2,3}\b|\b\d{4}[ -]\d{6}[ -]\d{5}\b|\b\d{8,19}\b")),
+    (
+        "ACCOUNT",
+        re.compile(
+            r"\b[A-Z]{2}\d{2}(?: ?[A-Z0-9]{4}){2,7}(?: ?[A-Z0-9]{1,3})?\b|\b\d{4}(?:[ -]\d{4}){2,3}\b|\b\d{4}[ -]\d{6}[ -]\d{5}\b|\b\d{8,19}\b"
+        ),
+    ),
     # Only digits right after a word that names a code ("code is 482913", "PIN: 1234"), and never part of a date.
-    ("CODE", re.compile(r"\b(?:code|passcode|OTP|PIN)\b(?:\s+(?:is|was))?\s*[:=#]?\s*(\d{3,4}[ -]\d{3,4}|\d{4,8})(?![\w/.-]?\d)", re.IGNORECASE)),
+    (
+        "CODE",
+        re.compile(r"\b(?:code|passcode|OTP|PIN)\b(?:\s+(?:is|was))?\s*[:=#]?\s*(\d{3,4}[ -]\d{3,4}|\d{4,8})(?![\w/.-]?\d)", re.IGNORECASE),
+    ),
     # …or before the words that name it, within the sentence ("482913 is your verification code", "Use 482913 as your PIN").
-    ("CODE", re.compile(
-        r"(?<![\w/.-])(\d{3,4}[ -]\d{3,4}|\d{4,8})(?![\w/.-]?\d)(?=[^.\n]{0,40}?\b(?:code|passcode|OTP|PIN)\b)",
-        re.IGNORECASE,
-    )),
+    (
+        "CODE",
+        re.compile(
+            r"(?<![\w/.-])(\d{3,4}[ -]\d{3,4}|\d{4,8})(?![\w/.-]?\d)(?=[^.\n]{0,40}?\b(?:code|passcode|OTP|PIN)\b)",
+            re.IGNORECASE,
+        ),
+    ),
     # International (+44 20 7946 0958), North American ((555) 123-4567) or national with a trunk 0 (020 7946 0958);
     # PHONE_DIGITS keeps dates (05.12.2026) out.
-    ("PHONE", re.compile(
-        r"\+\d{1,3}(?:[ .-]?\(?\d{1,4}\)?){2,7}(?!\w)|(?<![\w+])(?:\(\d{3}\) ?|\d{3}[ .-]?)\d{3}[ .-]?\d{4}(?!\w)"
-        r"|(?<![\w+.-])0\d{1,4}(?:[ .-]?\d{2,4}){2,4}(?![\w.-]?\d)"
-    )),
+    (
+        "PHONE",
+        re.compile(
+            r"\+\d{1,3}(?:[ .-]?\(?\d{1,4}\)?){2,7}(?!\w)|(?<![\w+])(?:\(\d{3}\) ?|\d{3}[ .-]?)\d{3}[ .-]?\d{4}(?!\w)"
+            r"|(?<![\w+.-])0\d{1,4}(?:[ .-]?\d{2,4}){2,4}(?![\w.-]?\d)"
+        ),
+    ),
 ]
 PHONE_DIGITS = 9
 WORD = r"[A-ZÀ-Þ](?:[^\W\d_]|['’-](?=[^\W\d_]))+"  # José, O'Brien
@@ -70,7 +88,7 @@ class Redaction:
         self.taken |= set(PLACEHOLDER.findall(text))
         names = self.names | {found for pattern in (GREETING, SIGN_OFF) for found in pattern.findall(text)}
         for kind, pattern in PATTERNS:
-            text = pattern.sub(lambda match: self.swap(match, kind), text)
+            text = pattern.sub(partial(self.swap, kind=kind), text)
         parts = {part for name in names for part in re.split(r"[\s,]+", name) if len(part) > 1 and part[0].isupper()}
         # Whole names before their parts, so "Ana Lopez" is one person rather than two.
         for name in sorted(names | parts, key=lambda name: (-len(name), name)):
@@ -91,7 +109,7 @@ class Redaction:
             self.values[f"{kind}_{number}"] = value
         start, end = match.span(group)
         whole = match.group(0)
-        return whole[: start - match.start()] + self.placeholders[value] + whole[end - match.start():]
+        return whole[: start - match.start()] + self.placeholders[value] + whole[end - match.start() :]
 
     def restore(self, text: str) -> str:
         """Raises AIProposalError for a placeholder the AI made up: the owner must never see "Hi PERSON_9"."""

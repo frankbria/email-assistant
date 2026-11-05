@@ -19,15 +19,25 @@ from tests.utils.fakes import FakeAIProvider, SchemaT
 pytestmark = pytest.mark.usefixtures("test_db")  # a Job is a Beanie document
 
 
-def line(subject: str, owner_verb: Verb, text: str = "Thanks for the update on the garden tools order.",
-         sender: str = "shop@example.com") -> dict[str, object]:
-    return {"message_id": f"<{subject}@example.com>", "sender": sender, "list_id": None, "subject": subject,
-            "text": text, "proposed": None, "owner_verb": owner_verb, "reacted_at": "2026-11-03T10:00:00+00:00"}
+def line(
+    subject: str, owner_verb: Verb, text: str = "Thanks for the update on the garden tools order.", sender: str = "shop@example.com"
+) -> dict[str, object]:
+    return {
+        "message_id": f"<{subject}@example.com>",
+        "sender": sender,
+        "list_id": None,
+        "subject": subject,
+        "text": text,
+        "proposed": None,
+        "owner_verb": owner_verb,
+        "reacted_at": "2026-11-03T10:00:00+00:00",
+    }
 
 
 def job(verb: Verb, title: str = "The shop's order update", ask_owner: bool = False, draft: str | None = None) -> Job:
-    return Job(owner_id="metrics", verb=verb, title=title, message_ids=[PydanticObjectId()], ask_owner=ask_owner,
-               artifacts=Artifacts(draft=draft))
+    return Job(
+        owner_id="metrics", verb=verb, title=title, message_ids=[PydanticObjectId()], ask_owner=ask_owner, artifacts=Artifacts(draft=draft)
+    )
 
 
 def outcome(metrics: list[Metric], ac: str) -> Metric:
@@ -49,18 +59,36 @@ class BySubject(FakeAIProvider):
 
 
 def noise(subject: str) -> Proposal:
-    return Proposal(needs_owner=False, verb="archive_noise", title=f"The shop's {subject}", evidence=["garden tools"],
-                    noise_rationale="A promotional mailing", confidence=0.9)
+    return Proposal(
+        needs_owner=False,
+        verb="archive_noise",
+        title=f"The shop's {subject}",
+        evidence=["garden tools"],
+        noise_rationale="A promotional mailing",
+        confidence=0.9,
+    )
 
 
 def reply(subject: str) -> Proposal:
-    return Proposal(needs_owner=False, verb="reply", title=f"Ann asks about {subject}", evidence=["garden tools"],
-                    draft="Thanks Ann, sounds good.", confidence=0.9)
+    return Proposal(
+        needs_owner=False,
+        verb="reply",
+        title=f"Ann asks about {subject}",
+        evidence=["garden tools"],
+        draft="Thanks Ann, sounds good.",
+        confidence=0.9,
+    )
 
 
 def todo(subject: str) -> Proposal:
-    return Proposal(needs_owner=False, verb="todo", title=f"Pay the shop's {subject}", evidence=["garden tools"],
-                    due=datetime(2026, 11, 20, tzinfo=UTC), confidence=0.9)
+    return Proposal(
+        needs_owner=False,
+        verb="todo",
+        title=f"Pay the shop's {subject}",
+        evidence=["garden tools"],
+        due=datetime(2026, 11, 20, tzinfo=UTC),
+        confidence=0.9,
+    )
 
 
 def test_ac_3_3_no_verb_may_pass_half_of_the_non_noise_proposals():
@@ -155,8 +183,6 @@ async def test_a_line_never_sees_another_reaction_to_the_same_email():
 
     for prompt in ai.prompts[:2]:
         assert 'subject "Weekly deals #1"' not in prompt and 'subject "Weekly deals #2"' in prompt
-
-
 
 
 async def test_a_run_leaves_another_runs_scratch_database_alone(tmp_path: Path):

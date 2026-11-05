@@ -1,12 +1,13 @@
 # backend/app/config.py
 
+import os
+import sys
+from functools import lru_cache
+from typing import Literal
+
+from dotenv import load_dotenv
 from pydantic import Field
 from pydantic_settings import BaseSettings
-from functools import lru_cache
-from typing import List, Literal
-import os
-from dotenv import load_dotenv
-import sys
 
 # Load environment variables
 load_dotenv()
@@ -27,9 +28,7 @@ class Settings(BaseSettings):
     mongodb_test_db: str = os.getenv("MONGODB_TEST_DB", "email_assistant_test")
 
     # API settings
-    api_environment: str = os.getenv(
-        "API_ENVIRONMENT", "test" if "pytest" in sys.modules else "development"
-    )
+    api_environment: str = os.getenv("API_ENVIRONMENT", "test" if "pytest" in sys.modules else "development")
 
     # Better Auth (the Next.js app): JWT issuer/audience, and where its JWKS lives.
     # BETTER_AUTH_JWKS_URL overrides the JWKS location, e.g. an internal Docker address.
@@ -59,7 +58,7 @@ class Settings(BaseSettings):
     test_set_file: str = "calibration/test_set.jsonl"
 
     # CORS settings
-    allow_origins: List[str] = [
+    allow_origins: list[str] = [
         origin
         for origin in [
             os.getenv("FRONTEND_ORIGIN"),
@@ -95,7 +94,7 @@ class Settings(BaseSettings):
         extra = "ignore"
 
 
-@lru_cache()
+@lru_cache
 def get_settings() -> Settings:
     """Get cached settings instance"""
     return Settings()

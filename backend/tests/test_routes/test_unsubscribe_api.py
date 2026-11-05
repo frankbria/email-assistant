@@ -24,16 +24,37 @@ pytestmark = pytest.mark.usefixtures("mail_server")
 
 async def unsubscribe_job(mailbox: Mailbox, list_unsubscribe: str) -> Job:
     """A proposed unsubscribe over real list mail in the owner's inbox carrying `list_unsubscribe`."""
-    ref = mailbox.append("INBOX", sender="deals@shop.example", subject="Running shoes", body="30% off all running shoes",
-                         headers={"List-Unsubscribe": list_unsubscribe})
-    message = Message.model_validate({
-        "owner_id": OWNER_ID, "plugin_id": PLUGIN, "ref": ref, "message_id": ref, "sender": {"email": "deals@shop.example"},
-        "to": [{"email": mailbox.address}], "cc": [], "date": datetime.now(UTC), "subject": "Running shoes", "snippet": "",
-    })
+    ref = mailbox.append(
+        "INBOX",
+        sender="deals@shop.example",
+        subject="Running shoes",
+        body="30% off all running shoes",
+        headers={"List-Unsubscribe": list_unsubscribe},
+    )
+    message = Message.model_validate(
+        {
+            "owner_id": OWNER_ID,
+            "plugin_id": PLUGIN,
+            "ref": ref,
+            "message_id": ref,
+            "sender": {"email": "deals@shop.example"},
+            "to": [{"email": mailbox.address}],
+            "cc": [],
+            "date": datetime.now(UTC),
+            "subject": "Running shoes",
+            "snippet": "",
+        }
+    )
     await message.insert()
     assert message.id is not None
-    job = Job(owner_id=OWNER_ID, verb="unsubscribe", title="Leave Shop deals", evidence=["30% off all running shoes"],
-              artifacts=Artifacts(noise_rationale="Bulk promotions"), message_ids=[message.id])
+    job = Job(
+        owner_id=OWNER_ID,
+        verb="unsubscribe",
+        title="Leave Shop deals",
+        evidence=["30% off all running shoes"],
+        artifacts=Artifacts(noise_rationale="Bulk promotions"),
+        message_ids=[message.id],
+    )
     await job.insert()
     return job
 
@@ -58,7 +79,8 @@ async def test_a_mailto_target_is_shown_then_sent_to_exactly_that_address_on_the
     assert archived(mailbox)
     logged = await ActionLogEntry.find(ActionLogEntry.job_id == job.id).sort("created_at").to_list()
     assert [(entry.action, entry.by, entry.permission_level) for entry in logged] == [
-        ("sent", "owner", "never_auto"), ("archived", "owner", "never_auto")
+        ("sent", "owner", "never_auto"),
+        ("archived", "owner", "never_auto"),
     ]
 
 
@@ -86,16 +108,17 @@ async def test_an_approval_acts_only_on_the_target_the_mail_names(async_client, 
     assert await still_open(job) and leave.messages("INBOX") == [] and len(mailbox.messages("INBOX")) == 1
 
 
-@pytest.mark.parametrize("header", [
-    "<mailto:{leave}?subject=hi%0D%0ABcc:%20{victim}>",
-    "<mailto:{leave}%0D%0ABcc:{victim}>",
-    "<mailto:{leave},{victim}>",
-    "<mailto:{leave}?cc={victim}>",
-    "<mailto:{leave}?bcc={victim}>",
-])
-async def test_a_mailto_that_injects_headers_or_adds_recipients_is_never_offered_or_sent(
-    async_client, test_db, mailbox, plugins, header
-):
+@pytest.mark.parametrize(
+    "header",
+    [
+        "<mailto:{leave}?subject=hi%0D%0ABcc:%20{victim}>",
+        "<mailto:{leave}%0D%0ABcc:{victim}>",
+        "<mailto:{leave},{victim}>",
+        "<mailto:{leave}?cc={victim}>",
+        "<mailto:{leave}?bcc={victim}>",
+    ],
+)
+async def test_a_mailto_that_injects_headers_or_adds_recipients_is_never_offered_or_sent(async_client, test_db, mailbox, plugins, header):
     leave, victim = new_mailbox(), new_mailbox()
     value = header.format(leave=leave.address, victim=victim.address)
     job = await unsubscribe_job(mailbox, value)
@@ -140,8 +163,14 @@ async def test_an_unsubscribe_request_never_goes_out_through_another_copy_than_t
     await Job.get_pymongo_collection().update_one({"_id": job.id}, {"$set": {"message_ids": other.message_ids}})
 
     with pytest.raises(JobNotOpen):
-        await execute(job.id, plugins, by="owner", level="never_auto",
-                      unsubscribe_request=unsubscribe_mail(f"mailto:{leave.address}"), unsubscribe_source=read_copy)
+        await execute(
+            job.id,
+            plugins,
+            by="owner",
+            level="never_auto",
+            unsubscribe_request=unsubscribe_mail(f"mailto:{leave.address}"),
+            unsubscribe_source=read_copy,
+        )
 
     assert leave.messages("INBOX") == [] and await still_open(job)
 

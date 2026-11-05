@@ -112,11 +112,7 @@ def html_to_text(html: str) -> str:
 
 
 def addresses(message: EmailMessage, header: str) -> list[Address]:
-    return [
-        Address(name=name or None, email=email)
-        for name, email in getaddresses(message.get_all(header, []))
-        if email
-    ]
+    return [Address(name=name or None, email=email) for name, email in getaddresses(message.get_all(header, [])) if email]
 
 
 def body_text(message: EmailMessage) -> str:
@@ -130,9 +126,7 @@ def body_text(message: EmailMessage) -> str:
 class ImapMailbox:
     def __init__(self, settings: ImapMailboxSettings) -> None:
         self.settings = settings
-        self.folders = Folders(
-            inbox=settings.folder_inbox, archive=settings.folder_archive, sent=settings.folder_sent
-        )
+        self.folders = Folders(inbox=settings.folder_inbox, archive=settings.folder_archive, sent=settings.folder_sent)
 
     # --- plain-language failures (providers override these) ---------------------------
 
@@ -147,8 +141,7 @@ class ImapMailbox:
 
     def handshake_failed_message(self, protocol: str, host: str, port: int) -> str:
         return (
-            f"The {protocol} server at {host}:{port} didn't respond as expected. "
-            "Check the port and the security setting (STARTTLS or SSL)."
+            f"The {protocol} server at {host}:{port} didn't respond as expected. Check the port and the security setting (STARTTLS or SSL)."
         )
 
     # --- connections -----------------------------------------------------------------
@@ -342,14 +335,10 @@ class ImapMailbox:
             except MailboxError as error:
                 checks.append(HealthCheck(layer=layer, ok=False, detail=error.message))
         failing = [check for check in checks if not check.ok]
-        status: Literal["ok", "degraded", "down"] = (
-            "ok" if not failing else "down" if len(failing) == len(checks) else "degraded"
-        )
+        status: Literal["ok", "degraded", "down"] = "ok" if not failing else "down" if len(failing) == len(checks) else "degraded"
         return Health(status=status, checks=checks, repair_actions=[])
 
-    def list_messages(
-        self, folder: Literal["inbox", "sent"], cursor: str | None, since: datetime | None, limit: int
-    ) -> ListMessagesOutput:
+    def list_messages(self, folder: Literal["inbox", "sent"], cursor: str | None, since: datetime | None, limit: int) -> ListMessagesOutput:
         """Cursor: `UIDVALIDITY:last UID`, plus `:SINCE date` while a `since` listing has more pages,
         so every page keeps the window and older mail at higher UIDs (imported history) stays out."""
         folder_name = self.folders.inbox if folder == "inbox" else self.folders.sent
@@ -393,9 +382,7 @@ class ImapMailbox:
 
     def inbox_contains(self, refs: list[str]) -> InboxContainsOutput:
         with self._imap() as connection:
-            return InboxContainsOutput(
-                {ref: self._find_uid(connection, self.folders.inbox, ref) is not None for ref in refs}
-            )
+            return InboxContainsOutput({ref: self._find_uid(connection, self.folders.inbox, ref) is not None for ref in refs})
 
     def get_message(self, ref: str) -> MessageDetail:
         with self._imap() as connection:

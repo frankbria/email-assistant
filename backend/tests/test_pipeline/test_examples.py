@@ -16,11 +16,22 @@ RIDE = "Saturday long run is 18 miles from the boathouse at 7am. Reply if you're
 
 
 def inbox_message(subject: str, sender: str = "coach@runclub.example", owner_id: str = OWNER, list_id: str | None = None) -> Message:
-    return Message.model_validate({
-        "_id": PydanticObjectId(), "owner_id": owner_id, "plugin_id": "proton", "ref": f"in-{subject}", "message_id": f"<{subject}@x>",
-        "sender": {"email": sender}, "to": [{"email": "frank@example.com"}], "cc": [],
-        "date": datetime(2026, 11, 2, tzinfo=UTC), "subject": subject, "snippet": "", "list_id": list_id,
-    })
+    return Message.model_validate(
+        {
+            "_id": PydanticObjectId(),
+            "owner_id": owner_id,
+            "plugin_id": "proton",
+            "ref": f"in-{subject}",
+            "message_id": f"<{subject}@x>",
+            "sender": {"email": sender},
+            "to": [{"email": "frank@example.com"}],
+            "cc": [],
+            "date": datetime(2026, 11, 2, tzinfo=UTC),
+            "subject": subject,
+            "snippet": "",
+            "list_id": list_id,
+        }
+    )
 
 
 async def test_an_example_stores_the_messages_features_and_the_owners_decision(test_db):
@@ -83,7 +94,9 @@ async def test_the_same_list_counts_toward_similarity(test_db):
     newsletter = "Weekly Design <weekly.example>"
     await record_example(
         inbox_message("This week in product design", sender="news@weekly.example", list_id=newsletter),
-        "Five essays on onboarding flows, a talk on design systems, and our pick of the week's tools.", "digest", "correction",
+        "Five essays on onboarding flows, a talk on design systems, and our pick of the week's tools.",
+        "digest",
+        "correction",
     )
     next_issue = "A long read on research, an interview with a founder, and two new podcasts."
 

@@ -21,8 +21,15 @@ from tests.utils.mail_server import Mailbox
 
 pytestmark = pytest.mark.usefixtures("mail_server")
 NEWSLETTERS = ("news@garden.example", "weekly@cooking.example", "digest@cycling.example")
-DIGEST = Proposal(needs_owner=False, verb="digest", title="This week's newsletter", evidence=["This week in"],
-                  digest="Three short stories about the season.", noise_rationale="A newsletter", confidence=0.9)
+DIGEST = Proposal(
+    needs_owner=False,
+    verb="digest",
+    title="This week's newsletter",
+    evidence=["This week in"],
+    digest="Three short stories about the season.",
+    noise_rationale="A newsletter",
+    confidence=0.9,
+)
 
 
 def seen(digest: Job) -> dict[str, list[str]]:
@@ -67,7 +74,6 @@ async def test_undoing_the_digests_archive_restores_all_three(async_client, test
     assert len(mailbox.messages("INBOX")) == 3 and mailbox.messages("Archive") == []
 
 
-
 async def test_newsletters_after_the_digest_was_finished_start_a_new_one(async_client, test_db, mailbox, plugins):
     digest = await three_newsletters_in_one_digest(test_db, mailbox, plugins)
     await async_client.post(f"/api/v1/jobs/{digest.id}/approve", json=seen(digest))
@@ -88,12 +94,15 @@ async def test_mail_of_a_stream_that_asks_first_makes_the_digest_it_joins_wait_f
     assert len(digest.message_ids) == 3 and digest.requires_approval
 
 
-@pytest.mark.parametrize(("method", "path", "body"), [
-    ("post", "choose", {"verb": "reply"}),
-    ("post", "correct", {"kind": "noise"}),
-    ("post", "correct", {"kind": "wrong_action", "verb": "todo"}),
-    ("patch", "", {"link": "https://x.example"}),
-])
+@pytest.mark.parametrize(
+    ("method", "path", "body"),
+    [
+        ("post", "choose", {"verb": "reply"}),
+        ("post", "correct", {"kind": "noise"}),
+        ("post", "correct", {"kind": "wrong_action", "verb": "todo"}),
+        ("patch", "", {"link": "https://x.example"}),
+    ],
+)
 async def test_a_digest_of_several_messages_refuses_actions_meant_for_one_message(
     async_client, test_db, mailbox, plugins, ai, method, path, body
 ):
@@ -114,8 +123,9 @@ async def test_the_first_line_of_a_digest_without_a_summary_has_no_blank_line_be
     await three_newsletters_in_one_digest(test_db, mailbox, plugins)
     [digest] = await Job.find_all().to_list()
     await Job.find(Job.id == digest.id).update({"$set": {"artifacts.digest": None}})
-    newcomer = Job(owner_id=OWNER_ID, verb="digest", title="t", artifacts=Artifacts(digest="A short story."),
-                   message_ids=digest.message_ids[:1])
+    newcomer = Job(
+        owner_id=OWNER_ID, verb="digest", title="t", artifacts=Artifacts(digest="A short story."), message_ids=digest.message_ids[:1]
+    )
 
     joined = await join_open_digest(newcomer, await message_of_digest(digest))
 
@@ -144,8 +154,9 @@ async def test_a_sender_name_that_looks_like_a_field_reference_is_kept_as_text(t
     digest = await three_newsletters_in_one_digest(test_db, mailbox, plugins)
     message = await message_of_digest(digest)
     message.sender.name = "$artifacts.missing"
-    newcomer = Job(owner_id=OWNER_ID, verb="digest", title="t", artifacts=Artifacts(digest="A short story."),
-                   message_ids=digest.message_ids[:1])
+    newcomer = Job(
+        owner_id=OWNER_ID, verb="digest", title="t", artifacts=Artifacts(digest="A short story."), message_ids=digest.message_ids[:1]
+    )
 
     joined = await join_open_digest(newcomer, message)
 

@@ -23,7 +23,9 @@ HOME, WORK = "home-imap", "work-imap"
 
 def deliver_to_both(home: Mailbox, work: Mailbox, subject: str) -> str:
     """One SMTP delivery to both addresses: both copies carry the same Message-ID."""
-    message = build_message(sender="ana@example.com", to=f"{home.address}, {work.address}", subject=subject, body="Pay invoice 4471 by Friday.")
+    message = build_message(
+        sender="ana@example.com", to=f"{home.address}, {work.address}", subject=subject, body="Pay invoice 4471 by Friday."
+    )
     with smtplib.SMTP(MAIL_HOST, SMTP_PORT, timeout=10) as smtp:
         smtp.send_message(message)
     for mailbox in (home, work):
@@ -33,8 +35,14 @@ def deliver_to_both(home: Mailbox, work: Mailbox, subject: str) -> str:
 
 
 def todo() -> Proposal:
-    return Proposal(needs_owner=False, verb="todo", title="Pay invoice 4471 by Friday", evidence=["Pay invoice 4471 by Friday."],
-                    due=datetime(2026, 11, 6, tzinfo=UTC), confidence=0.9)
+    return Proposal(
+        needs_owner=False,
+        verb="todo",
+        title="Pay invoice 4471 by Friday",
+        evidence=["Pay invoice 4471 by Friday."],
+        due=datetime(2026, 11, 6, tzinfo=UTC),
+        confidence=0.9,
+    )
 
 
 async def test_the_same_mail_in_two_accounts_is_one_job_archived_in_both_when_done(test_db):
@@ -100,7 +108,9 @@ async def test_a_first_connect_copy_joining_an_open_job_makes_it_need_approval(t
     await add_owner(test_db)
     home, work = new_mailbox(), new_mailbox()
     async with connected(reference_imap_plugin(home, HOME)) as registry:
-        await SyncEngine(registry, test_db["user"], poll_seconds=60, ai_provider_for=FakeAIProvider(result=todo())).sync_all()  # home: past first pass
+        await SyncEngine(
+            registry, test_db["user"], poll_seconds=60, ai_provider_for=FakeAIProvider(result=todo())
+        ).sync_all()  # home: past first pass
     deliver_to_both(home, work, "Invoice 4471")
     async with connected(reference_imap_plugin(home, HOME), reference_imap_plugin(work, WORK)) as registry:
         await SyncEngine(registry, test_db["user"], poll_seconds=60, ai_provider_for=FakeAIProvider(result=todo())).sync_all()
@@ -112,10 +122,20 @@ async def test_a_first_connect_copy_joining_an_open_job_makes_it_need_approval(t
 async def test_mail_without_a_message_id_never_shares_a_job(test_db, mailbox: Mailbox):
     await add_owner(test_db)
     for ref in ("<a@x>", "<b@x>"):
-        message = Message.model_validate({
-            "owner_id": OWNER, "plugin_id": "proton", "ref": ref, "message_id": "", "sender": {"email": "a@example.com"},
-            "to": [], "cc": [], "date": "2026-11-02T12:00:00Z", "subject": "No id", "snippet": "",
-        })
+        message = Message.model_validate(
+            {
+                "owner_id": OWNER,
+                "plugin_id": "proton",
+                "ref": ref,
+                "message_id": "",
+                "sender": {"email": "a@example.com"},
+                "to": [],
+                "cc": [],
+                "date": "2026-11-02T12:00:00Z",
+                "subject": "No id",
+                "snippet": "",
+            }
+        )
         await message.insert()
     first = await Message.find_one(Message.ref == "<a@x>")
     assert first is not None and first.id is not None
@@ -129,10 +149,20 @@ async def test_a_copy_handled_elsewhere_doesnt_absorb_a_new_copy(test_db):
     """The owner dealt with it outside the app in one account; a copy still in another inbox needs its own job."""
     copies = []
     for plugin_id in (HOME, WORK):
-        copy = Message.model_validate({
-            "owner_id": OWNER, "plugin_id": plugin_id, "ref": "<same@x>", "message_id": "<same@x>",
-            "sender": {"email": "a@example.com"}, "to": [], "cc": [], "date": "2026-11-02T12:00:00Z", "subject": "s", "snippet": "",
-        })
+        copy = Message.model_validate(
+            {
+                "owner_id": OWNER,
+                "plugin_id": plugin_id,
+                "ref": "<same@x>",
+                "message_id": "<same@x>",
+                "sender": {"email": "a@example.com"},
+                "to": [],
+                "cc": [],
+                "date": "2026-11-02T12:00:00Z",
+                "subject": "s",
+                "snippet": "",
+            }
+        )
         await copy.insert()
         copies.append(copy)
     assert copies[0].id is not None
@@ -180,10 +210,20 @@ async def test_a_new_copy_joins_the_unfinished_job_over_finished_ones(test_db):
     """E.g. home's job is done and work's first-connect copy has its own open job: a third copy joins work's."""
     copies = []
     for plugin_id in (HOME, WORK, "third-imap"):
-        copy = Message.model_validate({
-            "owner_id": OWNER, "plugin_id": plugin_id, "ref": "<same@x>", "message_id": "<same@x>",
-            "sender": {"email": "a@example.com"}, "to": [], "cc": [], "date": "2026-11-02T12:00:00Z", "subject": "s", "snippet": "",
-        })
+        copy = Message.model_validate(
+            {
+                "owner_id": OWNER,
+                "plugin_id": plugin_id,
+                "ref": "<same@x>",
+                "message_id": "<same@x>",
+                "sender": {"email": "a@example.com"},
+                "to": [],
+                "cc": [],
+                "date": "2026-11-02T12:00:00Z",
+                "subject": "s",
+                "snippet": "",
+            }
+        )
         await copy.insert()
         copies.append(copy)
     home_copy, work_copy, third_copy = copies

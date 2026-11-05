@@ -4,9 +4,9 @@ import logging
 
 import pytest
 
-from app.plugins import calls
 from app.models.job import Artifacts, Job, JobState
 from app.models.message import Message
+from app.plugins import calls
 from app.sync import SyncEngine, SyncError, close_handled_elsewhere
 from tests.conformance.test_mailbox_conformance import reference_imap_plugin
 from tests.test_sync.test_inbox_sync import OWNER, add_owner, connected, fake_plugin
@@ -29,9 +29,7 @@ async def state_of(job: Job) -> JobState:
 
 
 @pytest.mark.parametrize("batch", [calls.INBOX_CONTAINS_BATCH, 1])
-async def test_a_message_archived_outside_the_app_closes_its_job_on_the_next_poll(
-    test_db, mailbox: Mailbox, monkeypatch, batch
-):
+async def test_a_message_archived_outside_the_app_closes_its_job_on_the_next_poll(test_db, mailbox: Mailbox, monkeypatch, batch):
     monkeypatch.setattr(calls, "INBOX_CONTAINS_BATCH", batch)
     await add_owner(test_db)
     on_phone = [mailbox.deliver(sender="a@example.com", subject=f"Archived on phone {n}", body="x") for n in range(2)]
@@ -49,7 +47,9 @@ async def test_a_message_archived_outside_the_app_closes_its_job_on_the_next_pol
         await engine.sync_all()
 
     assert {message_id: await state_of(job) for message_id, job in jobs.items()} == {
-        on_phone[0]: "handled_elsewhere", on_phone[1]: "handled_elsewhere", still_there: "open"
+        on_phone[0]: "handled_elsewhere",
+        on_phone[1]: "handled_elsewhere",
+        still_there: "open",
     }
     assert (await state_of(dismissed), await state_of(snoozed)) == ("dismissed", "snoozed")
     # Archived once, by the owner; the app archived nothing and left the rest alone.
@@ -65,8 +65,13 @@ async def test_a_digest_lets_go_of_each_newsletter_archived_elsewhere_and_closes
         engine = SyncEngine(registry, test_db["user"], poll_seconds=60)
         await engine.sync_all()
         messages = {message.message_id: message for message in await Message.find_all().to_list()}
-        digest = Job(owner_id=OWNER, verb="digest", title="Low-priority mail to skim", artifacts=Artifacts(digest="a\nb\nc"),
-                     message_ids=[messages[ref].id for ref in refs])
+        digest = Job(
+            owner_id=OWNER,
+            verb="digest",
+            title="Low-priority mail to skim",
+            artifacts=Artifacts(digest="a\nb\nc"),
+            message_ids=[messages[ref].id for ref in refs],
+        )
         await digest.insert()
         mailbox.move(refs[0], "Archive")
 
@@ -84,11 +89,20 @@ async def test_a_digest_lets_go_of_each_newsletter_archived_elsewhere_and_closes
 async def test_only_this_plugins_messages_with_open_jobs_are_checked(test_db, caplog):
     """The fake plugin has no `inbox_contains`, so any call to it would fail the pass."""
     await add_owner(test_db)
-    elsewhere = Message.model_validate({
-        "owner_id": OWNER, "plugin_id": "another-account", "ref": "r1", "message_id": "<m@x>",
-        "sender": {"email": "a@example.com"}, "to": [], "cc": [], "date": "2026-11-02T12:00:00Z",
-        "subject": "s", "snippet": "",
-    })
+    elsewhere = Message.model_validate(
+        {
+            "owner_id": OWNER,
+            "plugin_id": "another-account",
+            "ref": "r1",
+            "message_id": "<m@x>",
+            "sender": {"email": "a@example.com"},
+            "to": [],
+            "cc": [],
+            "date": "2026-11-02T12:00:00Z",
+            "subject": "s",
+            "snippet": "",
+        }
+    )
     await elsewhere.insert()
     job = await job_over(elsewhere)
     async with connected(fake_plugin("fake", {})) as registry:
@@ -100,11 +114,20 @@ async def test_only_this_plugins_messages_with_open_jobs_are_checked(test_db, ca
 
 
 async def test_a_failing_inbox_check_raises_with_the_plugins_words_and_closes_nothing(test_db):
-    message = Message.model_validate({
-        "owner_id": OWNER, "plugin_id": "fake", "ref": "r1", "message_id": "<m@x>",
-        "sender": {"email": "a@example.com"}, "to": [], "cc": [], "date": "2026-11-02T12:00:00Z",
-        "subject": "s", "snippet": "",
-    })
+    message = Message.model_validate(
+        {
+            "owner_id": OWNER,
+            "plugin_id": "fake",
+            "ref": "r1",
+            "message_id": "<m@x>",
+            "sender": {"email": "a@example.com"},
+            "to": [],
+            "cc": [],
+            "date": "2026-11-02T12:00:00Z",
+            "subject": "s",
+            "snippet": "",
+        }
+    )
     await message.insert()
     job = await job_over(message)
     async with connected(fake_plugin("fake", {})) as registry:
@@ -117,11 +140,20 @@ async def test_a_failing_inbox_check_raises_with_the_plugins_words_and_closes_no
 @pytest.mark.parametrize("answer", ["extra", "missing"])
 async def test_an_answer_that_is_not_exactly_the_asked_refs_closes_nothing(test_db, monkeypatch, answer):
     monkeypatch.setenv("FAKE_ANSWER", answer)
-    message = Message.model_validate({
-        "owner_id": OWNER, "plugin_id": "fake", "ref": "r1", "message_id": "<m@x>",
-        "sender": {"email": "a@example.com"}, "to": [], "cc": [], "date": "2026-11-02T12:00:00Z",
-        "subject": "s", "snippet": "",
-    })
+    message = Message.model_validate(
+        {
+            "owner_id": OWNER,
+            "plugin_id": "fake",
+            "ref": "r1",
+            "message_id": "<m@x>",
+            "sender": {"email": "a@example.com"},
+            "to": [],
+            "cc": [],
+            "date": "2026-11-02T12:00:00Z",
+            "subject": "s",
+            "snippet": "",
+        }
+    )
     await message.insert()
     job = await job_over(message)
     async with connected(fake_plugin("fake", {"FAKE_INBOX_CONTAINS": "FAKE_ANSWER"})) as registry:
@@ -132,11 +164,20 @@ async def test_an_answer_that_is_not_exactly_the_asked_refs_closes_nothing(test_
 
 
 async def test_a_typed_plugin_error_names_the_plugin_tool_and_reason(test_db, mailbox: Mailbox):
-    message = Message.model_validate({
-        "owner_id": OWNER, "plugin_id": "reference-imap", "ref": "<a@example.com>\r\nA001 LOGOUT",
-        "message_id": "<a@example.com>", "sender": {"email": "a@example.com"}, "to": [], "cc": [],
-        "date": "2026-11-02T12:00:00Z", "subject": "s", "snippet": "",
-    })
+    message = Message.model_validate(
+        {
+            "owner_id": OWNER,
+            "plugin_id": "reference-imap",
+            "ref": "<a@example.com>\r\nA001 LOGOUT",
+            "message_id": "<a@example.com>",
+            "sender": {"email": "a@example.com"},
+            "to": [],
+            "cc": [],
+            "date": "2026-11-02T12:00:00Z",
+            "subject": "s",
+            "snippet": "",
+        }
+    )
     await message.insert()
     job = await job_over(message)
     async with connected(reference_imap_plugin(mailbox)) as registry:
