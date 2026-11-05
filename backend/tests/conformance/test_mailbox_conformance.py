@@ -17,6 +17,7 @@ from pydantic import BaseModel
 import mailbox_contract as contract
 from app.plugins.config import PluginConfig, StdioTransport
 from app.plugins.registry import PluginRegistry
+from tests.conformance.test_no_permanent_remove import DESTRUCTIVE_NAME
 from tests.utils.gmail_account import ADDRESS_ENV, APP_KEY_ENV, GMAIL_ADDRESS, GMAIL_APP_KEY, gmail_account
 from tests.utils.mail_server import IMAP_PORT, MAIL_HOST, SMTP_PORT, Mailbox, new_mailbox
 from tests.utils.tls_relay import fake_bridge
@@ -371,6 +372,14 @@ async def test_running_every_tool_loses_no_message(target: Target):
         await session.call_error("archive", {"ref": "<no-such-message@example.com>"})
 
         assert seeded <= every_message_id(box)
+
+
+async def test_no_tool_is_named_like_a_permanent_remove(target: Target):
+    """AC-1.2 for every plugin, not only the reference one: the tool list has no delete/expunge."""
+    async with open_session(target) as session:
+        names = [tool.name for tool in (await session.client.list_tools()).tools]
+
+        assert names and not [name for name in names if DESTRUCTIVE_NAME.search(name)]
 
 
 async def test_a_push_plugin_announces_new_mail(target: Target):
