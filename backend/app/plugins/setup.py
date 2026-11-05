@@ -13,29 +13,42 @@ from mailbox_contract import Health
 
 # (title, health layer, what to do when that layer fails), in the order the owner works.
 STEPS = (
-    ("Install Proton Mail Bridge and start it", "imap_port",
-     "Start Proton Mail Bridge on the Bridge machine (install it from proton.me/mail/bridge first if it isn't there)."),
-    ("Sign in to Bridge", "imap_login",
-     "Open Bridge and check that your Proton account is signed in."),
+    (
+        "Install Proton Mail Bridge and start it",
+        "imap_port",
+        "Start Proton Mail Bridge on the Bridge machine (install it from proton.me/mail/bridge first if it isn't there).",
+    ),
+    ("Sign in to Bridge", "imap_login", "Open Bridge and check that your Proton account is signed in."),
     (
         "Copy Bridge's IMAP and SMTP settings and password into the plugin settings",
         "smtp_auth",
         "Copy the SMTP settings and the password Bridge shows in its mailbox settings into the plugin settings.",
     ),
-    ("Install the plugin and the watchdog", "plugin",
-     "Install the Proton plugin and its watchdog on the Bridge machine (plugins/proton/README.md), then check its entry in plugins.yaml."),
+    (
+        "Install the plugin and the watchdog",
+        "plugin",
+        "Install the Proton plugin and its watchdog on the Bridge machine (plugins/proton/README.md), then check its entry in plugins.yaml.",
+    ),
     ("Test the connection", "folders", ""),
 )
 
 # Gmail can't say which of the first three a rejected login was, so a failed login marks all three.
 GMAIL_STEPS = (
-    ("Turn on 2-Step Verification for the Google account", "imap_login",
-     "App passwords need it: Google Account → Security → 2-Step Verification."),
-    ("Create an app password and set it as GMAIL_APP_PASSWORD",
-     "imap_login",
-     "Create one at myaccount.google.com/apppasswords and use it, not your Google password."),
-    ("Check that IMAP is on in Gmail's settings", "imap_login",
-     "Personal accounts always have IMAP on; on a Google Workspace account, ask the admin to allow IMAP."),
+    (
+        "Turn on 2-Step Verification for the Google account",
+        "imap_login",
+        "App passwords need it: Google Account → Security → 2-Step Verification.",
+    ),
+    (
+        "Create an app password and set it as GMAIL_APP_PASSWORD",
+        "imap_login",
+        "Create one at myaccount.google.com/apppasswords and use it, not your Google password.",
+    ),
+    (
+        "Check that IMAP is on in Gmail's settings",
+        "imap_login",
+        "Personal accounts always have IMAP on; on a Google Workspace account, ask the admin to allow IMAP.",
+    ),
     ("Add the Gmail plugin to plugins.yaml", "plugin", "See plugins/gmail/README.md."),
     ("Test the connection", "smtp", ""),
 )
@@ -70,7 +83,7 @@ def install_step(title: str, fix: str, config: PluginConfig, state: PluginState,
         problem = f"plugins.yaml has no watchdog for {config.id}, so nothing restarts Bridge when it stops."
         return SetupStep(title=title, status="failing", detail=f"{problem} {fix}")
     if not isinstance(watchdog, WatchdogReport):
-        problem = f"The watchdog on {config.watchdog.machine} {WATCHDOG_PROBLEMS[watchdog or "unreadable"]}."
+        problem = f"The watchdog on {config.watchdog.machine} {WATCHDOG_PROBLEMS[watchdog or 'unreadable']}."
         return SetupStep(title=title, status="failing", detail=f"{problem} {fix}")
     return SetupStep(title=title, status="done")
 
@@ -86,7 +99,10 @@ def is_gmail(config: PluginConfig, state: PluginState) -> bool:
 
 
 def build_checklist(
-    config: PluginConfig, state: PluginState, health: Health | None, watchdog: WatchdogRead | None,
+    config: PluginConfig,
+    state: PluginState,
+    health: Health | None,
+    watchdog: WatchdogRead | None,
     warnings: list[str] | None = None,
 ) -> Checklist:
     gmail = is_gmail(config, state)

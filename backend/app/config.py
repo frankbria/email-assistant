@@ -27,9 +27,7 @@ class Settings(BaseSettings):
     mongodb_test_db: str = os.getenv("MONGODB_TEST_DB", "email_assistant_test")
 
     # API settings
-    api_environment: str = os.getenv(
-        "API_ENVIRONMENT", "test" if "pytest" in sys.modules else "development"
-    )
+    api_environment: str = os.getenv("API_ENVIRONMENT", "test" if "pytest" in sys.modules else "development")
 
     # Better Auth (the Next.js app): JWT issuer/audience, and where its JWKS lives.
     # BETTER_AUTH_JWKS_URL overrides the JWKS location, e.g. an internal Docker address.

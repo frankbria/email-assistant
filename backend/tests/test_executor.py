@@ -22,10 +22,20 @@ pytestmark = pytest.mark.usefixtures("mail_server")
 
 
 async def stored(plugin_id: str, ref: str) -> Message:
-    message = Message.model_validate({
-        "owner_id": OWNER, "plugin_id": plugin_id, "ref": ref, "message_id": ref, "sender": {"email": "a@example.com"},
-        "to": [], "cc": [], "date": datetime(2026, 11, 2, tzinfo=UTC), "subject": "Invoice", "snippet": "",
-    })
+    message = Message.model_validate(
+        {
+            "owner_id": OWNER,
+            "plugin_id": plugin_id,
+            "ref": ref,
+            "message_id": ref,
+            "sender": {"email": "a@example.com"},
+            "to": [],
+            "cc": [],
+            "date": datetime(2026, 11, 2, tzinfo=UTC),
+            "subject": "Invoice",
+            "snippet": "",
+        }
+    )
     await message.insert()
     return message
 
@@ -57,10 +67,13 @@ async def test_a_message_stays_until_every_job_on_it_is_final(test_db, mailbox: 
     assert subjects(mailbox, "INBOX") == [] and subjects(mailbox, "Archive") == [ref]
 
 
-@pytest.mark.parametrize(("mode", "error"), [
-    ("unverified", "fake couldn't confirm the archive, so the message is still in the inbox"),
-    ("malformed", "fake couldn't archive the message (it answered outside the contract), so it is still in the inbox"),
-])
+@pytest.mark.parametrize(
+    ("mode", "error"),
+    [
+        ("unverified", "fake couldn't confirm the archive, so the message is still in the inbox"),
+        ("malformed", "fake couldn't archive the message (it answered outside the contract), so it is still in the inbox"),
+    ],
+)
 async def test_an_unverified_or_garbled_archive_keeps_the_job_open_and_names_the_plugin(test_db, monkeypatch, mode, error):
     """AC-1.3; a reply outside the contract must reopen the job too, never leave it done."""
     monkeypatch.setenv("FAKE_MODE_ARCHIVE", mode)
@@ -152,8 +165,9 @@ async def test_an_interrupted_finish_still_logs_the_mail_it_archived(test_db, ma
     mailbox.create_folder("Archive")
     archived_first, waiting = await stored(PLUGIN, ref), await stored("fake", "r1")
     assert archived_first.id is not None and waiting.id is not None
-    job = Job(owner_id=OWNER, verb="todo", title="Pay", artifacts=Artifacts(link="https://x.example"),
-              message_ids=[archived_first.id, waiting.id])
+    job = Job(
+        owner_id=OWNER, verb="todo", title="Pay", artifacts=Artifacts(link="https://x.example"), message_ids=[archived_first.id, waiting.id]
+    )
     await job.insert()
     plugin = fake_plugin("fake", {"FAKE_ARCHIVE": "FAKE_MODE_ARCHIVE", "FAKE_INBOX_CONTAINS": "FAKE_MODE_INBOX"})
     async with connected(reference_imap_plugin(mailbox), plugin) as registry:
@@ -178,8 +192,16 @@ async def test_an_interrupted_undo_releases_its_claim(test_db, monkeypatch):
     monkeypatch.setenv("FAKE_MODE_INBOX", "absent")
     message = await stored("fake", "r1")
     assert message.id is not None
-    entry = ActionLogEntry(owner_id=OWNER, action="archived", job_id=PydanticObjectId(), message_ids=[message.id],
-                           by="owner", permission_level="ask", ok=True, undoable=True)
+    entry = ActionLogEntry(
+        owner_id=OWNER,
+        action="archived",
+        job_id=PydanticObjectId(),
+        message_ids=[message.id],
+        by="owner",
+        permission_level="ask",
+        ok=True,
+        undoable=True,
+    )
     await entry.insert()
     plugin = fake_plugin("fake", {"FAKE_RESTORE": "FAKE_MODE_RESTORE", "FAKE_INBOX_CONTAINS": "FAKE_MODE_INBOX"})
     async with connected(plugin) as registry:

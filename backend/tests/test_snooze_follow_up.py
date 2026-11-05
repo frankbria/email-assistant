@@ -21,12 +21,25 @@ NOV_2 = datetime(2026, 11, 2, 9, tzinfo=UTC)
 DUE = datetime(2026, 11, 9, 9, tzinfo=UTC)
 
 
-async def message(ref: str, sender: str, folder: str = "inbox", in_reply_to: str | None = None, date: datetime = NOV_2,
-                  to: str = "frank@example.com") -> Message:
-    stored = Message.model_validate({
-        "owner_id": OWNER, "plugin_id": PLUGIN, "folder": folder, "ref": ref, "message_id": ref, "sender": {"email": sender},
-        "to": [{"email": to}], "cc": [], "date": date, "subject": "Contract", "snippet": "", "in_reply_to": in_reply_to,
-    })
+async def message(
+    ref: str, sender: str, folder: str = "inbox", in_reply_to: str | None = None, date: datetime = NOV_2, to: str = "frank@example.com"
+) -> Message:
+    stored = Message.model_validate(
+        {
+            "owner_id": OWNER,
+            "plugin_id": PLUGIN,
+            "folder": folder,
+            "ref": ref,
+            "message_id": ref,
+            "sender": {"email": sender},
+            "to": [{"email": to}],
+            "cc": [],
+            "date": date,
+            "subject": "Contract",
+            "snippet": "",
+            "in_reply_to": in_reply_to,
+        }
+    )
     await stored.insert()
     return stored
 
@@ -71,8 +84,9 @@ async def test_a_follow_up_with_an_answer_is_done_and_its_mail_archived(test_db,
     ref = mailbox.deliver(sender="ana@example.com", subject="Contract", body="Please sign")
     mailbox.create_folder("Archive")
     original = await message(ref, "ana@example.com")
-    await message("<reply@frank>", "frank@example.com", folder="sent", in_reply_to=ref, to="ana@example.com",
-                  date=NOV_2 + timedelta(hours=1))
+    await message(
+        "<reply@frank>", "frank@example.com", folder="sent", in_reply_to=ref, to="ana@example.com", date=NOV_2 + timedelta(hours=1)
+    )
     # From another address (her phone), so only the thread links it to the owner's reply.
     await message("<answer@ana>", "ana.phone@example.net", in_reply_to="<reply@frank>", date=NOV_2 + timedelta(days=2))
     job = await job_over(original, "follow_up")
@@ -153,7 +167,9 @@ async def test_a_reminder_survives_its_mail_being_archived_elsewhere(test_db, ma
 
 
 async def test_one_broken_job_doesnt_stop_the_others_waking(test_db):
-    broken = Job(owner_id=OWNER, verb="follow_up", title="t", artifacts=Artifacts(), due=DUE, message_ids=[PydanticObjectId()], state="snoozed")
+    broken = Job(
+        owner_id=OWNER, verb="follow_up", title="t", artifacts=Artifacts(), due=DUE, message_ids=[PydanticObjectId()], state="snoozed"
+    )
     await broken.insert()
     snooze = await job_over(await message("<m@x>", "ana@example.com"), "snooze")
     await defer(snooze.id, by="owner", level="ask")
@@ -191,9 +207,18 @@ async def test_an_answer_to_an_earlier_reply_doesnt_resolve_a_later_one(test_db)
 async def test_the_owners_latest_turn_in_a_back_and_forth_is_the_one_awaiting_an_answer(test_db):
     """original → reply → answer → reply to that answer (threaded to the answer, not the original)."""
     original = await message("<m@x>", "ana@example.com")
-    await message("<reply1@frank>", "frank@example.com", folder="sent", in_reply_to="<m@x>", to="ana@example.com", date=NOV_2 + timedelta(hours=1))
+    await message(
+        "<reply1@frank>", "frank@example.com", folder="sent", in_reply_to="<m@x>", to="ana@example.com", date=NOV_2 + timedelta(hours=1)
+    )
     await message("<answer1@ana>", "ana@example.com", in_reply_to="<reply1@frank>", date=NOV_2 + timedelta(days=1))
-    await message("<reply2@frank>", "frank@example.com", folder="sent", in_reply_to="<answer1@ana>", to="Ana@Example.com", date=NOV_2 + timedelta(days=2))
+    await message(
+        "<reply2@frank>",
+        "frank@example.com",
+        folder="sent",
+        in_reply_to="<answer1@ana>",
+        to="Ana@Example.com",
+        date=NOV_2 + timedelta(days=2),
+    )
     job = await job_over(original, "follow_up")
 
     await defer(job.id, by="owner", level="ask")

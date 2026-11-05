@@ -43,7 +43,10 @@ def bridge_layout(tmp_path: Path) -> Iterator[dict[str, object]]:
     wait_until_ready(imap_port=AUTH_IMAP_PORT, smtp_port=AUTH_SMTP_PORT)
     cert, key = write_certificate(tmp_path, "bridge")
     layout = {
-        "cert": cert, "key": key, "imap_port": free_port(), "smtp_port": free_port(),
+        "cert": cert,
+        "key": key,
+        "imap_port": free_port(),
+        "smtp_port": free_port(),
         "pid_file": tmp_path / "bridge.pid",
     }
     yield layout
@@ -53,16 +56,30 @@ def bridge_layout(tmp_path: Path) -> Iterator[dict[str, object]]:
 
 def start_bridge_command(layout: dict[str, object]) -> list[str]:
     """What the owner would configure: start Bridge in the background and return."""
-    argv = [sys.executable, str(FAKE_BRIDGE), str(layout["cert"]), str(layout["key"]),
-            str(layout["imap_port"]), str(layout["smtp_port"]), str(layout["pid_file"])]
+    argv = [
+        sys.executable,
+        str(FAKE_BRIDGE),
+        str(layout["cert"]),
+        str(layout["key"]),
+        str(layout["imap_port"]),
+        str(layout["smtp_port"]),
+        str(layout["pid_file"]),
+    ]
     return [sys.executable, "-c", f"import subprocess; subprocess.Popen({argv!r}, start_new_session=True)"]
 
 
 def settings(layout: dict[str, object], **overrides: object) -> ProtonSettings:
     values: dict[str, object] = {
-        "account": "bridge@test.example", "username": "bridge", "password": "test", "tls": "ssl",
-        "ca_cert_path": str(layout["cert"]), "imap_port": layout["imap_port"], "smtp_port": layout["smtp_port"],
-        "bridge_restart_command": start_bridge_command(layout), "folder_archive": "INBOX", "folder_sent": "INBOX",
+        "account": "bridge@test.example",
+        "username": "bridge",
+        "password": "test",
+        "tls": "ssl",
+        "ca_cert_path": str(layout["cert"]),
+        "imap_port": layout["imap_port"],
+        "smtp_port": layout["smtp_port"],
+        "bridge_restart_command": start_bridge_command(layout),
+        "folder_archive": "INBOX",
+        "folder_sent": "INBOX",
     }
     return ProtonSettings(**{**values, **overrides})
 

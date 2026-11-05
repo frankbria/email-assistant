@@ -60,12 +60,22 @@ class Metric(NamedTuple):
 
 def message_of(line: Line, message_id: PydanticObjectId) -> Message:
     """The line's mail as the pipeline sees it; never stored."""
-    return Message.model_validate({
-        "_id": message_id, "owner_id": OWNER, "plugin_id": "test-set", "ref": line["message_id"],
-        "message_id": line["message_id"], "sender": {"email": line["sender"]}, "to": [], "cc": [],
-        "date": datetime.fromisoformat(line["reacted_at"]), "subject": line["subject"], "snippet": line["text"][:200],
-        "list_id": line["list_id"],
-    })
+    return Message.model_validate(
+        {
+            "_id": message_id,
+            "owner_id": OWNER,
+            "plugin_id": "test-set",
+            "ref": line["message_id"],
+            "message_id": line["message_id"],
+            "sender": {"email": line["sender"]},
+            "to": [],
+            "cc": [],
+            "date": datetime.fromisoformat(line["reacted_at"]),
+            "subject": line["subject"],
+            "snippet": line["text"][:200],
+            "list_id": line["list_id"],
+        }
+    )
 
 
 async def evaluate(lines: Sequence[Line], provider: AIProvider) -> list[Job]:
@@ -108,8 +118,11 @@ def measure(lines: Sequence[Line], jobs: Sequence[Job]) -> list[Metric]:
     return [
         rate(f"AC-3.3 verb spread: largest non-noise verb {top}", most, len(proposals), MOST_FOR_ONE_VERB, at_most=True),
         rate("AC-3.3 acceptance: non-noise proposals with the owner's verb", accepted, len(proposals), ACCEPTED, at_most=False),
-        Metric("AC-3.4 scheduling jobs for mail without meeting or time language", not scheduling,
-               f"{len(scheduling)} of {len(timeless)}" + (f": {', '.join(scheduling)}" if scheduling else "")),
+        Metric(
+            "AC-3.4 scheduling jobs for mail without meeting or time language",
+            not scheduling,
+            f"{len(scheduling)} of {len(timeless)}" + (f": {', '.join(scheduling)}" if scheduling else ""),
+        ),
         rate("AC-4.1 owner-marked needs-me classified as noise", sum(needs_me), len(needs_me), NEEDS_ME_AS_NOISE, at_most=True),
         rate("AC-4.2 owner-marked noise classified as noise", sum(owner_noise), len(owner_noise), NOISE_FOUND, at_most=False),
     ]
@@ -131,8 +144,9 @@ async def run(path: str, provider: AIProvider) -> int:
     settings = get_settings()
     run_id = uuid.uuid4().hex[:12]  # its own database: a concurrent run must not share or drop it
     # shortcut: a killed run leaves its <db>_metrics_<id> database behind; drop those by hand, or sweep them if it recurs
-    scratch = settings.model_copy(update={"mongodb_db": f"{settings.mongodb_db}_metrics_{run_id}",
-                                          "mongodb_test_db": f"{settings.mongodb_test_db}_metrics_{run_id}"})
+    scratch = settings.model_copy(
+        update={"mongodb_db": f"{settings.mongodb_db}_metrics_{run_id}", "mongodb_test_db": f"{settings.mongodb_test_db}_metrics_{run_id}"}
+    )
     database = scratch.current_mongodb_db
     client = await init_db(scratch)
     try:
@@ -148,5 +162,8 @@ async def run(path: str, provider: AIProvider) -> int:
 
 if __name__ == "__main__":
     settings = get_settings()
-    sys.exit(asyncio.run(run(sys.argv[1] if len(sys.argv) > 1 else settings.test_set_file,
-                             provider_for(settings.ai_provider, settings.ai_model))))
+    sys.exit(
+        asyncio.run(
+            run(sys.argv[1] if len(sys.argv) > 1 else settings.test_set_file, provider_for(settings.ai_provider, settings.ai_model))
+        )
+    )

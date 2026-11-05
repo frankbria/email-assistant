@@ -29,17 +29,30 @@ BODY = "Could we meet Thursday at 3pm to go over the Q4 budget?"
 
 def meeting() -> Proposal:
     return Proposal(
-        needs_owner=False, verb="reply", title="Ana asks to meet Thursday about the Q4 budget",
-        evidence=["Could we meet Thursday at 3pm"], options=["Yes", "No", "Later"], confidence=0.9,
+        needs_owner=False,
+        verb="reply",
+        title="Ana asks to meet Thursday about the Q4 budget",
+        evidence=["Could we meet Thursday at 3pm"],
+        options=["Yes", "No", "Later"],
+        confidence=0.9,
     )
 
 
 async def stored_message(ref: str) -> Message:
-    message = Message.model_validate({
-        "owner_id": OWNER, "plugin_id": "reference-imap", "ref": ref, "message_id": ref,
-        "sender": {"email": "a@example.com"}, "to": [], "cc": [], "date": "2026-11-02T12:00:00Z",
-        "subject": "Vanished", "snippet": "",
-    })
+    message = Message.model_validate(
+        {
+            "owner_id": OWNER,
+            "plugin_id": "reference-imap",
+            "ref": ref,
+            "message_id": ref,
+            "sender": {"email": "a@example.com"},
+            "to": [],
+            "cc": [],
+            "date": "2026-11-02T12:00:00Z",
+            "subject": "Vanished",
+            "snippet": "",
+        }
+    )
     await message.insert()
     return message
 
@@ -117,11 +130,21 @@ async def test_a_stored_rule_decides_the_verb(test_db, mailbox: Mailbox):
 async def test_the_proposal_request_carries_the_example_of_a_near_identical_message(test_db, mailbox: Mailbox):
     """#82 AC, CI half: the retrieved context reaches the AI (the live corpus checks the AI follows it)."""
     await add_owner(test_db)
-    earlier = Message.model_validate({
-        "_id": PydanticObjectId(), "owner_id": OWNER, "plugin_id": "reference-imap", "ref": "earlier", "message_id": "<earlier@x>",
-        "sender": {"email": "ana@example.com"}, "to": [], "cc": [], "date": "2026-10-02T12:00:00Z",
-        "subject": "Q3 budget", "snippet": "",
-    })
+    earlier = Message.model_validate(
+        {
+            "_id": PydanticObjectId(),
+            "owner_id": OWNER,
+            "plugin_id": "reference-imap",
+            "ref": "earlier",
+            "message_id": "<earlier@x>",
+            "sender": {"email": "ana@example.com"},
+            "to": [],
+            "cc": [],
+            "date": "2026-10-02T12:00:00Z",
+            "subject": "Q3 budget",
+            "snippet": "",
+        }
+    )
     await record_example(earlier, BODY.replace("Q4", "Q3"), "reply", "ask_owner")
     mailbox.deliver(sender="ana@example.com", subject="Q4 budget", body=BODY)
     provider = FakeAIProvider(result=meeting())
@@ -251,11 +274,21 @@ async def test_a_broken_example_store_still_yields_a_proposal(test_db, mailbox: 
 async def test_a_rule_decided_message_is_proposed_without_examples(test_db, mailbox: Mailbox):
     await add_owner(test_db)
     await Rule(owner_id=OWNER, match="sender", value="ana@example.com", verb="reply").insert()
-    earlier = Message.model_validate({
-        "_id": PydanticObjectId(), "owner_id": OWNER, "plugin_id": "reference-imap", "ref": "earlier",
-        "message_id": "<earlier@x>", "sender": {"email": "ana@example.com"}, "to": [], "cc": [],
-        "date": "2026-10-02T12:00:00Z", "subject": "Q4 budget", "snippet": "",
-    })
+    earlier = Message.model_validate(
+        {
+            "_id": PydanticObjectId(),
+            "owner_id": OWNER,
+            "plugin_id": "reference-imap",
+            "ref": "earlier",
+            "message_id": "<earlier@x>",
+            "sender": {"email": "ana@example.com"},
+            "to": [],
+            "cc": [],
+            "date": "2026-10-02T12:00:00Z",
+            "subject": "Q4 budget",
+            "snippet": "",
+        }
+    )
     await record_example(earlier, BODY, "digest", "ask_owner")
     mailbox.deliver(sender="ana@example.com", subject="Q4 budget", body=BODY)
     provider = FakeAIProvider(result=meeting())

@@ -32,9 +32,7 @@ STEP_TITLES = [
 ]
 
 
-HEALTHY_WATCHDOG = WatchdogReport(
-    bridge_state="up", bridge_detail="", bridge_layer=None, bridge_restarts=0, plugin_state="up"
-)
+HEALTHY_WATCHDOG = WatchdogReport(bridge_state="up", bridge_detail="", bridge_layer=None, bridge_restarts=0, plugin_state="up")
 
 
 def proton_config(watchdog: WatchdogConfig | None = None) -> PluginConfig:
@@ -70,8 +68,13 @@ def stopped_bridge(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
     imap_port = closed_port()
     smtp_port = start_tls_relay(AUTH_SMTP_PORT, cert, key)
     settings = {
-        "account": "bridge@test.example", "username": USERNAME, "tls": "ssl",
-        "ca_cert_path": str(cert), "imap_port": imap_port, "smtp_port": smtp_port, "password": SECRET,
+        "account": "bridge@test.example",
+        "username": USERNAME,
+        "tls": "ssl",
+        "ca_cert_path": str(cert),
+        "imap_port": imap_port,
+        "smtp_port": smtp_port,
+        "password": SECRET,
     }
     settings_file = tmp_path / "proton.env"
     settings_file.write_text("".join(f"MAILBOX_{name.upper()}={value}\n" for name, value in settings.items()))
@@ -79,7 +82,9 @@ def stopped_bridge(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
     watchdog_port = free_port()
     watchdog = serve_status(
         Watchdog(ProtonSettings(_env_file=settings_file), plugin_command=None),  # type: ignore[call-arg]  # fields come from the file
-        host="127.0.0.1", port=watchdog_port, token=TOKEN,
+        host="127.0.0.1",
+        port=watchdog_port,
+        token=TOKEN,
     )
     monkeypatch.setenv(TOKEN_ENV, TOKEN)
     config = tmp_path / "plugins.yaml"
@@ -128,11 +133,15 @@ def test_a_plugin_that_is_not_answering_fails_its_step_and_the_bridge_steps_wait
 
 
 def test_a_rejected_login_fails_the_sign_in_step_with_the_plugins_words():
-    health = Health(status="down", repair_actions=[], checks=[
-        HealthCheck(layer="plugin", ok=True, detail="The plugin is answering."),
-        HealthCheck(layer="imap_port", ok=True, detail="Bridge is listening."),
-        HealthCheck(layer="imap_login", ok=False, detail="Bridge rejected the login."),
-    ])
+    health = Health(
+        status="down",
+        repair_actions=[],
+        checks=[
+            HealthCheck(layer="plugin", ok=True, detail="The plugin is answering."),
+            HealthCheck(layer="imap_port", ok=True, detail="Bridge is listening."),
+            HealthCheck(layer="imap_login", ok=False, detail="Bridge rejected the login."),
+        ],
+    )
     config = proton_config(WatchdogConfig(url="http://127.0.0.1:1/status", token_env=TOKEN_ENV, machine="DESKTOP-BRIDGE"))
 
     checklist = build_checklist(config, PluginState(id="proton", status="connected"), health, HEALTHY_WATCHDOG)
@@ -146,7 +155,6 @@ def test_requires_the_owner(tmp_path, monkeypatch):
 
     with TestClient(app) as client:
         assert client.post("/api/v1/connections/proton/check").status_code == 401
-
 
 
 def test_a_connected_plugin_without_a_watchdog_in_plugins_yaml_fails_the_install_step():
@@ -173,8 +181,12 @@ GMAIL_STEP_TITLES = [
     "Test the connection",
 ]
 GMAIL_INFO = MailboxInfo(
-    contract_version="1.0", plugin_name="gmail", plugin_version="0.1.0", account="owner@example.com",
-    folders=Folders(inbox="INBOX", archive="[Gmail]/All Mail", sent="[Gmail]/Sent Mail"), capabilities=[],
+    contract_version="1.0",
+    plugin_name="gmail",
+    plugin_version="0.1.0",
+    account="owner@example.com",
+    folders=Folders(inbox="INBOX", archive="[Gmail]/All Mail", sent="[Gmail]/Sent Mail"),
+    capabilities=[],
 )
 
 
@@ -188,10 +200,14 @@ def gmail_config() -> PluginConfig:
 
 def test_a_rejected_gmail_login_points_at_each_sign_in_step_once_with_gmails_words():
     rejected = "Gmail rejected the IMAP login."
-    health = Health(status="degraded", repair_actions=[], checks=[
-        HealthCheck(layer="imap_login", ok=False, detail=rejected),
-        HealthCheck(layer="smtp", ok=True, detail="ok"),
-    ])
+    health = Health(
+        status="degraded",
+        repair_actions=[],
+        checks=[
+            HealthCheck(layer="imap_login", ok=False, detail=rejected),
+            HealthCheck(layer="smtp", ok=True, detail="ok"),
+        ],
+    )
 
     checklist = build_checklist(gmail_config(), gmail_state(), health, None)
 
@@ -248,12 +264,19 @@ def test_gmail_with_auto_expunge_off_goes_green_without_a_warning(tmp_path, monk
     """AC (off half, on GreenMail, which never auto-expunges): the real plugin over stdio."""
     mailbox.create_folder('"[Gmail]/Trash"')
     bridge = fake_bridge()
-    gmail_plugins_yaml(tmp_path, monkeypatch, {
-        "MAILBOX_ACCOUNT": mailbox.address, "MAILBOX_PASSWORD": "unused",
-        "MAILBOX_IMAP_HOST": "127.0.0.1", "MAILBOX_IMAP_PORT": str(bridge.imap_port),
-        "MAILBOX_SMTP_HOST": "127.0.0.1", "MAILBOX_SMTP_PORT": str(bridge.smtp_port),
-        "MAILBOX_CA_CERT_PATH": str(bridge.cert),
-    })
+    gmail_plugins_yaml(
+        tmp_path,
+        monkeypatch,
+        {
+            "MAILBOX_ACCOUNT": mailbox.address,
+            "MAILBOX_PASSWORD": "unused",
+            "MAILBOX_IMAP_HOST": "127.0.0.1",
+            "MAILBOX_IMAP_PORT": str(bridge.imap_port),
+            "MAILBOX_SMTP_HOST": "127.0.0.1",
+            "MAILBOX_SMTP_PORT": str(bridge.smtp_port),
+            "MAILBOX_CA_CERT_PATH": str(bridge.cert),
+        },
+    )
 
     with TestClient(app, headers=bearer_headers()) as client:
         checklist = client.post("/api/v1/connections/gmail/check").json()

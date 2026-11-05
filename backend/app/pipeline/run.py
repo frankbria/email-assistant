@@ -37,7 +37,9 @@ async def process_pending(
     """Every inbox message of this plugin still without its job, oldest first, including any a crash
     left behind. Returns how many were processed; one failure doesn't stop the rest."""
     pending = Message.find(
-        Message.owner_id == owner_id, Message.plugin_id == plugin_id, Message.folder == "inbox",
+        Message.owner_id == owner_id,
+        Message.plugin_id == plugin_id,
+        Message.folder == "inbox",
         {"pipeline_done": {"$ne": True}},  # also documents stored before the field existed
     )
     messages = await pending.sort("date").to_list()
@@ -67,9 +69,7 @@ async def process(message: Message, client: Client, provider: AIProvider, cap: i
         # A copy that must be asked about (first-connect, §5.3, or a stream that asks first, §10.4) never rides on a
         # decision already carried out elsewhere.
         job = await attach_copy(sibling, message)
-    if (
-        job is not None and job.state in ("done", "dismissed") and len(job.message_ids) > 1 and await asks_first(message)
-    ):
+    if job is not None and job.state in ("done", "dismissed") and len(job.message_ids) > 1 and await asks_first(message):
         # A copy of an ask-first stream that joined a job which finished meanwhile must still be asked; after a crash
         # that may ask twice, the safe way. A first-connect copy that joined in time made the job ask (attach_copy),
         # and a finished job of this message alone was decided on it, so their archive below stands.
@@ -161,9 +161,7 @@ async def attach_copy(job: Job, message: Message) -> Job:
     # A first-connect copy (§5.3), or one whose stream asks first (§10.4), makes the shared job need the owner's tap.
     if message.first_pass or await asks_first(message):
         attach["$set"] = {"requires_approval": True}
-    stored = await Job.get_pymongo_collection().find_one_and_update(
-        {"_id": job.id}, attach, return_document=ReturnDocument.AFTER
-    )
+    stored = await Job.get_pymongo_collection().find_one_and_update({"_id": job.id}, attach, return_document=ReturnDocument.AFTER)
     assert stored is not None
     return Job.model_validate(stored)
 
@@ -176,16 +174,22 @@ async def join_open_digest(job: Job, message: Message) -> Job:
     line = f"{message.sender.name or message.sender.email}: {summary}"
     joined = await Job.get_pymongo_collection().find_one_and_update(
         {"owner_id": job.owner_id, "verb": "digest", "state": "open", "ask_owner": False},
-        [{"$set": {
-            "message_ids": {"$concatArrays": ["$message_ids", [message.id]]},
-            "artifacts.digest": {"$cond": [
-                {"$gt": [{"$strLenCP": {"$ifNull": ["$artifacts.digest", ""]}}, 0]},
-                # $literal: mail text starting with "$" would otherwise be read as a field path
-                {"$concat": ["$artifacts.digest", "\n", {"$literal": line}]},
-                {"$literal": line},
-            ]},
-            "requires_approval": {"$or": ["$requires_approval", job.requires_approval]},
-        }}],
+        [
+            {
+                "$set": {
+                    "message_ids": {"$concatArrays": ["$message_ids", [message.id]]},
+                    "artifacts.digest": {
+                        "$cond": [
+                            {"$gt": [{"$strLenCP": {"$ifNull": ["$artifacts.digest", ""]}}, 0]},
+                            # $literal: mail text starting with "$" would otherwise be read as a field path
+                            {"$concat": ["$artifacts.digest", "\n", {"$literal": line}]},
+                            {"$literal": line},
+                        ]
+                    },
+                    "requires_approval": {"$or": ["$requires_approval", job.requires_approval]},
+                }
+            }
+        ],
         sort=[("created_at", 1)],
         return_document=ReturnDocument.AFTER,
     )

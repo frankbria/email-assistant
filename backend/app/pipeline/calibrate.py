@@ -43,8 +43,10 @@ async def calibrate(owner_id: str, plugins: PluginRegistry, provider: AIProvider
         # The AI's verb is the card's one-tap answer (the owner's 👍); another verb is the owner's fix.
         card = CalibrationJob(
             **job.model_dump(exclude={"id", "revision_id", "ask_owner", "suggested_verbs"}),
-            ask_owner=True, suggested_verbs=[proposed] if proposed else job.suggested_verbs,
-            proposed=proposed, text=minimize(detail.text, message.subject),
+            ask_owner=True,
+            suggested_verbs=[proposed] if proposed else job.suggested_verbs,
+            proposed=proposed,
+            text=minimize(detail.text, message.subject),
         )
         await replace_card(owner_id, message, card)
 
@@ -62,11 +64,17 @@ async def replace_card(owner_id: str, message: Message, card: CalibrationJob) ->
         except DuplicateKeyError:  # another run inserted between our delete and insert: replace that one
             continue
 
+
 def add_to_test_set(path: str, message: Message, calibration: CalibrationJob, verb: Verb) -> None:
     """One JSON line per reaction: the mail, what the AI proposed and what the owner said it should be."""
     entry = {
-        "message_id": message.message_id, "sender": message.sender.email, "list_id": message.list_id,
-        "subject": message.subject, "text": calibration.text, "proposed": calibration.proposed, "owner_verb": verb,
+        "message_id": message.message_id,
+        "sender": message.sender.email,
+        "list_id": message.list_id,
+        "subject": message.subject,
+        "text": calibration.text,
+        "proposed": calibration.proposed,
+        "owner_verb": verb,
         "reacted_at": datetime.now(UTC).isoformat(),
     }
     Path(path).parent.mkdir(parents=True, exist_ok=True)

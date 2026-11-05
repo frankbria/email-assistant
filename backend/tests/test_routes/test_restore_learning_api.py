@@ -24,8 +24,14 @@ from tests.utils.fakes import FakeAIProvider
 from tests.utils.mail_server import new_mailbox
 
 pytestmark = pytest.mark.usefixtures("mail_server")
-NOISE = Proposal(needs_owner=False, verb="archive_noise", title="The shop's weekly garden tools deals",
-                 evidence=["garden tools"], noise_rationale="A promotional mailing", confidence=0.9)
+NOISE = Proposal(
+    needs_owner=False,
+    verb="archive_noise",
+    title="The shop's weekly garden tools deals",
+    evidence=["garden tools"],
+    noise_rationale="A promotional mailing",
+    confidence=0.9,
+)
 
 
 async def rules() -> list[tuple[str, str, str | None, bool]]:
@@ -126,7 +132,9 @@ async def test_a_lesson_that_fails_to_store_still_returns_the_restore(async_clie
     await act_if_autonomous(job, plugins)
     [app_archive] = await history(async_client)
     # A stored rule for the sender that can't be read: learning from the restore fails, as a broken collection does.
-    await Rule.get_pymongo_collection().insert_one({"owner_id": OWNER_ID, "match": "sender", "value": ana.address.lower(), "verb": "not a verb"})
+    await Rule.get_pymongo_collection().insert_one(
+        {"owner_id": OWNER_ID, "match": "sender", "value": ana.address.lower(), "verb": "not a verb"}
+    )
 
     with caplog.at_level(logging.ERROR, logger="app.api.routers.history"):
         undone = await async_client.post(f"/api/v1/history/{app_archive['_id']}/undo")

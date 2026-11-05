@@ -93,20 +93,15 @@ class MessageSummary(ContractModel):
 
 class ListMessagesInput(ContractModel):
     folder: Literal["inbox", "sent"]
-    cursor: str | None = Field(
-        default=None, description="A next_cursor from an earlier call; omit to start."
-    )
-    since: datetime | None = Field(
-        default=None, description="Without a cursor: only messages on or after this time."
-    )
+    cursor: str | None = Field(default=None, description="A next_cursor from an earlier call; omit to start.")
+    since: datetime | None = Field(default=None, description="Without a cursor: only messages on or after this time.")
     limit: int = Field(default=100, ge=1, le=500)
 
 
 class ListMessagesOutput(ContractModel):
     messages: list[MessageSummary]
     next_cursor: str = Field(
-        description="Opaque position after the last message. Persist it: it must stay "
-        "valid across plugin and app restarts."
+        description="Opaque position after the last message. Persist it: it must stay valid across plugin and app restarts."
     )
     has_more: bool
 
@@ -149,9 +144,7 @@ class MessageDetail(MessageSummary):
 
 class MoveResult(ContractModel):
     ok: bool
-    verified: bool = Field(
-        description="True only after re-reading confirms the move; false counts as failure."
-    )
+    verified: bool = Field(description="True only after re-reading confirms the move; false counts as failure.")
 
 
 # --- send -------------------------------------------------------------------------
@@ -162,9 +155,7 @@ class SendInput(ContractModel):
     cc: list[Address] = Field(default_factory=list)
     subject: str
     body_text: str
-    in_reply_to_ref: str | None = Field(
-        default=None, description="Reply to this message: sets In-Reply-To and References."
-    )
+    in_reply_to_ref: str | None = Field(default=None, description="Reply to this message: sets In-Reply-To and References.")
 
 
 class SendResult(ContractModel):

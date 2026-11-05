@@ -88,19 +88,32 @@ async def test_catches_up_after_an_outage_with_no_duplicates_or_missed_mail(test
 
 async def test_one_mail_under_two_refs_or_listed_twice_is_stored_once(test_db):
     """Dedupe by ref and by Message-ID: refs are opaque, and one delivery can get two."""
+
     def summary(ref: str, message_id: str) -> MessageSummary:
-        return MessageSummary.model_validate({
-            "ref": ref, "message_id": message_id, "from": {"email": "a@example.com"}, "to": [], "cc": [],
-            "date": "2026-11-02T12:00:00Z", "subject": "s", "snippet": "",
-        })
+        return MessageSummary.model_validate(
+            {
+                "ref": ref,
+                "message_id": message_id,
+                "from": {"email": "a@example.com"},
+                "to": [],
+                "cc": [],
+                "date": "2026-11-02T12:00:00Z",
+                "subject": "s",
+                "snippet": "",
+            }
+        )
 
     page = ListMessagesOutput(
         messages=[
-            summary("uid-1", "<one@x>"), summary("uid-2", "<one@x>"), summary("uid-3", "<two@x>"),
+            summary("uid-1", "<one@x>"),
+            summary("uid-2", "<one@x>"),
+            summary("uid-3", "<two@x>"),
             # Mail without a Message-ID header: a blank id says nothing about being the same mail.
-            summary("uid-4", ""), summary("uid-5", ""),
+            summary("uid-4", ""),
+            summary("uid-5", ""),
         ],
-        next_cursor="5", has_more=False,
+        next_cursor="5",
+        has_more=False,
     )
     first = await store_page(OWNER, PLUGIN, page)
     relisted = await store_page(OWNER, PLUGIN, page)
@@ -155,10 +168,7 @@ async def test_older_mail_at_a_higher_uid_than_recent_mail_never_enters(test_db,
 
 
 async def test_the_whole_first_pass_is_marked_even_across_pages_but_later_mail_is_not(test_db, mailbox: Mailbox):
-    week_old = [
-        mailbox.append("INBOX", sender="a@example.com", subject=f"Week {n}", body="x", received=days_ago(7))
-        for n in range(3)
-    ]
+    week_old = [mailbox.append("INBOX", sender="a@example.com", subject=f"Week {n}", body="x", received=days_ago(7)) for n in range(3)]
     async with connected(reference_imap_plugin(mailbox)) as registry:
         first_pass = await sync_folder(OWNER, PLUGIN, registry.clients[PLUGIN], page_size=1)
         later = mailbox.deliver(sender="b@example.com", subject="Later", body="x")
@@ -220,9 +230,7 @@ async def test_a_failing_list_messages_raises_with_the_plugins_words(test_db, mo
             await sync_folder(OWNER, "broken", registry.clients["broken"])
 
 
-async def test_engine_polls_on_its_interval_and_one_failing_plugin_does_not_stop_the_others(
-    test_db, mailbox: Mailbox, monkeypatch
-):
+async def test_engine_polls_on_its_interval_and_one_failing_plugin_does_not_stop_the_others(test_db, mailbox: Mailbox, monkeypatch):
     monkeypatch.setenv("FAKE_FAILS", "1")
     await add_owner(test_db)
     async with connected(fake_plugin("broken", {"FAKE_LIST_FAILS": "FAKE_FAILS"}), reference_imap_plugin(mailbox)) as registry:

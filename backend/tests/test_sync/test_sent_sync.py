@@ -25,8 +25,9 @@ async def test_sent_mail_is_stored_as_sent_and_never_handed_to_the_pipeline(test
     await add_owner(test_db)
     arrived = mailbox.deliver(sender="ana@example.com", subject="Lunch?", body="x")
     replied = mailbox.append("Sent", sender=mailbox.address, to="ana@example.com", subject="Re: Lunch?", body="Sure!")
-    mailbox.append("Sent", sender=mailbox.address, to="old@example.com", subject="Old", body="x",
-                   received=datetime.now(UTC) - timedelta(days=30))
+    mailbox.append(
+        "Sent", sender=mailbox.address, to="old@example.com", subject="Old", body="x", received=datetime.now(UTC) - timedelta(days=30)
+    )
     async with connected(reference_imap_plugin(mailbox)) as registry:
         await SyncEngine(registry, test_db["user"], poll_seconds=60).sync_all()
         later = mailbox.append("Sent", sender=mailbox.address, to="ben@example.com", subject="Hello", body="x")
@@ -59,14 +60,28 @@ async def test_a_failing_sent_folder_does_not_stop_inbox_sync(test_db, mailbox: 
 
 async def test_recent_sent_is_newest_first_per_correspondent_and_owner(test_db):
     def sent(owner_id: str, to: str, days_ago: int, ref: str) -> Message:
-        return Message.model_validate({
-            "owner_id": owner_id, "plugin_id": PLUGIN, "folder": "sent", "ref": ref, "message_id": f"<{ref}@x>",
-            "sender": {"email": "owner@example.com"}, "to": [{"email": to}], "cc": [],
-            "date": datetime.now(UTC) - timedelta(days=days_ago), "subject": ref, "snippet": "",
-        })
+        return Message.model_validate(
+            {
+                "owner_id": owner_id,
+                "plugin_id": PLUGIN,
+                "folder": "sent",
+                "ref": ref,
+                "message_id": f"<{ref}@x>",
+                "sender": {"email": "owner@example.com"},
+                "to": [{"email": to}],
+                "cc": [],
+                "date": datetime.now(UTC) - timedelta(days=days_ago),
+                "subject": ref,
+                "snippet": "",
+            }
+        )
 
-    for message in (sent(OWNER, "ana@example.com", 3, "a-old"), sent(OWNER, "Ana@Example.com", 1, "a-new"),
-                    sent(OWNER, "ben@example.com", 2, "b"), sent("someone-else", "ana@example.com", 0, "other")):
+    for message in (
+        sent(OWNER, "ana@example.com", 3, "a-old"),
+        sent(OWNER, "Ana@Example.com", 1, "a-new"),
+        sent(OWNER, "ben@example.com", 2, "b"),
+        sent("someone-else", "ana@example.com", 0, "other"),
+    ):
         await message.insert()
     await Message.model_validate({**sent(OWNER, "ana@example.com", 0, "inbox-copy").model_dump(exclude={"id"}), "folder": "inbox"}).insert()
 

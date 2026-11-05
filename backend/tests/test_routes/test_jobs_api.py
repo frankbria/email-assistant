@@ -25,14 +25,31 @@ async def job_from(
 ) -> Job:
     """A job over a real message: `sender` mailed `mailbox`, the owner's account."""
     ref = sender.deliver_to(mailbox, subject="Q4 budget", body=QUESTION)
-    message = Message.model_validate({
-        "owner_id": owner_id, "plugin_id": PLUGIN, "ref": ref, "message_id": ref, "sender": {"name": "Ana", "email": sender.address},
-        "to": [{"email": mailbox.address}], "cc": [], "date": datetime.now(UTC), "subject": "Q4 budget", "snippet": "",
-    })
+    message = Message.model_validate(
+        {
+            "owner_id": owner_id,
+            "plugin_id": PLUGIN,
+            "ref": ref,
+            "message_id": ref,
+            "sender": {"name": "Ana", "email": sender.address},
+            "to": [{"email": mailbox.address}],
+            "cc": [],
+            "date": datetime.now(UTC),
+            "subject": "Q4 budget",
+            "snippet": "",
+        }
+    )
     await message.insert()
     assert message.id is not None
-    job = Job(owner_id=owner_id, verb=verb, title="Ana asks to meet Thursday", evidence=[QUESTION],
-              artifacts=artifacts or Artifacts(), message_ids=[message.id], **fields)
+    job = Job(
+        owner_id=owner_id,
+        verb=verb,
+        title="Ana asks to meet Thursday",
+        evidence=[QUESTION],
+        artifacts=artifacts or Artifacts(),
+        message_ids=[message.id],
+        **fields,
+    )
     await job.insert()
     return job
 
@@ -158,12 +175,15 @@ async def test_approving_a_todo_or_noise_finishes_it_and_archives_the_mail(async
     assert response.json()["state"] == "done" and archived(mailbox)
 
 
-@pytest.mark.parametrize(("fields", "status", "detail"), [
-    ({"verb": "todo", "ask_owner": True}, 409, "choose an action for this mail first"),
-    ({"verb": "unsubscribe"}, 422, "names no safe way to unsubscribe"),  # this mail has no List-Unsubscribe
-    ({"verb": "snooze"}, 422, "needs a date to wait for"),
-    ({"verb": "todo", "state": "done"}, 409, "isn't open"),
-])
+@pytest.mark.parametrize(
+    ("fields", "status", "detail"),
+    [
+        ({"verb": "todo", "ask_owner": True}, 409, "choose an action for this mail first"),
+        ({"verb": "unsubscribe"}, 422, "names no safe way to unsubscribe"),  # this mail has no List-Unsubscribe
+        ({"verb": "snooze"}, 422, "needs a date to wait for"),
+        ({"verb": "todo", "state": "done"}, 409, "isn't open"),
+    ],
+)
 async def test_an_approval_that_cant_act_says_why(async_client, test_db, mailbox, plugins, fields, status, detail):
     job = await job_from(new_mailbox(), mailbox, **fields)
 
@@ -185,8 +205,14 @@ async def test_dismissing_a_job_archives_its_mail(async_client, test_db, mailbox
 
 async def test_choosing_another_action_proposes_it_for_that_verb(async_client, test_db, mailbox, plugins, ai):
     job = await job_from(new_mailbox(), mailbox, "todo", ask_owner=True, suggested_verbs=["todo"], problems=["the AI isn't confident"])
-    ai.result = Proposal(needs_owner=True, verb="reply", title="Ana asks to meet Thursday at 3pm", evidence=[QUESTION],
-                         draft="Thursday at 3 works.", confidence=0.9)
+    ai.result = Proposal(
+        needs_owner=True,
+        verb="reply",
+        title="Ana asks to meet Thursday at 3pm",
+        evidence=[QUESTION],
+        draft="Thursday at 3 works.",
+        confidence=0.9,
+    )
 
     response = await async_client.post(f"/api/v1/jobs/{job.id}/choose", json={"verb": "reply"})
 
@@ -199,14 +225,20 @@ async def test_choosing_another_action_proposes_it_for_that_verb(async_client, t
 
 async def test_a_chosen_action_the_ai_cant_ground_stays_with_the_owner_and_says_why(async_client, test_db, mailbox, plugins, ai):
     job = await job_from(new_mailbox(), mailbox, "reply", Artifacts(draft="Yes"))
-    ai.result = Proposal(needs_owner=False, verb="todo", title="Pay the invoice", evidence=["text that isn't in the mail"],
-                         link="https://pay.example", confidence=0.9)
+    ai.result = Proposal(
+        needs_owner=False,
+        verb="todo",
+        title="Pay the invoice",
+        evidence=["text that isn't in the mail"],
+        link="https://pay.example",
+        confidence=0.9,
+    )
 
     response = await async_client.post(f"/api/v1/jobs/{job.id}/choose", json={"verb": "todo"})
 
     chosen = response.json()
     assert (chosen["verb"], chosen["ask_owner"], chosen["suggested_verbs"]) == ("todo", True, ["todo"])
-    assert "evidence not in the email: \"text that isn't in the mail\"" in chosen["problems"]
+    assert 'evidence not in the email: "text that isn\'t in the mail"' in chosen["problems"]
     assert chosen["artifacts"]["draft"] is None and chosen["edited"] is False
 
 
@@ -260,14 +292,33 @@ async def test_an_approval_never_carries_out_an_action_chosen_since_the_owner_sa
 
 
 async def test_choosing_another_action_drops_what_was_about_the_old_one(async_client, test_db, mailbox, plugins, ai):
-    job = await job_from(new_mailbox(), mailbox, "follow_up", reminder="No answer from Ana", error="archiving failed", edited=True,
-                         permission_level="autonomous")
-    ai.result = Proposal(needs_owner=False, verb="todo", title="Book the Thursday meeting room", evidence=[QUESTION],
-                         due=datetime(2026, 11, 5, tzinfo=UTC), confidence=0.9)
+    job = await job_from(
+        new_mailbox(),
+        mailbox,
+        "follow_up",
+        reminder="No answer from Ana",
+        error="archiving failed",
+        edited=True,
+        permission_level="autonomous",
+    )
+    ai.result = Proposal(
+        needs_owner=False,
+        verb="todo",
+        title="Book the Thursday meeting room",
+        evidence=[QUESTION],
+        due=datetime(2026, 11, 5, tzinfo=UTC),
+        confidence=0.9,
+    )
 
     chosen = (await async_client.post(f"/api/v1/jobs/{job.id}/choose", json={"verb": "todo"})).json()
 
-    assert (chosen["verb"], chosen["error"], chosen["reminder"], chosen["edited"], chosen["permission_level"]) == ("todo", None, None, False, None)
+    assert (chosen["verb"], chosen["error"], chosen["reminder"], chosen["edited"], chosen["permission_level"]) == (
+        "todo",
+        None,
+        None,
+        False,
+        None,
+    )
 
 
 async def test_an_empty_edit_changes_nothing(async_client, test_db, mailbox):
@@ -281,8 +332,14 @@ async def test_an_empty_edit_changes_nothing(async_client, test_db, mailbox):
 
 async def test_a_send_interrupted_by_a_crash_comes_back_to_the_queue_and_can_be_retried(async_client, test_db, mailbox, plugins):
     ana = new_mailbox()
-    stuck = await job_from(ana, mailbox, "reply", Artifacts(draft="Thursday works."), state="sending",
-                           sending_since=datetime.now(UTC) - STALE_SENDING - timedelta(minutes=1))
+    stuck = await job_from(
+        ana,
+        mailbox,
+        "reply",
+        Artifacts(draft="Thursday works."),
+        state="sending",
+        sending_since=datetime.now(UTC) - STALE_SENDING - timedelta(minutes=1),
+    )
     await job_from(ana, mailbox, "reply", Artifacts(draft="Yes"), state="sending", sending_since=datetime.now(UTC))
 
     listed = (await async_client.get("/api/v1/jobs")).json()

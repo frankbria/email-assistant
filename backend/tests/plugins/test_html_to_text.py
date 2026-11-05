@@ -18,7 +18,10 @@ from imap_mailbox.mailbox import html_to_text
             "Yes\n> Cancel the purchase\n> > older\nThanks",
         ),
         ("<head><style>p { color: red }</style><script>track()</script></head><p>Body</p>", "Body"),
-        ("<html><head><title>Invoice</title><body><p>Please pay invoice 4471 by Friday.</p></body></html>", "Please pay invoice 4471 by Friday."),
+        (
+            "<html><head><title>Invoice</title><body><p>Please pay invoice 4471 by Friday.</p></body></html>",
+            "Please pay invoice 4471 by Friday.",
+        ),
     ],
     ids=["inline tags", "line breaks", "quote", "nested quotes", "style and script", "head never closed"],
 )

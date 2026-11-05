@@ -44,6 +44,7 @@ async def list_history(owner_id: OwnerId) -> list[HistoryCard]:
         cards.append(HistoryCard(entry=entry, sender=found[0].sender, subject=subject))
     return cards
 
+
 @router.post("/{entry_id}/undo", response_model=ActionLogEntry)
 async def undo_entry(entry_id: PydanticObjectId, owner_id: OwnerId, plugins: PluginRegistry = Depends(plugin_registry)) -> ActionLogEntry:
     """Returns the restore's own entry: ok, or failed with why (the original then stays undoable). Restoring what the

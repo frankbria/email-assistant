@@ -25,7 +25,7 @@ AUTO_EXPUNGE_SETTING = "Gmail → Settings → See all settings → Forwarding a
 AUTO_EXPUNGE_WARNING = (
     "Gmail's Auto-Expunge is on: anything a mail app marks as deleted leaves that folder at once, with no "
     "chance to undo it. This app never deletes or expunges mail, but other apps on this account can. To be "
-    f"safe, in {AUTO_EXPUNGE_SETTING} choose \"Auto-Expunge off\" and \"Archive the message\"."
+    f'safe, in {AUTO_EXPUNGE_SETTING} choose "Auto-Expunge off" and "Archive the message".'
 )
 LABEL_TOKEN = re.compile(rb'"(?:[^"\\]|\\.)*"|\)|[^\s()"]+')
 INBOX_LABEL = "\\inbox"
@@ -173,9 +173,9 @@ class GmailMailbox(ImapMailbox):
         try:
             on = self._auto_expunge_on()
         except MailboxError as error:
-            return SetupWarnings(warnings=[
-                f"Couldn't check Gmail's Auto-Expunge setting: {error.message} Check it in {AUTO_EXPUNGE_SETTING}."
-            ])
+            return SetupWarnings(
+                warnings=[f"Couldn't check Gmail's Auto-Expunge setting: {error.message} Check it in {AUTO_EXPUNGE_SETTING}."]
+            )
         return SetupWarnings(warnings=[AUTO_EXPUNGE_WARNING] if on else [])
 
     def _auto_expunge_on(self) -> bool:

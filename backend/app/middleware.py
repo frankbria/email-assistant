@@ -11,6 +11,7 @@ load_dotenv()
 
 logger = logging.getLogger(__name__)
 
+
 def setup_cors(app: FastAPI) -> None:
     """Configure CORS middleware for the FastAPI application"""
     # Get allowed origins from environment variable, defaulting to localhost:3200

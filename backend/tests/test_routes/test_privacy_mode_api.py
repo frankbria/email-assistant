@@ -25,8 +25,12 @@ Best regards,
 Ana"""
 # The AI only ever sees placeholders, so that is all it can answer with.
 ANSWER = Proposal(
-    needs_owner=False, verb="todo", title="Pay PERSON_1's March invoice for PERSON_2", evidence=["Call me on PHONE_1"],
-    link="URL_1", confidence=0.9,
+    needs_owner=False,
+    verb="todo",
+    title="Pay PERSON_1's March invoice for PERSON_2",
+    evidence=["Call me on PHONE_1"],
+    link="URL_1",
+    confidence=0.9,
 )
 
 

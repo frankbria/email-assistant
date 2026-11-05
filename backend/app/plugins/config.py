@@ -18,18 +18,14 @@ logger = logging.getLogger(__name__)
 SECRET_WORDS = re.compile(r"token|password|passwd|secret|api_?key", re.IGNORECASE)
 # A flag whose name mentions a secret, with or without =VALUE (e.g. --password,
 # --secret-key=…, --password2=…).
-INLINE_SECRET_ARGUMENT = re.compile(
-    r"^-{1,2}[\w-]*(token|password|passwd|secret|api[-_]?key)[\w-]*(=|$)", re.IGNORECASE
-)
+INLINE_SECRET_ARGUMENT = re.compile(r"^-{1,2}[\w-]*(token|password|passwd|secret|api[-_]?key)[\w-]*(=|$)", re.IGNORECASE)
 # Uppercase by convention, which also catches most literal secrets pasted in by mistake.
 ENV_NAME = re.compile(r"[A-Z_][A-Z0-9_]*")
 
 
 def require_env_name(name: str) -> str:
     if not ENV_NAME.fullmatch(name):
-        raise ValueError(
-            f"'{name}' is not an environment variable name; inline secrets are not allowed"
-        )
+        raise ValueError(f"'{name}' is not an environment variable name; inline secrets are not allowed")
     return name
 
 
@@ -43,8 +39,7 @@ class ConfigModel(BaseModel):
             for key in data:
                 if SECRET_WORDS.search(str(key)) and not str(key).endswith("_env"):
                     raise ValueError(
-                        f"'{key}' is an inline secret; reference it by environment "
-                        "variable name instead (e.g. bearer_token_env)"
+                        f"'{key}' is an inline secret; reference it by environment variable name instead (e.g. bearer_token_env)"
                     )
         return data
 
@@ -64,10 +59,7 @@ class StdioTransport(ConfigModel):
         # Rejects both --password=VALUE and a bare --password flag (its value follows it).
         for argument in args:
             if INLINE_SECRET_ARGUMENT.search(argument):
-                raise ValueError(
-                    f"argument '{argument.split('=')[0]}' carries an inline secret; "
-                    "pass it through env_from instead"
-                )
+                raise ValueError(f"argument '{argument.split('=')[0]}' carries an inline secret; pass it through env_from instead")
         return args
 
     @field_validator("env_from")

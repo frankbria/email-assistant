@@ -52,6 +52,10 @@ markers = [
 ]
 pythonpath = ["."]
 
+[tool.ruff]
+# The codebase's de facto width: churn from `ruff format` flattens out here (p99 line is ~130 chars).
+line-length = 140
+
 [tool.ruff.lint]
 # Pinned: ruff 0.17 widened its default rule set.
 select = ["E4", "E7", "E9", "F"]

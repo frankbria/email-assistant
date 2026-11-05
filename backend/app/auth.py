@@ -38,9 +38,7 @@ async def current_owner_id(
     token = credentials.credentials
     try:
         # PyJWKClient fetches over blocking HTTP on a cache miss.
-        signing_key = await asyncio.to_thread(
-            jwks_client(settings.better_auth_jwks_url).get_signing_key_from_jwt, token
-        )
+        signing_key = await asyncio.to_thread(jwks_client(settings.better_auth_jwks_url).get_signing_key_from_jwt, token)
         claims = jwt.decode(
             token,
             signing_key.key,

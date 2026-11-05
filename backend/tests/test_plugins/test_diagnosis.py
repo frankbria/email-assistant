@@ -41,8 +41,12 @@ def watchdog_token(monkeypatch: pytest.MonkeyPatch) -> None:
 def running_watchdog(tmp_path: Path):
     cert, _ = write_certificate(tmp_path, "bridge")
     settings = ProtonSettings(
-        account="a@b.c", username="a", password="x", ca_cert_path=str(cert),
-        imap_port=free_port(), smtp_port=free_port(),
+        account="a@b.c",
+        username="a",
+        password="x",
+        ca_cert_path=str(cert),
+        imap_port=free_port(),
+        smtp_port=free_port(),
     )
     watchdog = Watchdog(settings, plugin_command=None)
     port = free_port()

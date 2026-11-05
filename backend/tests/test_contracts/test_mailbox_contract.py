@@ -71,9 +71,7 @@ EXAMPLES: dict[type[BaseModel], dict[str, object]] = {
 }
 
 MODELS = sorted(
-    {tool.input for tool in contract.TOOLS.values()}
-    | {tool.output for tool in contract.TOOLS.values()}
-    | {contract.ToolError},
+    {tool.input for tool in contract.TOOLS.values()} | {tool.output for tool in contract.TOOLS.values()} | {contract.ToolError},
     key=lambda model: model.__name__,
 )
 

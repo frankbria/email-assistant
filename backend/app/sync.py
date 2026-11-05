@@ -48,9 +48,7 @@ async def store_if_new(message: Message) -> bool:
     same_mail: list[dict[str, str]] = [{"ref": message.ref}]
     if message.message_id:
         same_mail.append({"message_id": message.message_id})
-    duplicate = await Message.find_one(
-        Message.owner_id == message.owner_id, Message.plugin_id == message.plugin_id, {"$or": same_mail}
-    )
+    duplicate = await Message.find_one(Message.owner_id == message.owner_id, Message.plugin_id == message.plugin_id, {"$or": same_mail})
     if duplicate is not None:
         return False
     await message.insert()
@@ -58,9 +56,7 @@ async def store_if_new(message: Message) -> bool:
 
 
 async def folder_cursor(owner_id: str, plugin_id: str, folder: Folder) -> SyncCursor:
-    stored = await SyncCursor.find_one(
-        SyncCursor.owner_id == owner_id, SyncCursor.plugin_id == plugin_id, SyncCursor.folder == folder
-    )
+    stored = await SyncCursor.find_one(SyncCursor.owner_id == owner_id, SyncCursor.plugin_id == plugin_id, SyncCursor.folder == folder)
     return stored or SyncCursor(owner_id=owner_id, plugin_id=plugin_id, folder=folder, first_pass_complete=False)
 
 
@@ -201,7 +197,10 @@ class SyncEngine:
                 await sync_permissions_file(owner_id, self.permissions_file)
             except Exception:
                 logger.exception("Syncing permissions.yaml failed; retrying next pass")
-        sent_synced = [await self._sync_plugin(owner_id, plugin_id, client, window_days, provider) for plugin_id, client in list(self.plugins.clients.items())]
+        sent_synced = [
+            await self._sync_plugin(owner_id, plugin_id, client, window_days, provider)
+            for plugin_id, client in list(self.plugins.clients.items())
+        ]
         # Outgoing history is current only if every enabled account is connected and its sent folder synced.
         accounts_up = all(state.status in ("connected", "disabled") for state in self.plugins.states.values())
         try:  # snoozes and follow-ups whose date has come; follow-ups only with current outgoing history
@@ -210,9 +209,7 @@ class SyncEngine:
             logger.exception("Waking due jobs failed; retrying next pass")
         return saved.poll_seconds if saved else self.poll_seconds
 
-    async def _sync_plugin(
-        self, owner_id: str, plugin_id: str, client: Client, window_days: int, provider: AIProvider | None
-    ) -> bool:
+    async def _sync_plugin(self, owner_id: str, plugin_id: str, client: Client, window_days: int, provider: AIProvider | None) -> bool:
         """Inbox, then sent, then the pipeline: each separately, so one failing never holds up the others."""
         try:
             new_messages = await sync_folder(owner_id, plugin_id, client, window_days=window_days)

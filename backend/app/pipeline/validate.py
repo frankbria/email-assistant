@@ -88,9 +88,14 @@ def ask_owner_job(message: Message, found: list[str], suggested: list[Verb]) -> 
     """The owner decides: the message gist, any suggested verb and why; nothing the AI made up."""
     assert message.id is not None, "jobs reference stored messages"
     return Job(
-        owner_id=message.owner_id, verb=suggested[0] if suggested else "todo",
-        title=message.subject.strip() or "(no subject)", artifacts=Artifacts(), message_ids=[message.id],
-        ask_owner=True, suggested_verbs=suggested, problems=found,
+        owner_id=message.owner_id,
+        verb=suggested[0] if suggested else "todo",
+        title=message.subject.strip() or "(no subject)",
+        artifacts=Artifacts(),
+        message_ids=[message.id],
+        ask_owner=True,
+        suggested_verbs=suggested,
+        problems=found,
     )
 
 
@@ -100,7 +105,13 @@ def to_job(message: Message, proposal: Proposal, body: str, forward_history: Seq
     if found:
         return ask_owner_job(message, found, [proposal.verb])
     return Job(
-        owner_id=message.owner_id, verb=proposal.verb, title=proposal.title, evidence=proposal.evidence,
-        artifacts=Artifacts.model_validate(proposal.model_dump(include={"draft", "forward_to", "options", "link", "digest", "noise_rationale"})),
-        due=proposal.due, message_ids=[message.id],
+        owner_id=message.owner_id,
+        verb=proposal.verb,
+        title=proposal.title,
+        evidence=proposal.evidence,
+        artifacts=Artifacts.model_validate(
+            proposal.model_dump(include={"draft", "forward_to", "options", "link", "digest", "noise_rationale"})
+        ),
+        due=proposal.due,
+        message_ids=[message.id],
     )

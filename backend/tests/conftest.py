@@ -64,10 +64,20 @@ async def test_db():
 
     db = client[test_db_name]
 
-    document_models = [UserSettings, Message, Job, SyncCursor, Rule, AiUsage, PermissionSettings, ApprovalStreak, ActionLogEntry, Example, CalibrationJob]
-    await init_beanie(
-        database=db, document_models=document_models, allow_index_dropping=True
-    )
+    document_models = [
+        UserSettings,
+        Message,
+        Job,
+        SyncCursor,
+        Rule,
+        AiUsage,
+        PermissionSettings,
+        ApprovalStreak,
+        ActionLogEntry,
+        Example,
+        CalibrationJob,
+    ]
+    await init_beanie(database=db, document_models=document_models, allow_index_dropping=True)
     # Clear documents instead of dropping the database: re-creating indexes after
     # a drop takes seconds per collection on slow disks. Clearing at setup also
     # covers data left behind by an aborted run.
@@ -103,7 +113,6 @@ async def async_client():
         follow_redirects=True,
         headers=bearer_headers(),
     ) as client:
-
         yield client
 
 

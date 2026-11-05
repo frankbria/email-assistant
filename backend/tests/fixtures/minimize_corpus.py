@@ -128,24 +128,13 @@ CORPUS = (
     ),
     MinimizeCase(
         name="delimited signature",
-        text=(
-            "The deploy is done; please verify the dashboard.\n"
-            "\n"
-            "-- \n"
-            "Cara Jones | Site Reliability\n"
-            "+1 555 0100 | cara@example.com\n"
-        ),
+        text=("The deploy is done; please verify the dashboard.\n\n-- \nCara Jones | Site Reliability\n+1 555 0100 | cara@example.com\n"),
         kept=("The deploy is done; please verify the dashboard.",),
         removed=("Cara Jones", "+1 555 0100"),
     ),
     MinimizeCase(
         name="mobile footers",
-        text=(
-            "Running 10 minutes late.\n"
-            "\n"
-            "Sent from my iPhone\n"
-            "Get Outlook for Android\n"
-        ),
+        text=("Running 10 minutes late.\n\nSent from my iPhone\nGet Outlook for Android\n"),
         kept=("Running 10 minutes late.",),
         removed=("Sent from my iPhone", "Get Outlook for Android"),
     ),
@@ -175,8 +164,14 @@ CORPUS = (
             "Gate B12\n"
         ),
         kept=(
-            "On Friday we ship the release", "the vendor wrote:", "On the topic of the budget, the auditor wrote:", "> 50 units needed by Friday, >=5 boxes each",
-            "Part 2: deadline Friday", "Sent from my warehouse on Monday: 40 pallets", "From: JFK\nDate: Nov 5", "Gate B12",
+            "On Friday we ship the release",
+            "the vendor wrote:",
+            "On the topic of the budget, the auditor wrote:",
+            "> 50 units needed by Friday, >=5 boxes each",
+            "Part 2: deadline Friday",
+            "Sent from my warehouse on Monday: 40 pallets",
+            "From: JFK\nDate: Nov 5",
+            "Gate B12",
         ),
         removed=(),
     ),
@@ -248,21 +243,13 @@ CORPUS = (
     ),
     MinimizeCase(
         name="new content starting with On right before an attribution",
-        text=(
-            "On Friday, please send the signed contract.\n"
-            "On Thu, Nov 1, 2026, Ana <ana@example.com> wrote:\n"
-            "> Old request\n"
-        ),
+        text=("On Friday, please send the signed contract.\nOn Thu, Nov 1, 2026, Ana <ana@example.com> wrote:\n> Old request\n"),
         kept=("On Friday, please send the signed contract.",),
         removed=("wrote:", "Old request"),
     ),
     MinimizeCase(
         name="new content after a complete attribution line is kept",
-        text=(
-            "On Thu, Nov 1, 2026, Ana <ana@example.com> wrote:\n"
-            "Please ask legal@example.com to review what I wrote:\n"
-            "> Old request\n"
-        ),
+        text=("On Thu, Nov 1, 2026, Ana <ana@example.com> wrote:\nPlease ask legal@example.com to review what I wrote:\n> Old request\n"),
         kept=("Please ask legal@example.com to review what I wrote:",),
         removed=("Old request",),  # the attribution itself may stay: it doesn't introduce the quote
     ),
@@ -281,21 +268,14 @@ CORPUS = (
     MinimizeCase(
         name="quoted payload after a forward marker is the content",
         subject="Fwd: Invoice",
-        text=(
-            "Please pay the forwarded invoice.\n"
-            "Begin forwarded message:\n"
-            "> Invoice 4471 is due Friday.\n"
-        ),
+        text=("Please pay the forwarded invoice.\nBegin forwarded message:\n> Invoice 4471 is due Friday.\n"),
         kept=("Please pay the forwarded invoice.", "Invoice 4471 is due Friday."),
         removed=(),
     ),
     MinimizeCase(
         name="a forward marker inside quoted history keeps nothing extra",
         text=(
-            "Paid, thanks.\n"
-            "On Mon, Nov 2, 2026, Ana <ana@example.com> wrote:\n"
-            "> Begin forwarded message:\n"
-            "> Invoice 4471 is due Friday.\n"
+            "Paid, thanks.\nOn Mon, Nov 2, 2026, Ana <ana@example.com> wrote:\n> Begin forwarded message:\n> Invoice 4471 is due Friday.\n"
         ),
         kept=("Paid, thanks.",),
         removed=("Invoice 4471", "Begin forwarded message"),

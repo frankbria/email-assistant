@@ -14,7 +14,12 @@ from pydantic import ValidationError
 from app.plugins.config import PluginConfig, StdioTransport
 from app.plugins.registry import PluginRegistry
 from gmail_plugin.mailbox import (
-    GmailMailbox, append_uid, gmail_ids, gmail_labels, probe_expunged, trash_folder,
+    GmailMailbox,
+    append_uid,
+    gmail_ids,
+    gmail_labels,
+    probe_expunged,
+    trash_folder,
 )
 from gmail_plugin.settings import GmailSettings
 from imap_mailbox.mailbox import MailboxError
@@ -26,8 +31,7 @@ from tests.utils.tls_relay import fake_bridge
 # The first line of Gmail's answer to UID FETCH n (X-GM-MSGID X-GM-THRID BODY.PEEK[]).
 FETCH_LINE = b"7 (X-GM-THRID 1278455344230334865 X-GM-MSGID 1278455344230334866 UID 42 BODY[] {312}"
 RAW_MESSAGE = (
-    b"From: ana@example.com\r\nTo: owner@example.com\r\nSubject: Q3\r\n"
-    b"Message-ID: <q3@example.com>\r\nX-GM-MSGID: 1\r\n\r\nThursday?\r\n"
+    b"From: ana@example.com\r\nTo: owner@example.com\r\nSubject: Q3\r\nMessage-ID: <q3@example.com>\r\nX-GM-MSGID: 1\r\n\r\nThursday?\r\n"
 )
 
 
@@ -106,7 +110,10 @@ def test_defaults_are_gmails_servers_and_folders():
     settings = gmail().settings
 
     assert (settings.imap_host, settings.imap_port, settings.smtp_host, settings.smtp_port) == (
-        "imap.gmail.com", 993, "smtp.gmail.com", 465,
+        "imap.gmail.com",
+        993,
+        "smtp.gmail.com",
+        465,
     )
     assert settings.tls == "ssl" and settings.username == "owner@example.com" and not settings.append_sent
     info = gmail().mailbox_info()
@@ -153,17 +160,25 @@ async def test_new_mail_is_pushed_over_idle_and_no_tool_removes_mail(mailbox: Ma
     """The plugin as the app runs it (stdio, secrets via env_from), on GreenMail over pinned TLS."""
     bridge = fake_bridge()
     environment = {
-        "MAILBOX_ACCOUNT": mailbox.address, "MAILBOX_PASSWORD": "unused",
-        "MAILBOX_IMAP_HOST": "127.0.0.1", "MAILBOX_IMAP_PORT": str(bridge.imap_port),
-        "MAILBOX_SMTP_HOST": "127.0.0.1", "MAILBOX_SMTP_PORT": str(bridge.smtp_port),
+        "MAILBOX_ACCOUNT": mailbox.address,
+        "MAILBOX_PASSWORD": "unused",
+        "MAILBOX_IMAP_HOST": "127.0.0.1",
+        "MAILBOX_IMAP_PORT": str(bridge.imap_port),
+        "MAILBOX_SMTP_HOST": "127.0.0.1",
+        "MAILBOX_SMTP_PORT": str(bridge.smtp_port),
         "MAILBOX_CA_CERT_PATH": str(bridge.cert),
     }
     for name, value in environment.items():
         os.environ[f"GMAIL_TEST_{name}"] = value
-    config = PluginConfig(id="gmail", transport=StdioTransport(
-        type="stdio", command=sys.executable, args=["-m", "gmail_plugin.server"],
-        env_from={name: f"GMAIL_TEST_{name}" for name in environment},
-    ))
+    config = PluginConfig(
+        id="gmail",
+        transport=StdioTransport(
+            type="stdio",
+            command=sys.executable,
+            args=["-m", "gmail_plugin.server"],
+            env_from={name: f"GMAIL_TEST_{name}" for name in environment},
+        ),
+    )
     registry = PluginRegistry()
     await registry.connect_all([config])
     try:
@@ -175,6 +190,7 @@ async def test_new_mail_is_pushed_over_idle_and_no_tool_removes_mail(mailbox: Ma
         assert tools and not [name for name in tools if DESTRUCTIVE_NAME.search(name)]
 
         async with client.listen(resource_subscriptions=[INBOX_URI]) as subscription:
+
             async def deliver_until_pushed() -> None:
                 # Mail that lands before the plugin is idling (or before the stream is
                 # acknowledged) isn't pushed, so keep delivering.
@@ -234,11 +250,17 @@ def test_a_probe_that_kept_no_deleted_flag_tells_nothing():
 
 def on_greenmail(mailbox: Mailbox) -> GmailMailbox:
     bridge = fake_bridge()
-    return GmailMailbox(GmailSettings(  # type: ignore[call-arg]  # the rest default
-        account=mailbox.address, imap_host="127.0.0.1", imap_port=bridge.imap_port,
-        password="unused",
-        smtp_host="127.0.0.1", smtp_port=bridge.smtp_port, ca_cert_path=str(bridge.cert),
-    ))
+    return GmailMailbox(
+        GmailSettings(  # type: ignore[call-arg]  # the rest default
+            account=mailbox.address,
+            imap_host="127.0.0.1",
+            imap_port=bridge.imap_port,
+            password="unused",
+            smtp_host="127.0.0.1",
+            smtp_port=bridge.smtp_port,
+            ca_cert_path=str(bridge.cert),
+        )
+    )
 
 
 def flags_by_message_id(mailbox: Mailbox, folder: str) -> dict[str, bytes]:

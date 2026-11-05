@@ -63,15 +63,25 @@ async def init_db(settings: Settings | None = None):
     )
     await init_beanie(
         database=client[settings.current_mongodb_db],
-        document_models=[UserSettings, Message, Job, SyncCursor, Rule, AiUsage, PermissionSettings, ApprovalStreak, ActionLogEntry, Example, CalibrationJob],
+        document_models=[
+            UserSettings,
+            Message,
+            Job,
+            SyncCursor,
+            Rule,
+            AiUsage,
+            PermissionSettings,
+            ApprovalStreak,
+            ActionLogEntry,
+            Example,
+            CalibrationJob,
+        ],
         allow_index_dropping=True,
     )
 
     logger.debug(f"✅ Connecting to DB: {settings.current_mongodb_uri}")
     logger.debug(f"🧠 Using database: {settings.current_mongodb_db}")
-    logger.debug(
-        f"Collections: {await client[settings.current_mongodb_db].list_collection_names()}"
-    )
+    logger.debug(f"Collections: {await client[settings.current_mongodb_db].list_collection_names()}")
 
     logger.debug("✅ Successfully initialized Beanie")
 
@@ -93,9 +103,7 @@ async def lifespan(app: FastAPI):
     # can't connect is only recorded as failed.
     plugins = PluginRegistry()
     ready = asyncio.Event()
-    plugin_task = asyncio.create_task(
-        plugins.run(load_plugins_config(Path(os.getenv("PLUGINS_CONFIG", "plugins.yaml"))), ready)
-    )
+    plugin_task = asyncio.create_task(plugins.run(load_plugins_config(Path(os.getenv("PLUGINS_CONFIG", "plugins.yaml"))), ready))
     sync_task: asyncio.Task[None] | None = None
     try:
         await ready.wait()

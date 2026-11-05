@@ -33,7 +33,7 @@ def wait_until_ready(timeout_seconds: float = 30, imap_port: int = IMAP_PORT, sm
                 smtp.noop()
             imaplib.IMAP4(MAIL_HOST, imap_port, timeout=2).logout()
             return
-        except (OSError, imaplib.IMAP4.error):  # imaplib errors aren't OSErrors
+        except OSError, imaplib.IMAP4.error:  # imaplib errors aren't OSErrors
             if time.monotonic() > deadline:
                 raise RuntimeError(
                     f"No test mail server at {MAIL_HOST}:{SMTP_PORT}/{IMAP_PORT}; "
@@ -86,7 +86,14 @@ class Mailbox:
         return message["Message-ID"]
 
     def append(
-        self, folder: str, *, sender: str, subject: str, body: str, to: str | None = None, received: datetime | None = None,
+        self,
+        folder: str,
+        *,
+        sender: str,
+        subject: str,
+        body: str,
+        to: str | None = None,
+        received: datetime | None = None,
         headers: dict[str, str] | None = None,
     ) -> str:
         """Put a message straight into a folder (Sent, Archive, …) over IMAP; returns its Message-ID.

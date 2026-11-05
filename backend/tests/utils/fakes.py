@@ -11,9 +11,7 @@ class FakeAIProvider:
     or raises a canned error, and records the prompts it was given. Called with an owner id it
     stands in for get_ai_provider too, returning itself."""
 
-    def __init__(
-        self, result: BaseModel | None = None, error: Exception | None = None
-    ) -> None:
+    def __init__(self, result: BaseModel | None = None, error: Exception | None = None) -> None:
         self.result = result
         self.error = error
         self.prompts: list[str] = []

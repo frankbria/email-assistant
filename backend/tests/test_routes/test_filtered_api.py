@@ -38,7 +38,12 @@ async def test_ac_k_2_noise_archived_on_its_own_is_listed_in_filtered_and_restor
 
     [card] = await filtered(async_client)
 
-    assert (card["subject"], card["sender"]["email"], card["rationale"], card["restorable"]) == ("Weekly deals", SHOP, "A promotional mailing", True)
+    assert (card["subject"], card["sender"]["email"], card["rationale"], card["restorable"]) == (
+        "Weekly deals",
+        SHOP,
+        "A promotional mailing",
+        True,
+    )
     assert (card["entry"]["by"], card["entry"]["permission_level"]) == ("app", "autonomous")
 
     restored = await async_client.post(f"/api/v1/history/{card['entry']['_id']}/undo")
@@ -88,8 +93,16 @@ async def test_newest_first(async_client, test_db, mailbox, plugins):
 
 async def test_another_owners_noise_is_not_listed(async_client, test_db, mailbox, plugins):
     theirs = await job_from(new_mailbox(), mailbox, "archive_noise", Artifacts(noise_rationale="a newsletter"), owner_id="someone-else")
-    await ActionLogEntry(owner_id="someone-else", action="archived", job_id=theirs.id, message_ids=theirs.message_ids,
-                         by="app", permission_level="autonomous", ok=True, undoable=True).insert()
+    await ActionLogEntry(
+        owner_id="someone-else",
+        action="archived",
+        job_id=theirs.id,
+        message_ids=theirs.message_ids,
+        by="app",
+        permission_level="autonomous",
+        ok=True,
+        undoable=True,
+    ).insert()
 
     assert await filtered(async_client) == []
 
@@ -97,8 +110,17 @@ async def test_another_owners_noise_is_not_listed(async_client, test_db, mailbox
 async def test_a_noise_archive_that_failed_is_not_listed(async_client, test_db, mailbox, plugins):
     """Its mail never left the inbox, so there is nothing to restore."""
     failed = await job_from(new_mailbox(), mailbox, "archive_noise", Artifacts(noise_rationale="a newsletter"))
-    await ActionLogEntry(owner_id=OWNER_ID, action="archived", job_id=failed.id, message_ids=failed.message_ids,
-                         by="app", permission_level="autonomous", ok=False, error="the server was down", undoable=False).insert()
+    await ActionLogEntry(
+        owner_id=OWNER_ID,
+        action="archived",
+        job_id=failed.id,
+        message_ids=failed.message_ids,
+        by="app",
+        permission_level="autonomous",
+        ok=False,
+        error="the server was down",
+        undoable=False,
+    ).insert()
 
     assert await filtered(async_client) == []
 
@@ -106,7 +128,16 @@ async def test_a_noise_archive_that_failed_is_not_listed(async_client, test_db, 
 async def test_the_archived_copies_of_a_partly_failed_noise_job_are_listed(async_client, test_db, mailbox, plugins):
     """One account's copy moved, the other's failed: the moved one can still be restored."""
     partly = await job_from(new_mailbox(), mailbox, "archive_noise", Artifacts(noise_rationale="a newsletter"))
-    await ActionLogEntry(owner_id=OWNER_ID, action="archived", job_id=partly.id, message_ids=partly.message_ids,
-                         by="app", permission_level="autonomous", ok=False, error="the other account was down", undoable=True).insert()
+    await ActionLogEntry(
+        owner_id=OWNER_ID,
+        action="archived",
+        job_id=partly.id,
+        message_ids=partly.message_ids,
+        by="app",
+        permission_level="autonomous",
+        ok=False,
+        error="the other account was down",
+        undoable=True,
+    ).insert()
 
     assert [card["entry"]["job_id"] for card in await filtered(async_client)] == [str(partly.id)]

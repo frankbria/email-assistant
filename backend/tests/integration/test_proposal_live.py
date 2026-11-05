@@ -19,11 +19,58 @@ pytestmark = [
     pytest.mark.skipif(not os.getenv("ANTHROPIC_API_KEY"), reason="ANTHROPIC_API_KEY not set"),
 ]
 
-BARE_TITLES = {"reply", "forward", "digest", "snooze", "follow up", "follow_up", "todo", "archive", "archive noise",
-               "archive_noise", "unsubscribe", "reply to email", "archive email", "forward email"}
-STOPWORDS = {"the", "a", "an", "to", "of", "for", "and", "on", "in", "at", "your", "from", "this", "with", "about",
-             "email", "message", "mail", "reply", "forward", "archive", "noise", "digest", "snooze", "todo", "follow",
-             "unsubscribe", "re", "fwd", "com", "example", "regarding", "update", "new"}
+BARE_TITLES = {
+    "reply",
+    "forward",
+    "digest",
+    "snooze",
+    "follow up",
+    "follow_up",
+    "todo",
+    "archive",
+    "archive noise",
+    "archive_noise",
+    "unsubscribe",
+    "reply to email",
+    "archive email",
+    "forward email",
+}
+STOPWORDS = {
+    "the",
+    "a",
+    "an",
+    "to",
+    "of",
+    "for",
+    "and",
+    "on",
+    "in",
+    "at",
+    "your",
+    "from",
+    "this",
+    "with",
+    "about",
+    "email",
+    "message",
+    "mail",
+    "reply",
+    "forward",
+    "archive",
+    "noise",
+    "digest",
+    "snooze",
+    "todo",
+    "follow",
+    "unsubscribe",
+    "re",
+    "fwd",
+    "com",
+    "example",
+    "regarding",
+    "update",
+    "new",
+}
 
 
 def words(text: str) -> set[str]:
@@ -31,12 +78,22 @@ def words(text: str) -> set[str]:
 
 
 def inbox_message(case: ProposalCase) -> Message:
-    return Message.model_validate({
-        "_id": PydanticObjectId(), "owner_id": "owner-1", "plugin_id": "proton", "ref": case.name, "message_id": f"<{case.name}@x>",
-        "sender": {"email": case.sender}, "to": [{"email": "frank@example.com"}], "cc": [],
-        "date": datetime(2026, 11, 2, tzinfo=UTC), "subject": case.subject, "snippet": case.body[:200],
-        "list_id": case.list_id,
-    })
+    return Message.model_validate(
+        {
+            "_id": PydanticObjectId(),
+            "owner_id": "owner-1",
+            "plugin_id": "proton",
+            "ref": case.name,
+            "message_id": f"<{case.name}@x>",
+            "sender": {"email": case.sender},
+            "to": [{"email": "frank@example.com"}],
+            "cc": [],
+            "date": datetime(2026, 11, 2, tzinfo=UTC),
+            "subject": case.subject,
+            "snippet": case.body[:200],
+            "list_id": case.list_id,
+        }
+    )
 
 
 @pytest.mark.parametrize("case", CORPUS, ids=[case.name for case in CORPUS])

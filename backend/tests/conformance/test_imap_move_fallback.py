@@ -27,8 +27,14 @@ def test_archive_and_restore_without_move_keep_every_message(mailbox: Mailbox):
     ref = mailbox.deliver(sender="ana@example.com", subject="moves", body="x")
     plugin = MailboxWithoutMove(
         ImapMailboxSettings(
-            account=mailbox.address, username=mailbox.address, password="unused", tls="none",
-            imap_host=MAIL_HOST, imap_port=IMAP_PORT, smtp_host=MAIL_HOST, smtp_port=SMTP_PORT,
+            account=mailbox.address,
+            username=mailbox.address,
+            password="unused",
+            tls="none",
+            imap_host=MAIL_HOST,
+            imap_port=IMAP_PORT,
+            smtp_host=MAIL_HOST,
+            smtp_port=SMTP_PORT,
         )
     )
 
@@ -52,8 +58,14 @@ class MailboxWithoutMoveOrUidplus(ImapMailbox):
 
 def settings_for(mailbox: Mailbox) -> ImapMailboxSettings:
     return ImapMailboxSettings(
-        account=mailbox.address, username=mailbox.address, password="unused", tls="none",
-        imap_host=MAIL_HOST, imap_port=IMAP_PORT, smtp_host=MAIL_HOST, smtp_port=SMTP_PORT,
+        account=mailbox.address,
+        username=mailbox.address,
+        password="unused",
+        tls="none",
+        imap_host=MAIL_HOST,
+        imap_port=IMAP_PORT,
+        smtp_host=MAIL_HOST,
+        smtp_port=SMTP_PORT,
     )
 
 
