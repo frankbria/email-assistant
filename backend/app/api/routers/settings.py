@@ -1,5 +1,5 @@
 # backend/app/api/routers/settings.py
-"""The settings screen (spec §10.9): AI provider and model, poll interval and first-connect window."""
+"""The settings screen (spec §10.9): AI provider and model, poll interval, first-connect window and privacy mode."""
 
 from fastapi import APIRouter, Request
 

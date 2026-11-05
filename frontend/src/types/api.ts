@@ -10,6 +10,7 @@ export interface MongoDocument {
 }
 
 export type AIProviderName = 'anthropic' // matches the backend's AIProviderName
+export type PrivacyMode = 'full_cloud' | 'redacted_cloud' // matches the backend's PrivacyMode
 
 // The settings screen's choices; until the owner saves, each is the server's env default.
 export interface AssistantSettings {
@@ -17,6 +18,7 @@ export interface AssistantSettings {
   ai_model: string
   poll_seconds: number
   first_connect_days: number
+  privacy_mode: PrivacyMode
 }
 
 export type DiagnosisKind =

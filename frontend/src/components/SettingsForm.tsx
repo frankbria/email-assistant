@@ -1,7 +1,7 @@
 "use client";
 
 import React, { useEffect, useState } from "react";
-import type { AIProviderName, AssistantSettings } from "../types/api";
+import type { AIProviderName, AssistantSettings, PrivacyMode } from "../types/api";
 import { fetchUserSettings, SettingsRejected, updateUserSettings, type SettingsFieldErrors } from "../services/settingsService";
 import { Card } from "./ui/card";
 import { Button } from "./ui/button";
@@ -13,6 +13,11 @@ import { showToast } from "../utils/toast";
 
 const PROVIDERS: Record<AIProviderName, string> = { anthropic: "Anthropic" };
 const isProvider = (value: string): value is AIProviderName => value in PROVIDERS;
+const PRIVACY_MODES: Record<PrivacyMode, string> = {
+  full_cloud: "Full cloud: the AI sees your mail as it is",
+  redacted_cloud: "Redacted cloud: names, addresses, numbers and links are hidden from the AI",
+};
+const isPrivacyMode = (value: string): value is PrivacyMode => value in PRIVACY_MODES;
 const CONTROL = `${TOUCH_TARGET} transition-all focus-visible:ring-[3px] focus-visible:ring-blue-500/50`;
 
 function Field({ name, label, hint, error, children }: {
@@ -63,9 +68,9 @@ export default function SettingsForm() {
     if (!settings) return;
     setSaving(true);
     try {
-      // Only the four choices: the GET answer also carries ids the server doesn't take back.
-      const { ai_provider, ai_model, poll_seconds, first_connect_days } = settings;
-      setSettings(await updateUserSettings({ ai_provider, ai_model, poll_seconds, first_connect_days }));
+      // Only the choices: the GET answer also carries ids the server doesn't take back.
+      const { ai_provider, ai_model, poll_seconds, first_connect_days, privacy_mode } = settings;
+      setSettings(await updateUserSettings({ ai_provider, ai_model, poll_seconds, first_connect_days, privacy_mode }));
       setFieldErrors({});
       showToast.success("Settings saved");
     } catch (failure) {
@@ -162,6 +167,26 @@ export default function SettingsForm() {
             className={CONTROL}
             {...invalid("first_connect_days")}
           />
+        </Field>
+        <Field
+          name="privacy_mode"
+          label="Privacy mode"
+          hint="Redacted cloud swaps personal details for placeholders before mail reaches the AI, and puts the real values back in your jobs. Names that appear only mid-sentence may still reach the AI."
+          error={fieldErrors.privacy_mode}
+        >
+          <select
+            id="privacy_mode"
+            value={settings.privacy_mode}
+            onChange={(event) => isPrivacyMode(event.target.value) && change("privacy_mode", event.target.value)}
+            className={`w-full rounded-md border border-input bg-background px-3 text-sm ${CONTROL}`}
+            {...invalid("privacy_mode")}
+          >
+            {Object.entries(PRIVACY_MODES).map(([value, label]) => (
+              <option key={value} value={value}>
+                {label}
+              </option>
+            ))}
+          </select>
         </Field>
         </fieldset>
         <Button type="submit" className={TOUCH_TARGET} disabled={saving}>

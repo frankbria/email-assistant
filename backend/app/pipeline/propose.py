@@ -11,8 +11,10 @@ from pydantic import create_model
 
 from app.models.job import Verb
 from app.models.message import Message, recent_sent
+from app.models.user_settings import settings_for
 from app.pipeline.minimize import minimize
 from app.pipeline.proposal import Proposal
+from app.pipeline.redact import Redaction
 from app.services.ai_provider import AIProvider
 
 VOICE_SAMPLES = 5
@@ -127,7 +129,13 @@ async def propose(
     voice = await voice_samples(message.owner_id, message.sender.email)
     recipients = await forward_candidates(message.owner_id)
     prompt = proposal_prompt(message, body, fixed_verb, voice, recipients, examples)
-    proposal = await provider.propose(prompt, schema_for(fixed_verb))
+    if (await settings_for(message.owner_id)).privacy_mode == "redacted_cloud":
+        # The whole prompt, so no part of it (headers, examples, voice, recipients) can skip the stage (§8.2).
+        people = [address.name for sent in [message, *voice] for address in [sent.sender, *sent.to, *sent.cc]]
+        redaction = Redaction(name for name in people if name)
+        proposal = redaction.restore_model(await provider.propose(redaction.redact(prompt), schema_for(fixed_verb)))
+    else:
+        proposal = await provider.propose(prompt, schema_for(fixed_verb))
     if proposal.forward_to is not None and proposal.forward_to.lower() not in recipients:
         # Recipients chosen from email content are an injection path (§8.5): only history counts.
         return proposal.model_copy(update={"forward_to": None})
