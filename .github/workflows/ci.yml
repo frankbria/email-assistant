@@ -13,9 +13,7 @@ permissions:
 
 jobs:
   backend:
-    # shortcut: mongod refuses to start on ubuntu-24.04's 7.0 kernel (SERVER-121912);
-    # move back to ubuntu-latest once a MongoDB release accepts fixed kernels.
-    runs-on: ubuntu-22.04
+    runs-on: ubuntu-latest
     timeout-minutes: 15
     defaults:
       run:
@@ -53,8 +51,7 @@ jobs:
         run: uv run pytest -q
 
   frontend:
-    # shortcut: same mongod kernel limit as the backend job (see #105).
-    runs-on: ubuntu-22.04
+    runs-on: ubuntu-latest
     timeout-minutes: 15
     defaults:
       run:
@@ -84,8 +81,7 @@ jobs:
 
   e2e:
     # Playwright against the real stack (frontend/playwright.config.ts starts FastAPI and Next itself).
-    # shortcut: same mongod kernel limit as the backend job (see #105).
-    runs-on: ubuntu-22.04
+    runs-on: ubuntu-latest
     timeout-minutes: 15
     services:
       mongodb:
