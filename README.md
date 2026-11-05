@@ -109,9 +109,8 @@ which you set in `.env`.
   HTTP on your tailnet and `plugins.yaml` points at it.
 - **Gmail:** follow [`plugins/gmail/README.md`](plugins/gmail/README.md): turn on 2-Step Verification, create an
   app password, and check IMAP is allowed (personal accounts always have it; on Google Workspace the admin
-  must allow it). The Gmail plugin runs over stdio inside the backend, and the backend image
-  doesn't include it yet ([#185](https://github.com/frankbria/email-assistant/issues/185)): for Gmail today, run
-  the backend outside Docker (see [Developing](#-developing)).
+  must allow it). The plugin ships with the backend, in the Docker image too; its `plugins.yaml` entry runs
+  `command: gmail-plugin` over stdio.
 
 Then open **Settings → Mailbox connections → Setup checklist**. It checks each step live and says what to fix.
 For Gmail it also checks **Auto-Expunge** (Settings → Forwarding and POP/IMAP in Gmail), which can send archived
