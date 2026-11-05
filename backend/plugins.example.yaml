@@ -24,8 +24,7 @@ plugins:
     enabled: false
     transport:
       type: stdio
-      command: uv
-      args: [run, --directory, ../plugins/gmail, gmail-plugin]
+      command: gmail-plugin  # installed with the backend, in the Docker image too
       env_from:
         MAILBOX_ACCOUNT: GMAIL_ADDRESS
         MAILBOX_PASSWORD: GMAIL_APP_PASSWORD

@@ -4,6 +4,7 @@ import socket
 import subprocess
 import sys
 import time
+import tomllib
 from pathlib import Path
 
 import pytest
@@ -314,3 +315,11 @@ def test_connections_requires_the_owner(tmp_path, monkeypatch):
 
     with TestClient(app) as client:
         assert client.get("/api/v1/connections").status_code == 401
+
+
+def test_the_gmail_plugin_ships_with_the_backend():
+    """The app starts it over stdio, and the image installs only runtime dependencies (`uv sync --no-dev`), so a dev-only
+    Gmail plugin would fail to launch in Docker (#185)."""
+    project = tomllib.loads((Path(__file__).resolve().parents[2] / "pyproject.toml").read_text())["project"]
+
+    assert any(dependency.split()[0].startswith("gmail-mailbox-plugin") for dependency in project["dependencies"])

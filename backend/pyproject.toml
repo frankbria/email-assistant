@@ -10,6 +10,7 @@ dependencies = [
     "fastapi",
     "httpx",
     "httpx2>=2.16.0",
+    "gmail-mailbox-plugin",  # started over stdio by the app, so the image must contain it
     "mailbox-contract",
     "mcp>=2.3.0",
     "pydantic",
@@ -23,7 +24,6 @@ dependencies = [
 
 [dependency-groups]
 dev = [
-    "gmail-mailbox-plugin",
     "imap-mailbox",
     "jsonschema>=4.26.0",
     "mypy>=2.4.1",
