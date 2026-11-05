@@ -361,6 +361,7 @@ dependencies = [
     { name = "anthropic" },
     { name = "beanie" },
     { name = "fastapi" },
+    { name = "gmail-mailbox-plugin" },
     { name = "httpx" },
     { name = "httpx2" },
     { name = "mailbox-contract" },
@@ -376,7 +377,6 @@ dependencies = [
 
 [package.dev-dependencies]
 dev = [
-    { name = "gmail-mailbox-plugin" },
     { name = "imap-mailbox" },
     { name = "jsonschema" },
     { name = "mypy" },
@@ -394,6 +394,7 @@ requires-dist = [
     { name = "anthropic", specifier = ">=2.3.0" },
     { name = "beanie", specifier = ">=2" },
     { name = "fastapi" },
+    { name = "gmail-mailbox-plugin", editable = "../plugins/gmail" },
     { name = "httpx" },
     { name = "httpx2", specifier = ">=2.16.0" },
     { name = "mailbox-contract", editable = "../packages/mailbox-contract" },
@@ -409,7 +410,6 @@ requires-dist = [
 
 [package.metadata.requires-dev]
 dev = [
-    { name = "gmail-mailbox-plugin", editable = "../plugins/gmail" },
     { name = "imap-mailbox", editable = "../packages/imap-mailbox" },
     { name = "jsonschema", specifier = ">=4.26.0" },
     { name = "mypy", specifier = ">=2.4.1" },
