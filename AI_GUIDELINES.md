@@ -33,8 +33,9 @@ whose name lacks `_test`.
 cd backend
 uv sync --locked
 uv run pytest
-uv run ruff check .
-uv run mypy app
+uv run ruff check . ../packages ../plugins
+uv run ruff format --check . ../packages ../plugins
+uv run mypy app ../packages/mailbox-contract/src ../packages/imap-mailbox/src ../plugins/proton/src ../plugins/gmail/src  # strict
 ```
 
 ```bash
