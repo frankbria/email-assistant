@@ -26,7 +26,7 @@ PATTERNS = [
     ("EMAIL", re.compile(r"[\w.+-]+@[\w-]+(?:\.[\w-]+)+")),
     # With a scheme or www., a bare domain with a path (bit.ly/x), or a bare domain on a common TLD (acme.com).
     ("URL", re.compile(
-        rf"(?<![\w@.-])(?:https?://|www\.){URL_REST}|{DOMAIN}[a-z]{{2,}}/{URL_REST}|{DOMAIN}(?:{BARE_TLDS})\b(?![.-]?\w)",
+        rf"(?<![\w@.-])(?:https?://|www\.){URL_REST}|{DOMAIN}[a-z]{{2,}}/{URL_REST}|{DOMAIN}(?:{BARE_TLDS})\b(?![.-]?\w)(?:[?#]{URL_REST})?",
         re.IGNORECASE,
     )),
     # IBANs (whole, also in groups of four) before card numbers (groups of four, or Amex 4-6-5) and long digit runs.

@@ -172,3 +172,11 @@ def test_an_iban_written_in_groups_of_four_is_redacted_whole():
     redacted = Redaction([]).redact("IBAN: GB82 WEST 1234 5698 7654 32, thanks.")
 
     assert redacted == "IBAN: ACCOUNT_1, thanks."
+
+
+@pytest.mark.parametrize("link", ["acme.com?token=privateSecret", "acme.com#token=privateSecret"])
+def test_a_bare_domain_link_keeps_its_query_or_fragment_inside_the_placeholder(link: str):
+    redaction = Redaction([])
+    redacted = redaction.redact(f"Open {link} now.")
+
+    assert redacted == "Open URL_1 now." and redaction.restore("URL_1") == link
