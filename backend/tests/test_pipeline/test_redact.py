@@ -156,9 +156,10 @@ def test_a_link_ending_in_a_balanced_parenthesis_is_kept_whole():
     assert redaction.restore("URL_1") == link
 
 
-@pytest.mark.parametrize("wording", ["code is: 482913", "code was = 482913", "PIN: 482913", "OTP 482913", "passcode is 482913"])
+@pytest.mark.parametrize("wording", ["code is 482-913", "code: 482 913", "code is: 482913", "code was = 482913", "PIN: 482913", "OTP 482913", "passcode is 482913"])
 def test_a_one_time_code_is_redacted_however_it_is_introduced(wording: str):
-    assert "482913" not in Redaction([]).redact(f"Your {wording}.")
+    redacted = Redaction([]).redact(f"Your {wording}.")
+    assert "482" not in redacted and "913" not in redacted
 
 
 def test_an_international_number_with_single_digit_groups_is_redacted():
