@@ -101,27 +101,29 @@ To stop it: `docker compose --profile local-mongo down` (add `-v` to delete the 
 
 Connect a mailbox by listing its plugin in a `plugins.yaml`. In the Docker install, put it in `config/` (owned by
 uid 65534 now, so `sudo cp plugins.yaml config/`), add `PLUGINS_CONFIG=/app/config/plugins.yaml` to `.env`, and
-run the `up -d` command from step 5 again. Secrets never go
-in `plugins.yaml`: it names environment variables, which you set in `.env`.
+run the `up -d` command from step 5 again. Secrets never go in `plugins.yaml`: it names environment variables,
+which you set in `.env`.
 
 - **Proton:** follow [`plugins/proton/README.md`](plugins/proton/README.md). The plugin and its watchdog run on
   the machine where Proton Mail Bridge runs; when the app runs elsewhere (as in Docker), the plugin serves MCP over
   HTTP on your tailnet and `plugins.yaml` points at it.
 - **Gmail:** follow [`plugins/gmail/README.md`](plugins/gmail/README.md): turn on 2-Step Verification, create an
-  app password, and turn on IMAP. The Gmail plugin runs over stdio inside the backend, and the backend image
+  app password, and check IMAP is allowed (personal accounts always have it; on Google Workspace the admin
+  must allow it). The Gmail plugin runs over stdio inside the backend, and the backend image
   doesn't include it yet ([#185](https://github.com/frankbria/email-assistant/issues/185)): for Gmail today, run
   the backend outside Docker (see [Developing](#-developing)).
 
-Then open **Settings → Mailbox connections → Setup checklist**. It checks each step live and says what to fix. For Gmail it also
-checks **Auto-Expunge** (Settings → Forwarding and POP/IMAP in Gmail), which can send archived mail to the Trash;
-the checklist warns when it's on. On first connect the app only syncs the last `FIRST_CONNECT_DAYS` (default 14)
-of mail; older mail is left alone.
+Then open **Settings → Mailbox connections → Setup checklist**. It checks each step live and says what to fix.
+For Gmail it also checks **Auto-Expunge** (Settings → Forwarding and POP/IMAP in Gmail), which can send archived
+mail to the Trash; the checklist warns when it's on. On first connect the app only syncs recent mail (the
+first-connect window on the Settings screen, 14 days by default); older mail is left alone.
 
 ## 🔒 Privacy
 
 Choose a privacy mode on the Settings screen. It decides what is sent to the AI provider:
 
-- **Full cloud** (the default): the minimized email text goes to the AI.
+- **Full cloud** (the default): the minimized email goes to the AI, along with a few of your sent emails (so
+  drafts sound like you), your forwarding history and similar past decisions.
 - **Redacted cloud**: before anything leaves the server, email addresses, phone numbers, URLs, account and card
   numbers, one-time codes, and names the app can see (from the From/To/Cc display names and from greetings and
   sign-offs) become placeholders such as `PERSON_1` or `URL_2`. The mapping stays on the server, and your jobs
@@ -138,7 +140,8 @@ MongoDB container (`--profile local-mongo`).
 - **Train screen.** Calibration runs the pipeline over recent mail without acting on it. For each proposal you
   pick the action you'd want; that teaches the app and is appended to a local calibration test set
   (`config/test_set.jsonl` in the Docker install). That file is your real mail; it is never committed.
-- **Metrics command.** `cd backend && uv run python -m app.metrics [test-set.jsonl]` re-decides every line of a
+- **Metrics command.** `cd backend && uv run python -m app.metrics [test-set.jsonl]` (in the Docker install, pass
+  `../config/test_set.jsonl`) re-decides every line of a
   test set in a scratch database and prints each quality metric with PASS or FAIL against its threshold (exit
   code 1 if any fails). It calls the paid AI, so it needs `ANTHROPIC_API_KEY`.
 - **Weekly metrics workflow.** `.github/workflows/metrics.yml` runs the command every Monday (and on demand) over
@@ -221,7 +224,8 @@ Outside Docker, `plugins.yaml` is read from `backend/` (or `PLUGINS_CONFIG`).
 
 The `.env.example` files list every setting with comments:
 
-- `.env.example` (repo root): the Docker Compose install.
+- `.env.example` (repo root): the Docker Compose install (the backend also reads any `backend/.env.example`
+  setting from this `.env`).
 - `backend/.env.example`: MongoDB, `ANTHROPIC_API_KEY`, default AI provider/model, sync interval, first-connect
   window, optional monthly AI cap, permissions file, calibration test set, Better Auth URL.
 - `frontend/.env.example`: API base URL, MongoDB for the Better Auth collections, `BETTER_AUTH_SECRET`,
