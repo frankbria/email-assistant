@@ -16,6 +16,7 @@ from fastapi.testclient import TestClient
 from pymongo import AsyncMongoClient
 
 # App imports
+from app.api.routers.jobs import plugin_registry
 from app.main import app
 from app.models.action_log import ActionLogEntry
 from app.models.ai_usage import AiUsage
@@ -27,8 +28,9 @@ from app.models.rule import Rule
 from app.models.sync_cursor import SyncCursor
 from app.models.user_settings import UserSettings
 from app.permissions import ApprovalStreak, PermissionSettings
-from app.services.ai_provider import provider_for
+from app.services.ai_provider import get_ai_provider, provider_for
 from tests.utils.auth import AUTH_BASE_URL, bearer_headers
+from tests.utils.fakes import FakeAIProvider
 
 # Load environment variables
 load_dotenv()
@@ -142,3 +144,32 @@ def mailbox(mail_server):
     from tests.utils.mail_server import new_mailbox
 
     return new_mailbox()
+
+
+# ---------------------
+# API stand-ins. They live here rather than in a subdirectory's conftest because pytest 9
+# binds a conftest's fixtures to the first node it builds for that directory, and a
+# command line that names the directory's files on either side of another file builds a
+# second node that can't see them (#175).
+# ---------------------
+
+
+@pytest.fixture
+async def plugins(mailbox):
+    """The reference IMAP plugin on the owner's GreenMail account, serving the API's mailbox actions."""
+    from tests.conformance.test_mailbox_conformance import reference_imap_plugin
+    from tests.test_sync.test_inbox_sync import connected
+
+    mailbox.create_folder("Archive")
+    async with connected(reference_imap_plugin(mailbox)) as registry:
+        app.dependency_overrides[plugin_registry] = lambda: registry
+        yield registry
+    app.dependency_overrides.pop(plugin_registry, None)
+
+
+@pytest.fixture
+def ai():
+    provider = FakeAIProvider()
+    app.dependency_overrides[get_ai_provider] = lambda: provider
+    yield provider
+    app.dependency_overrides.pop(get_ai_provider)
