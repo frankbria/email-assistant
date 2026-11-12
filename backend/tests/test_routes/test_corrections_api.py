@@ -31,10 +31,22 @@ class RuleFollowingAI(FakeAIProvider):
     allows only that verb), it fills in that verb's details, as a real model does."""
 
     async def propose(self, prompt, schema):
-        unaided = Proposal(needs_owner=False, verb="reply", title="Answer the shop's garden tools offer",
-                           evidence=["garden tools"], draft="Thanks, not now.", confidence=0.8)
-        noise = Proposal(needs_owner=False, verb="archive_noise", title="The shop's weekly garden tools deals",
-                         evidence=["garden tools"], noise_rationale="A promotional mailing", confidence=0.9)
+        unaided = Proposal(
+            needs_owner=False,
+            verb="reply",
+            title="Answer the shop's garden tools offer",
+            evidence=["garden tools"],
+            draft="Thanks, not now.",
+            confidence=0.8,
+        )
+        noise = Proposal(
+            needs_owner=False,
+            verb="archive_noise",
+            title="The shop's weekly garden tools deals",
+            evidence=["garden tools"],
+            noise_rationale="A promotional mailing",
+            confidence=0.9,
+        )
         self.result = unaided if schema is Proposal else noise
         return await super().propose(prompt, schema)
 
@@ -108,8 +120,14 @@ async def test_a_wrong_action_proposes_the_right_verb_and_updates_the_senders_ru
     ana = new_mailbox()
     await Rule(owner_id=OWNER_ID, match="sender", value=ana.address, verb="todo").insert()
     job = await job_from(ana, mailbox, "todo", Artifacts(link="https://x.example"))
-    ai.result = Proposal(needs_owner=False, verb="reply", title="Ana asks to meet Thursday at 3pm", evidence=[QUESTION],
-                         draft="Thursday at 3 works.", confidence=0.9)
+    ai.result = Proposal(
+        needs_owner=False,
+        verb="reply",
+        title="Ana asks to meet Thursday at 3pm",
+        evidence=[QUESTION],
+        draft="Thursday at 3 works.",
+        confidence=0.9,
+    )
 
     response = await async_client.post(f"/api/v1/jobs/{job.id}/correct", json={"kind": "wrong_action", "verb": "reply"})
 
@@ -158,11 +176,14 @@ async def test_this_isnt_noise_keeps_a_rule_that_isnt_about_noise(async_client, 
     assert await rules() == [("sender", ana.address.lower(), "reply")]
 
 
-@pytest.mark.parametrize(("verb", "body", "detail"), [
-    ("reply", {"kind": "not_noise"}, "this job isn't noise"),
-    ("reply", {"kind": "wrong_action"}, "say which action is right"),
-    ("reply", {"kind": "guess"}, None),
-])
+@pytest.mark.parametrize(
+    ("verb", "body", "detail"),
+    [
+        ("reply", {"kind": "not_noise"}, "this job isn't noise"),
+        ("reply", {"kind": "wrong_action"}, "say which action is right"),
+        ("reply", {"kind": "guess"}, None),
+    ],
+)
 async def test_a_correction_that_doesnt_fit_the_job_is_refused_and_teaches_nothing(
     async_client, test_db, mailbox, plugins, ai, verb, body, detail
 ):
@@ -199,8 +220,9 @@ async def test_someone_elses_job_isnt_found_and_teaches_nothing(async_client, te
 
 async def test_a_corrected_failed_job_keeps_nothing_of_the_old_action(async_client, test_db, mailbox, plugins):
     due = "2026-12-01T09:00:00Z"
-    job = await job_from(new_mailbox(), mailbox, "reply", Artifacts(draft="Yes"), state="failed", error="send failed",
-                         reminder="nobody answered", due=due)
+    job = await job_from(
+        new_mailbox(), mailbox, "reply", Artifacts(draft="Yes"), state="failed", error="send failed", reminder="nobody answered", due=due
+    )
 
     corrected = (await async_client.post(f"/api/v1/jobs/{job.id}/correct", json={"kind": "noise"})).json()
 
@@ -208,16 +230,25 @@ async def test_a_corrected_failed_job_keeps_nothing_of_the_old_action(async_clie
     assert (corrected["title"], corrected["evidence"]) == ("Q4 budget", [])  # the mail's subject, not the old action's title
 
 
-@pytest.mark.parametrize(("verb", "body"), [
-    ("archive_noise", {"kind": "not_noise"}),
-    ("reply", {"kind": "wrong_action", "verb": "reply"}),
-])
+@pytest.mark.parametrize(
+    ("verb", "body"),
+    [
+        ("archive_noise", {"kind": "not_noise"}),
+        ("reply", {"kind": "wrong_action", "verb": "reply"}),
+    ],
+)
 async def test_a_failed_job_can_be_corrected_like_an_open_one(async_client, test_db, mailbox, plugins, ai, verb, body):
     ana = new_mailbox()
     await Rule(owner_id=OWNER_ID, match="sender", value=ana.address, verb=verb).insert()
     job = await job_from(ana, mailbox, verb, Artifacts(draft="Yes", noise_rationale="x"), state="failed", error="it broke")
-    ai.result = Proposal(needs_owner=False, verb="reply", title="Ana asks to meet Thursday at 3pm", evidence=[QUESTION],
-                         draft="Thursday at 3 works.", confidence=0.9)
+    ai.result = Proposal(
+        needs_owner=False,
+        verb="reply",
+        title="Ana asks to meet Thursday at 3pm",
+        evidence=[QUESTION],
+        draft="Thursday at 3 works.",
+        confidence=0.9,
+    )
 
     response = await async_client.post(f"/api/v1/jobs/{job.id}/correct", json=body)
 
@@ -241,7 +272,9 @@ async def test_a_lesson_that_fails_to_store_still_returns_the_corrected_job(asyn
     ana = new_mailbox()
     job = await job_from(ana, mailbox, "reply", Artifacts(draft="Yes"))
     # A stored rule for the sender that can't be read: learning from the correction fails, as a broken collection does.
-    await Rule.get_pymongo_collection().insert_one({"owner_id": OWNER_ID, "match": "sender", "value": ana.address.lower(), "verb": "not a verb"})
+    await Rule.get_pymongo_collection().insert_one(
+        {"owner_id": OWNER_ID, "match": "sender", "value": ana.address.lower(), "verb": "not a verb"}
+    )
 
     with caplog.at_level(logging.ERROR, logger="app.api.routers.jobs"):
         response = await async_client.post(f"/api/v1/jobs/{job.id}/correct", json={"kind": "noise"})

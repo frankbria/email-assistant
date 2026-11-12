@@ -4,10 +4,9 @@ import re
 from pathlib import Path
 
 import jsonschema
+import mailbox_contract as contract
 import pytest
 from pydantic import BaseModel, ValidationError
-
-import mailbox_contract as contract
 
 CONTRACT_DIR = Path(__file__).resolve().parents[3] / "docs" / "contracts"
 SCHEMA_DIR = CONTRACT_DIR / "mailbox-1"
@@ -71,9 +70,7 @@ EXAMPLES: dict[type[BaseModel], dict[str, object]] = {
 }
 
 MODELS = sorted(
-    {tool.input for tool in contract.TOOLS.values()}
-    | {tool.output for tool in contract.TOOLS.values()}
-    | {contract.ToolError},
+    {tool.input for tool in contract.TOOLS.values()} | {tool.output for tool in contract.TOOLS.values()} | {contract.ToolError},
     key=lambda model: model.__name__,
 )
 

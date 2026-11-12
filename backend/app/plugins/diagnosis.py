@@ -7,15 +7,21 @@ from datetime import UTC, datetime
 from typing import Literal
 
 import httpx
+from mailbox_contract import Health
 from pydantic import BaseModel
 
 from app.plugins.config import WatchdogConfig
 from app.plugins.state import PluginState
-from mailbox_contract import Health
 
 Kind = Literal[
-    "ok", "bridge_restarted", "bridge_restarting", "plugin_restarting", "plugin_failed",
-    "owner_action", "machine_offline", "waiting_for_login",
+    "ok",
+    "bridge_restarted",
+    "bridge_restarting",
+    "plugin_restarting",
+    "plugin_failed",
+    "owner_action",
+    "machine_offline",
+    "waiting_for_login",
 ]
 
 
@@ -58,17 +64,19 @@ async def read_watchdog(config: WatchdogConfig, timeout: float) -> WatchdogRead:
             body = response.json()
     except httpx.ConnectError as error:
         return "refused" if refused(error) else "offline"
-    except (httpx.TimeoutException, httpx.NetworkError):
+    except httpx.TimeoutException, httpx.NetworkError:
         return "offline"
-    except (httpx.HTTPError, ValueError):  # wrong token, server error, or not JSON
+    except httpx.HTTPError, ValueError:  # wrong token, server error, or not JSON
         return "unreadable"
     try:
         return WatchdogReport(
-            bridge_state=body["bridge"]["state"], bridge_detail=body["bridge"]["detail"],
+            bridge_state=body["bridge"]["state"],
+            bridge_detail=body["bridge"]["detail"],
             bridge_layer=body["bridge"].get("first_failing_layer"),
-            bridge_restarts=body["bridge"]["restarts"], plugin_state=body["plugin"]["state"],
+            bridge_restarts=body["bridge"]["restarts"],
+            plugin_state=body["plugin"]["state"],
         )
-    except (KeyError, TypeError, ValueError):
+    except KeyError, TypeError, ValueError:
         return "unreadable"
 
 
@@ -87,8 +95,12 @@ async def diagnose(
     def result(kind: Kind, message: str, layer: str | None = None) -> ConnectionState:
         restarts = report.bridge_restarts if isinstance(report, WatchdogReport) else None
         return ConnectionState(
-            plugin_id=state.id, kind=kind, message=message, first_failing_layer=layer,
-            bridge_restarts=restarts, checked_at=datetime.now(UTC),
+            plugin_id=state.id,
+            kind=kind,
+            message=message,
+            first_failing_layer=layer,
+            bridge_restarts=restarts,
+            checked_at=datetime.now(UTC),
         )
 
     if state.status == "connected" and health is not None:
@@ -115,7 +127,9 @@ async def diagnose(
     if report == "refused":
         return result("waiting_for_login", f"Waiting for login on {watchdog.machine}.")
     if not isinstance(report, WatchdogReport):
-        return result("plugin_failed", f"The {state.id} plugin isn't answering and the watchdog on {watchdog.machine} can't be read; check its token.")
+        return result(
+            "plugin_failed", f"The {state.id} plugin isn't answering and the watchdog on {watchdog.machine} can't be read; check its token."
+        )
     if report.bridge_state == "needs_owner":
         return result("owner_action", report.bridge_detail, report.bridge_layer)
     if report.plugin_state == "needs_owner":

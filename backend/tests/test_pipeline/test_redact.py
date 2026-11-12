@@ -22,9 +22,20 @@ Ana"""
 def test_every_kind_of_personal_detail_becomes_a_typed_placeholder():
     redacted = Redaction(["Ana Lopez"]).redact(MAIL)
 
-    for real in ("Frank", "Ana", "Lopez", "ana.lopez@acme.example", "(555) 123-4567", "+44 20 7946 0958",
-                 "https://billing.acme.example", "www.acme.example", "4111 1111 1111 1111", "12345678901",
-                 "GB82WEST12345698765432", "482913"):
+    for real in (
+        "Frank",
+        "Ana",
+        "Lopez",
+        "ana.lopez@acme.example",
+        "(555) 123-4567",
+        "+44 20 7946 0958",
+        "https://billing.acme.example",
+        "www.acme.example",
+        "4111 1111 1111 1111",
+        "12345678901",
+        "GB82WEST12345698765432",
+        "482913",
+    ):
         assert real not in redacted, real
     for placeholder in ("PERSON_1", "EMAIL_1", "PHONE_1", "PHONE_2", "URL_1", "URL_2", "ACCOUNT_1", "CODE_1"):
         assert placeholder in redacted, placeholder
@@ -68,13 +79,25 @@ def test_every_text_field_of_a_proposal_is_restored():
     redaction = Redaction(["Ana Lopez"])
     redaction.redact("Ana Lopez, ana@acme.example, https://acme.example/pay")
     proposal = Proposal(
-        needs_owner=False, verb="todo", title="Pay PERSON_1's invoice", evidence=["pay at URL_1"], draft="Hi PERSON_1",
-        options=["Yes, PERSON_1"], forward_to="EMAIL_1", link="URL_1", due=datetime(2026, 11, 5, tzinfo=UTC), confidence=0.8,
+        needs_owner=False,
+        verb="todo",
+        title="Pay PERSON_1's invoice",
+        evidence=["pay at URL_1"],
+        draft="Hi PERSON_1",
+        options=["Yes, PERSON_1"],
+        forward_to="EMAIL_1",
+        link="URL_1",
+        due=datetime(2026, 11, 5, tzinfo=UTC),
+        confidence=0.8,
     )
 
     restored = redaction.restore_model(proposal)
 
-    assert (restored.title, restored.evidence, restored.draft) == ("Pay Ana Lopez's invoice", ["pay at https://acme.example/pay"], "Hi Ana Lopez")
+    assert (restored.title, restored.evidence, restored.draft) == (
+        "Pay Ana Lopez's invoice",
+        ["pay at https://acme.example/pay"],
+        "Hi Ana Lopez",
+    )
     assert (restored.options, restored.forward_to, restored.link) == (["Yes, Ana Lopez"], "ana@acme.example", "https://acme.example/pay")
     assert restored.due == proposal.due
 
@@ -156,7 +179,10 @@ def test_a_link_ending_in_a_balanced_parenthesis_is_kept_whole():
     assert redaction.restore("URL_1") == link
 
 
-@pytest.mark.parametrize("wording", ["code is 482-913", "code: 482 913", "code is: 482913", "code was = 482913", "PIN: 482913", "OTP 482913", "passcode is 482913"])
+@pytest.mark.parametrize(
+    "wording",
+    ["code is 482-913", "code: 482 913", "code is: 482913", "code was = 482913", "PIN: 482913", "OTP 482913", "passcode is 482913"],
+)
 def test_a_one_time_code_is_redacted_however_it_is_introduced(wording: str):
     redacted = Redaction([]).redact(f"Your {wording}.")
     assert "482" not in redacted and "913" not in redacted
@@ -182,8 +208,10 @@ def test_a_bare_domain_link_keeps_its_query_or_fragment_inside_the_placeholder(l
     assert redacted == "Open URL_1 now." and redaction.restore("URL_1") == link
 
 
-@pytest.mark.parametrize("wording", ["482913 is your verification code", "482913 is your Acme login code",
-                                     "482-913 is the passcode", "Use 482913 as your one-time PIN"])
+@pytest.mark.parametrize(
+    "wording",
+    ["482913 is your verification code", "482913 is your Acme login code", "482-913 is the passcode", "Use 482913 as your one-time PIN"],
+)
 def test_a_one_time_code_named_after_its_digits_is_redacted(wording: str):
     redacted = Redaction([]).redact(f"{wording}.")
     assert "482" not in redacted and "913" not in redacted

@@ -43,7 +43,14 @@ class GmailAccount(Mailbox):
         return self.append("INBOX", sender=sender, subject=subject, body=body)
 
     def append(
-        self, folder: str, *, sender: str, subject: str, body: str, to: str | None = None, received: datetime | None = None,
+        self,
+        folder: str,
+        *,
+        sender: str,
+        subject: str,
+        body: str,
+        to: str | None = None,
+        received: datetime | None = None,
         headers: dict[str, str] | None = None,
     ) -> str:
         message = build_message(sender=sender, to=to or self.address, subject=subject, body=body)

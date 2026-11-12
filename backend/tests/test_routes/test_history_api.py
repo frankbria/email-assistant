@@ -45,8 +45,15 @@ async def test_archive_then_undo_returns_the_message_to_the_inbox_and_logs_both(
     assert undone.json()["_id"] == restore_entry["_id"]
     assert (archive_entry["action"], archive_entry["by"], archive_entry["permission_level"]) == ("archived", "owner", "ask")
     assert (archive_entry["ok"], archive_entry["undoable"], archive_entry["undone"]) == (True, True, True)
-    assert (restore_entry["action"], restore_entry["by"], restore_entry["ok"], restore_entry["undoable"]) == ("restored", "owner", True, False)
-    assert restore_entry["job_id"] == str(job.id) and restore_entry["message_ids"] == archive_entry["message_ids"] == [str(job.message_ids[0])]
+    assert (restore_entry["action"], restore_entry["by"], restore_entry["ok"], restore_entry["undoable"]) == (
+        "restored",
+        "owner",
+        True,
+        False,
+    )
+    assert restore_entry["job_id"] == str(job.id) and restore_entry["message_ids"] == archive_entry["message_ids"] == [
+        str(job.message_ids[0])
+    ]
 
 
 async def test_a_sent_reply_cant_be_unsent_but_its_archive_can_be_undone(async_client, test_db, mailbox, plugins):
@@ -102,8 +109,16 @@ async def test_only_an_archive_can_be_undone(async_client, test_db, mailbox, plu
 
 
 async def test_another_owners_entries_are_not_listed_or_undoable(async_client, test_db, plugins):
-    theirs = ActionLogEntry(owner_id="someone-else", action="archived", job_id=PydanticObjectId(), message_ids=[PydanticObjectId()],
-                            by="owner", permission_level="ask", ok=True, undoable=True)
+    theirs = ActionLogEntry(
+        owner_id="someone-else",
+        action="archived",
+        job_id=PydanticObjectId(),
+        message_ids=[PydanticObjectId()],
+        by="owner",
+        permission_level="ask",
+        ok=True,
+        undoable=True,
+    )
     await theirs.insert()
 
     assert await history(async_client) == []

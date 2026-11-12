@@ -8,8 +8,8 @@ import pytest
 
 from app.config import get_settings
 from app.main import app
-from app.models.sync_cursor import SyncCursor
 from app.models.message import Message
+from app.models.sync_cursor import SyncCursor
 from app.services.ai_provider import AnthropicProvider, get_ai_provider
 from app.sync import SyncEngine
 from tests.conformance.test_mailbox_conformance import reference_imap_plugin
@@ -17,7 +17,13 @@ from tests.test_sync.test_inbox_sync import PLUGIN, add_owner, connected, eventu
 from tests.utils.auth import OWNER_ID, bearer_headers
 from tests.utils.mail_server import Mailbox
 
-CHOSEN = {"ai_provider": "anthropic", "ai_model": "claude-sonnet-5-5", "poll_seconds": 300, "first_connect_days": 30, "privacy_mode": "redacted_cloud"}
+CHOSEN = {
+    "ai_provider": "anthropic",
+    "ai_model": "claude-sonnet-5-5",
+    "poll_seconds": 300,
+    "first_connect_days": 30,
+    "privacy_mode": "redacted_cloud",
+}
 
 
 @pytest.fixture
@@ -34,7 +40,10 @@ async def test_an_owner_who_has_not_chosen_gets_the_env_values(test_db, async_cl
 
     assert response.status_code == 200
     assert {key: response.json()[key] for key in CHOSEN} == {
-        "ai_provider": "anthropic", "ai_model": "claude-env-model", "poll_seconds": 90, "first_connect_days": 7,
+        "ai_provider": "anthropic",
+        "ai_model": "claude-env-model",
+        "poll_seconds": 90,
+        "first_connect_days": 7,
         "privacy_mode": "full_cloud",
     }
 
@@ -103,9 +112,7 @@ async def test_changing_the_poll_interval_changes_the_sync_cadence_without_a_res
         running = asyncio.create_task(engine.run())
         try:
             await eventually(lambda: SyncCursor.find_one(SyncCursor.plugin_id == PLUGIN).exists())
-            async with httpx.AsyncClient(
-                transport=httpx.ASGITransport(app=app), base_url="http://test", headers=bearer_headers()
-            ) as api:
+            async with httpx.AsyncClient(transport=httpx.ASGITransport(app=app), base_url="http://test", headers=bearer_headers()) as api:
                 assert (await api.put("/api/v1/settings", json=CHOSEN | {"poll_seconds": 5})).status_code == 200
             first = mailbox.deliver(sender="a@example.com", subject="First", body="x")
             await eventually(lambda: Message.find_one(Message.message_id == first).exists(), timeout_seconds=10)

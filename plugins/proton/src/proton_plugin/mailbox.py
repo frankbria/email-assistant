@@ -1,10 +1,10 @@
 import re
 import socket
-from collections.abc import Callable
-from contextlib import AbstractContextManager
 import ssl
 import subprocess
 import time
+from collections.abc import Callable
+from contextlib import AbstractContextManager
 from typing import Literal
 
 from imap_mailbox.mailbox import ImapMailbox, MailboxError
@@ -83,7 +83,8 @@ class ProtonMailbox(ImapMailbox):
         missing = [name for name in (self.folders.archive, self.folders.sent) if name not in present]
         if missing:
             return HealthCheck(
-                layer="folders", ok=False,
+                layer="folders",
+                ok=False,
                 detail=f"Bridge has no {', '.join(missing)} folder; check the folder names in the plugin settings.",
             )
         return HealthCheck(layer="folders", ok=True, detail="Archive and Sent are there.")
@@ -101,10 +102,13 @@ class ProtonMailbox(ImapMailbox):
         try:
             socket.create_connection((host, port), timeout=3).close()
         except OSError:
-            checks.append(HealthCheck(
-                layer="imap_port", ok=False,
-                detail=f"Proton Bridge isn't running: nothing is listening on {host}:{port}.",
-            ))
+            checks.append(
+                HealthCheck(
+                    layer="imap_port",
+                    ok=False,
+                    detail=f"Proton Bridge isn't running: nothing is listening on {host}:{port}.",
+                )
+            )
             return self._result(checks, "down", restartable=True)
         checks.append(HealthCheck(layer="imap_port", ok=True, detail=f"Bridge is listening on {host}:{port}."))
         login_layers: tuple[tuple[str, Callable[[], AbstractContextManager[object]], Literal["down", "degraded"]], ...] = (
@@ -139,7 +143,10 @@ class ProtonMailbox(ImapMailbox):
             # pipes, and run() would wait for them to close until the timeout.
             subprocess.run(
                 self.proton.bridge_restart_command,
-                check=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, timeout=60,
+                check=True,
+                stdout=subprocess.DEVNULL,
+                stderr=subprocess.DEVNULL,
+                timeout=60,
             )
         except (OSError, subprocess.SubprocessError) as error:
             return RepairResult(ok=False, detail=f"Restarting Bridge failed: {error}")

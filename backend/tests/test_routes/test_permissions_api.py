@@ -30,8 +30,13 @@ async def test_the_screen_gets_each_verb_with_its_level_and_ceiling(async_client
 
     assert response.status_code == 200
     verbs = {row["verb"]: row for row in response.json()["verbs"]}
-    assert verbs["unsubscribe"] == {"verb": "unsubscribe", "level": "never_auto", "default": "never_auto",
-                                    "ceiling": "never_auto", "reason": "links in email are untrusted"}
+    assert verbs["unsubscribe"] == {
+        "verb": "unsubscribe",
+        "level": "never_auto",
+        "default": "never_auto",
+        "ceiling": "never_auto",
+        "reason": "links in email are untrusted",
+    }
     assert verbs["reply"]["ceiling"] == "autonomous" and verbs["reply"]["level"] == "ask"
     assert response.json()["promotions"] == [] and response.json()["file_error"] is None
 
@@ -44,13 +49,18 @@ async def test_a_change_is_stored_and_written_to_the_file(async_client, test_db,
     assert yaml.safe_load(permissions_file.read_text())["archive_noise"] == "autonomous"
 
 
-@pytest.mark.parametrize(("verb", "level", "reason"), [
-    ("unsubscribe", "autonomous", "unsubscribe can't be autonomous: its highest level is never_auto (links in email are untrusted)"),
-    ("forward", "autonomous", "forward can't be autonomous: its highest level is ask (new recipients come from AI judgment)"),
-    ("reply", "always", "reply: 'always' isn't a level (autonomous, ask or never_auto)"),
-    ("frobnicate", "ask", "frobnicate isn't a verb"),
-])
-async def test_a_choice_the_ceilings_dont_allow_is_rejected_with_the_reason(async_client, test_db, permissions_file: Path, verb, level, reason):
+@pytest.mark.parametrize(
+    ("verb", "level", "reason"),
+    [
+        ("unsubscribe", "autonomous", "unsubscribe can't be autonomous: its highest level is never_auto (links in email are untrusted)"),
+        ("forward", "autonomous", "forward can't be autonomous: its highest level is ask (new recipients come from AI judgment)"),
+        ("reply", "always", "reply: 'always' isn't a level (autonomous, ask or never_auto)"),
+        ("frobnicate", "ask", "frobnicate isn't a verb"),
+    ],
+)
+async def test_a_choice_the_ceilings_dont_allow_is_rejected_with_the_reason(
+    async_client, test_db, permissions_file: Path, verb, level, reason
+):
     """AC-K.3 (UI half): the screen shows this message."""
     response = await async_client.put(f"/api/v1/permissions/{verb}", json={"level": level})
 
@@ -109,8 +119,6 @@ async def test_an_offer_made_moot_by_a_manual_promotion_doesnt_come_back_after_a
     downgraded = await async_client.put("/api/v1/permissions/reply", json={"level": "ask"})
 
     assert downgraded.json()["promotions"] == []
-
-
 
 
 async def test_overlapping_changes_both_survive(test_db, tmp_path: Path):

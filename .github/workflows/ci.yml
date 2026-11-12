@@ -47,6 +47,8 @@ jobs:
       - run: uv sync --locked
       - name: ruff
         run: uv run ruff check . ../packages ../plugins
+      - name: ruff format
+        run: uv run ruff format --check . ../packages ../plugins
       - name: mypy
         run: uv run mypy app ../packages/mailbox-contract/src ../packages/imap-mailbox/src ../plugins/proton/src ../plugins/gmail/src
       - name: pytest

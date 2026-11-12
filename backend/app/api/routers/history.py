@@ -6,6 +6,7 @@ import logging
 from beanie import PydanticObjectId
 from beanie.operators import In
 from fastapi import APIRouter, Depends, HTTPException
+from mailbox_contract import Address
 from pydantic import BaseModel
 
 from app.api.routers.jobs import plugin_registry
@@ -15,7 +16,6 @@ from app.models.action_log import ActionLogEntry
 from app.models.message import Message
 from app.pipeline.rules import ask_first_from_now_on
 from app.plugins.registry import PluginRegistry
-from mailbox_contract import Address
 
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/api/v1/history", tags=["history"])
@@ -43,6 +43,7 @@ async def list_history(owner_id: OwnerId) -> list[HistoryCard]:
         subject = f"{len(entry.message_ids)} messages" if several else found[0].subject
         cards.append(HistoryCard(entry=entry, sender=found[0].sender, subject=subject))
     return cards
+
 
 @router.post("/{entry_id}/undo", response_model=ActionLogEntry)
 async def undo_entry(entry_id: PydanticObjectId, owner_id: OwnerId, plugins: PluginRegistry = Depends(plugin_registry)) -> ActionLogEntry:

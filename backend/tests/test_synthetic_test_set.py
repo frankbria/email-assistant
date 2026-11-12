@@ -46,10 +46,17 @@ def test_every_verb_and_metric_has_a_meaningful_denominator():
 
 def proposal(entry: dict[str, object]) -> Proposal:
     """The owner's verb, with every artifact any verb needs; evidence quoted from the mail."""
-    return Proposal(needs_owner=False, verb=entry["owner_verb"], title=f"About {entry['subject']}",  # type: ignore[arg-type]
-                    evidence=[" ".join(str(entry["text"]).split()[:3])], draft="Thanks, noted.",
-                    due=datetime(2026, 12, 1, tzinfo=UTC), noise_rationale="Bulk mail", digest="A summary",
-                    confidence=0.9)
+    return Proposal(
+        needs_owner=False,
+        verb=entry["owner_verb"],
+        title=f"About {entry['subject']}",  # type: ignore[arg-type]
+        evidence=[" ".join(str(entry["text"]).split()[:3])],
+        draft="Thanks, noted.",
+        due=datetime(2026, 12, 1, tzinfo=UTC),
+        noise_rationale="Bulk mail",
+        digest="A summary",
+        confidence=0.9,
+    )
 
 
 async def test_the_metrics_command_reports_every_metric_over_it(capsys):

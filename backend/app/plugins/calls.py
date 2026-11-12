@@ -4,11 +4,11 @@ which tool and why."""
 import asyncio
 from itertools import batched
 
+from mailbox_contract import ErrorCode, InboxContainsOutput, ToolError
 from mcp import Client
 from mcp.types import CallToolResult
 
 from app.plugins.registry import result_text
-from mailbox_contract import ErrorCode, InboxContainsOutput, ToolError
 
 PLUGIN_CALL_TIMEOUT_SECONDS = 60  # one hung plugin must not stop every other plugin's sync
 INBOX_CONTAINS_BATCH = 500  # the contract's cap on refs per call
@@ -25,7 +25,7 @@ class InvalidCursor(Exception):
 async def call_plugin(plugin_id: str, client: Client, tool: str, arguments: dict[str, object]) -> dict[str, object]:
     async with asyncio.timeout(PLUGIN_CALL_TIMEOUT_SECONDS):
         result = await client.call_tool(tool, arguments)
-    if result.is_error or result.structured_content is None:
+    if result.is_error or not isinstance(result.structured_content, dict):  # MCP's structured result is an object
         raise tool_failure(plugin_id, tool, result)
     return result.structured_content
 
@@ -42,7 +42,7 @@ def tool_failure(plugin_id: str, tool: str, result: CallToolResult) -> InvalidCu
 async def refs_in_inbox(plugin_id: str, client: Client, refs: list[str]) -> set[str]:
     """Which of these refs are still in the plugin's inbox."""
     present: set[str] = set()
-    for batch in batched(refs, INBOX_CONTAINS_BATCH):
+    for batch in batched(refs, INBOX_CONTAINS_BATCH, strict=False):
         answer = InboxContainsOutput.model_validate(await call_plugin(plugin_id, client, "inbox_contains", {"refs": list(batch)})).root
         if answer.keys() != set(batch):  # the contract's exact-keys rule
             raise SyncError(f"{plugin_id}: inbox_contains answered for other refs than it was asked about")

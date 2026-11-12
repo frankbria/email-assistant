@@ -13,10 +13,10 @@ from app.models.rule import Rule
 from app.permissions import PermissionSettings
 from app.pipeline.proposal import Proposal
 from app.pipeline.run import act_if_autonomous, attach_copy
-from tests.test_routes.test_corrections_api import DEALS, SHOP, newest_job, sync_pass
-from tests.test_routes.test_history_api import history
 from tests.conformance.test_mailbox_conformance import reference_imap_plugin
 from tests.test_pipeline.test_shared_message import HOME, WORK, deliver_to_both
+from tests.test_routes.test_corrections_api import DEALS, SHOP, newest_job, sync_pass
+from tests.test_routes.test_history_api import history
 from tests.test_routes.test_jobs_api import archived, job_from
 from tests.test_sync.test_inbox_sync import add_owner, connected
 from tests.utils.auth import OWNER_ID
@@ -24,8 +24,14 @@ from tests.utils.fakes import FakeAIProvider
 from tests.utils.mail_server import new_mailbox
 
 pytestmark = pytest.mark.usefixtures("mail_server")
-NOISE = Proposal(needs_owner=False, verb="archive_noise", title="The shop's weekly garden tools deals",
-                 evidence=["garden tools"], noise_rationale="A promotional mailing", confidence=0.9)
+NOISE = Proposal(
+    needs_owner=False,
+    verb="archive_noise",
+    title="The shop's weekly garden tools deals",
+    evidence=["garden tools"],
+    noise_rationale="A promotional mailing",
+    confidence=0.9,
+)
 
 
 async def rules() -> list[tuple[str, str, str | None, bool]]:
@@ -126,7 +132,9 @@ async def test_a_lesson_that_fails_to_store_still_returns_the_restore(async_clie
     await act_if_autonomous(job, plugins)
     [app_archive] = await history(async_client)
     # A stored rule for the sender that can't be read: learning from the restore fails, as a broken collection does.
-    await Rule.get_pymongo_collection().insert_one({"owner_id": OWNER_ID, "match": "sender", "value": ana.address.lower(), "verb": "not a verb"})
+    await Rule.get_pymongo_collection().insert_one(
+        {"owner_id": OWNER_ID, "match": "sender", "value": ana.address.lower(), "verb": "not a verb"}
+    )
 
     with caplog.at_level(logging.ERROR, logger="app.api.routers.history"):
         undone = await async_client.post(f"/api/v1/history/{app_archive['_id']}/undo")
