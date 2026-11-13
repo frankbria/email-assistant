@@ -52,6 +52,11 @@ GMAIL_ADDRESS=… GMAIL_APP_PASSWORD=… GMAIL_AUTO_EXPUNGE=on uv run pytest tes
 
 Run it once with Auto-Expunge on and once with it off (`GMAIL_AUTO_EXPUNGE=off`).
 
+Both live checks also run in GitHub Actions, without a local checkout: add the repository secrets
+`GMAIL_ADDRESS` and `GMAIL_APP_PASSWORD` (Settings > Secrets and variables > Actions), then run the
+**Gmail live** workflow (Actions > Gmail live > Run workflow), choosing what Auto-Expunge is set to.
+Run it once with each setting; the run's summary has the result lines to record.
+
 ## Running
 
 The plugin is a runtime dependency of the backend, so its `gmail-plugin` script is on the backend's
