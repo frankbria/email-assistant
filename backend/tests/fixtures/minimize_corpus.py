@@ -273,6 +273,61 @@ CORPUS = (
         removed=(),
     ),
     MinimizeCase(
+        # What the IMAP plugin makes of an HTML forward: Begin forwarded message: + <blockquote>
+        # <div>Invoice 4471 is due Friday.</div><div>-- </div><div>Ana Smith | +1 555 0100</div></blockquote>
+        name="signature inside a quoted forwarded payload",
+        subject="Fwd: Invoice",
+        text=("Please pay this.\nBegin forwarded message:\n> Invoice 4471 is due Friday.\n> -- \n> Ana Smith | +1 555 0100\n"),
+        kept=("Please pay this.", "Invoice 4471 is due Friday."),
+        removed=("Ana Smith", "+1 555 0100"),
+    ),
+    MinimizeCase(
+        name="a quoted signature run inside a payload ends where the quote depth changes",
+        subject="Fwd: Invoice",
+        text=(
+            "Please pay this.\n"
+            "---------- Forwarded message ---------\n"
+            "> Invoice 4471 is due Friday.\n"
+            "> > -- \n"
+            "> > Ben Lee | Accounts\n"
+            "> Wire it to the usual account.\n"
+            "> -- \n"
+            "> Ana Smith\n"
+            "> ---------- Forwarded message ---------\n"
+            "> Original invoice attached.\n"
+        ),
+        kept=("Invoice 4471 is due Friday.", "Wire it to the usual account.", "Forwarded message", "Original invoice attached."),
+        removed=("Ben Lee", "Ana Smith"),
+    ),
+    MinimizeCase(
+        name="an outlook-style forward after a quoted signature inside a payload is kept",
+        subject="Fwd: Invoice",
+        text=(
+            "Begin forwarded message:\n"
+            "> FYI\n"
+            "> -- \n"
+            "> Alice\n"
+            "> -----Original Message-----\n"
+            "> From: Billing <billing@example.com>\n"
+            "> Sent: Monday\n"
+            "> Invoice 4471 is due Friday.\n"
+        ),
+        kept=("FYI", "Original Message", "Invoice 4471 is due Friday."),
+        removed=("Alice",),
+    ),
+    MinimizeCase(
+        name="an answer after a quoted signature in a bottom-posted reply is kept",
+        text=(
+            "On Sun, Nov 1, 2026, Ben <ben@example.com> wrote:\n"
+            "> Can you bring chairs?\n"
+            "> -- \n"
+            "> Ben Lee | +1 555 0199\n"
+            "We can bring four chairs.\n"
+        ),
+        kept=("We can bring four chairs.",),
+        removed=("Ben Lee", "Can you bring chairs?"),
+    ),
+    MinimizeCase(
         name="a forward marker inside quoted history keeps nothing extra",
         text=(
             "Paid, thanks.\nOn Mon, Nov 2, 2026, Ana <ana@example.com> wrote:\n> Begin forwarded message:\n> Invoice 4471 is due Friday.\n"
