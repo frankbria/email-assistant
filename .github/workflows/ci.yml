@@ -21,11 +21,11 @@ jobs:
     steps:
       - run: uname -r; cat /etc/os-release | head -2; echo "ImageOS=$ImageOS ImageVersion=$ImageVersion"
       - run: |
-          docker run -d --name m mongo:${{ matrix.tag }}
+          docker run -d --name mongo-probe mongo:${{ matrix.tag }}
           docker image inspect mongo:${{ matrix.tag }} --format '{{index .RepoDigests 0}}'
-          for i in $(seq 30); do docker exec m mongosh --quiet --eval 'db.runCommand({ping:1}).ok' 2>/dev/null && break; sleep 2; done
-          docker logs m 2>&1 | grep -E 'SERVER-121912|cannot start|"Waiting for connections"|buildInfo' | head -5
-          docker exec m mongosh --quiet --eval 'db.version()'
+          for i in $(seq 30); do docker exec mongo-probe mongosh --quiet --eval 'db.runCommand({ping:1}).ok' 2>/dev/null && break; sleep 2; done
+          docker logs mongo-probe 2>&1 | grep -E 'SERVER-121912|cannot start|"Waiting for connections"|buildInfo' | head -5
+          docker exec mongo-probe mongosh --quiet --eval 'db.version()'
   backend:
     runs-on: ubuntu-latest
     timeout-minutes: 15
