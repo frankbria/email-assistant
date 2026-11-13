@@ -83,3 +83,11 @@ def test_untrusted_deep_quoting_in_a_forward_stays_linear():
     minimize("Begin forwarded message:\n" + ("> " * 50_000 + "-- x\n") * 20, "Fwd: chain")
 
     assert time.perf_counter() - started < 2
+
+
+def test_history_past_the_html_extractors_quote_cap_is_kept_after_a_signature():
+    """html_to_text renders every depth past 8 as 8 markers, so deeper history looks like the signature's own lines."""
+    nested = "<blockquote>" * 9 + "<div>Signed.</div><div>-- </div><div>Zed</div>"
+    html = f"<div>Begin forwarded message:</div>{nested}<blockquote><div>Invoice 4471 is due Friday.</div></blockquote>"
+
+    assert "Invoice 4471 is due Friday." in minimize(html_to_text(html), "Fwd: Invoice")

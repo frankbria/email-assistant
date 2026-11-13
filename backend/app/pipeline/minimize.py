@@ -30,6 +30,9 @@ QUOTED_LINE = re.compile(r"^>(?!=?[ \t]*\d).*$\n?", re.MULTILINE)  # "> 50 units
 SIGNATURE = re.compile(r"^-- $", re.MULTILINE)  # RFC 3676; a bare "--" is often a divider in the body
 QUOTED_SIGNATURE = re.compile(r"^(?:> ?)+-- $")
 QUOTE_MARKERS = "> "
+# The IMAP plugin renders deeper HTML quotes at this depth too, so a run there can't tell a
+# signature's lines from older history below it.
+CAPPED_QUOTE_DEPTH = 8
 MOBILE_FOOTER = re.compile(
     r"^(?:Sent from my (?:iPhone|iPad|Android|Galaxy|BlackBerry|Pixel|mobile|phone)\b.*"
     r"|Sent from (?:Mail|Outlook) for \w.*|Get Outlook for \w.*)$\n?",
@@ -114,21 +117,25 @@ def without_signature(text: str, forwarded: bool) -> str:
 def without_quoted_signatures(payload: str) -> str:
     """Drops each quoted "-- " delimiter in a forwarded payload with the contiguous lines at its quote
     depth. Only here: in a bottom-posted reply an answer can follow a quoted signature."""
-    kept: list[str] = []
-    signature_depth = 0
-    for line in payload.split("\n"):
-        if QUOTED_SIGNATURE.match(line):
-            signature_depth = quote_depth(line)
-        elif not continues_signature(line, signature_depth):
-            signature_depth = 0
-            kept.append(line)
+    lines, kept, index = payload.split("\n"), [], 0
+    while index < len(lines):
+        depth = quote_depth(lines[index])
+        if QUOTED_SIGNATURE.match(lines[index]) and depth < CAPPED_QUOTE_DEPTH:
+            index = signature_end(lines, index + 1, depth)
+        else:
+            kept.append(lines[index])
+            index += 1
     return "\n".join(kept)
 
 
-def continues_signature(line: str, signature_depth: int) -> bool:
-    """A nested forward marker at the same depth starts more forwarded content, not more signature."""
-    unquoted = line.lstrip(QUOTE_MARKERS)
-    return quote_depth(line) == signature_depth > 0 and not FORWARDED_BLOCK.match(unquoted)
+def signature_end(lines: list[str], start: int, depth: int) -> int:
+    """Where the run at the delimiter's depth ends, or earlier at a forwarded block inside it, which is content."""
+    end = start
+    while end < len(lines) and quote_depth(lines[end]) == depth:
+        end += 1
+    run = "\n".join(line.lstrip(QUOTE_MARKERS) for line in lines[start:end])
+    block = ANY_FORWARDED_BLOCK.search(run)
+    return start + run.count("\n", 0, block.start()) if block else end
 
 
 def quote_depth(line: str) -> int:

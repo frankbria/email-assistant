@@ -300,6 +300,22 @@ CORPUS = (
         removed=("Ben Lee", "Ana Smith"),
     ),
     MinimizeCase(
+        name="an outlook-style forward after a quoted signature inside a payload is kept",
+        subject="Fwd: Invoice",
+        text=(
+            "Begin forwarded message:\n"
+            "> FYI\n"
+            "> -- \n"
+            "> Alice\n"
+            "> -----Original Message-----\n"
+            "> From: Billing <billing@example.com>\n"
+            "> Sent: Monday\n"
+            "> Invoice 4471 is due Friday.\n"
+        ),
+        kept=("FYI", "Original Message", "Invoice 4471 is due Friday."),
+        removed=("Alice",),
+    ),
+    MinimizeCase(
         name="an answer after a quoted signature in a bottom-posted reply is kept",
         text=(
             "On Sun, Nov 1, 2026, Ben <ben@example.com> wrote:\n"
