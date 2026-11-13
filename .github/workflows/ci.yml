@@ -12,20 +12,6 @@ permissions:
   contents: read
 
 jobs:
-  mongo-probe:  # temporary evidence for #105; removed before merge
-    runs-on: ubuntu-latest
-    strategy:
-      fail-fast: false
-      matrix:
-        tag: ["8", "8.3", "9"]
-    steps:
-      - run: uname -r; cat /etc/os-release | head -2; echo "ImageOS=$ImageOS ImageVersion=$ImageVersion"
-      - run: |
-          docker run -d --name mongo-probe mongo:${{ matrix.tag }}
-          docker image inspect mongo:${{ matrix.tag }} --format '{{index .RepoDigests 0}}'
-          for i in $(seq 30); do docker exec mongo-probe mongosh --quiet --eval 'db.runCommand({ping:1}).ok' 2>/dev/null && break; sleep 2; done
-          docker logs mongo-probe 2>&1 | grep -E 'SERVER-121912|cannot start|"Waiting for connections"|buildInfo' | head -5
-          docker exec mongo-probe mongosh --quiet --eval 'db.version()'
   backend:
     runs-on: ubuntu-latest
     timeout-minutes: 15
@@ -97,7 +83,8 @@ jobs:
 
   e2e:
     # Playwright against the real stack (frontend/playwright.config.ts starts FastAPI and Next itself).
-    runs-on: ubuntu-latest
+    # shortcut: Playwright 1.58 has no chromium for ubuntu-latest (26.04); move it there with the upgrade to 1.65+.
+    runs-on: ubuntu-24.04
     timeout-minutes: 15
     services:
       mongodb:
