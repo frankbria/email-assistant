@@ -375,7 +375,14 @@ async def send_unsubscribe(job: Job, plugins: PluginRegistry, request: Unsubscri
         arguments: dict[str, object] = {"to": [{"email": request.address}], "subject": request.subject, "body_text": request.body}
         if not SendResult.model_validate(await call_plugin(message.plugin_id, client, "send", arguments)).ok:
             return f"{message.plugin_id} didn't send it"
-        await Job.find(Job.id == job.id).update({"$addToSet": {"unsubscribed_from": message.plugin_id}})
+        # The plugin confirmed it: stored before a cancellation reaches execute(), which then makes the job retryable,
+        # so no retry asks from this account again.
+        stored = asyncio.ensure_future(Job.find(Job.id == job.id).update({"$addToSet": {"unsubscribed_from": message.plugin_id}}))
+        try:
+            await asyncio.shield(stored)
+        except asyncio.CancelledError:
+            await stored
+            raise
         job.unsubscribed_from.append(message.plugin_id)
     return None
 
@@ -384,8 +391,8 @@ async def unsubscribe(job_id: PydanticObjectId, plugins: PluginRegistry, confirm
     """The owner's tap on an unsubscribe job, so always `by` the owner (spec §4: never_auto). The target is read from
     the mail again and must be the one the owner was shown: an https link was opened by their browser, so the job
     only finishes; a mailto is sent to its one address from every account holding a copy.
-    shortcut: a mail in several accounts that names only an https link leaves the list for whichever subscriber that
-    one link names, and the other accounts stay subscribed. Split such a job per account if owners hit it."""
+    shortcut: a mail in several accounts whose one shared target is an https link is opened once, for whichever
+    subscriber the list ties that link to; split such a job per account if owners find an account still subscribed."""
     job = await Job.get(job_id)
     copies = job.message_ids if job else []  # before the read: copies changed meanwhile fail the claim below
     target = await unsubscribe_target_of(job_id, plugins)
@@ -404,13 +411,25 @@ async def unsubscribe(job_id: PydanticObjectId, plugins: PluginRegistry, confirm
 
 
 async def unsubscribe_target_of(job_id: PydanticObjectId, plugins: PluginRegistry) -> str:
-    """The job's List-Unsubscribe target, read from the mail through its plugin; ValueError says why there's none."""
+    """The job's List-Unsubscribe target, read from one copy in each account through its plugin; ValueError says why
+    there's none. Copies sharing a Message-ID can still name different targets (a per-subscriber address, or a forged
+    copy), and one account's target must never be used for another, so those aren't unsubscribed in one tap."""
     job = await Job.get(job_id)
     if job is None or job.verb != "unsubscribe":
         raise ValueError(f"job {job_id} isn't an unsubscribe")
-    copies = await Message.find(In(Message.id, job.message_ids)).to_list()
-    message = next((copy for copy in copies if copy.id == job.message_ids[0]), None)  # any copy: they share the headers
-    assert message is not None
+    copies = {copy.id: copy for copy in await Message.find(In(Message.id, job.message_ids)).to_list()}
+    one_per_account = {copies[copy_id].plugin_id: copies[copy_id] for copy_id in reversed(job.message_ids) if copy_id in copies}
+    if not one_per_account:
+        raise ValueError("this mail is no longer in any of your accounts")
+    # One link opened in one browser speaks for one subscriber; a mailto goes out from each account.
+    targets = {await target_named_by(copy, plugins, prefer_mailto=len(one_per_account) > 1) for copy in one_per_account.values()}
+    if len(targets) > 1:
+        raise ValueError("your accounts' copies of this mail name different ways to unsubscribe, so leave from each copy's mail app")
+    [target] = targets
+    return target
+
+
+async def target_named_by(message: Message, plugins: PluginRegistry, *, prefer_mailto: bool) -> str:
     client = plugins.clients.get(message.plugin_id)
     if client is None:
         raise ValueError(f"{message.plugin_id} isn't connected, so the mail can't be read")
@@ -418,8 +437,7 @@ async def unsubscribe_target_of(job_id: PydanticObjectId, plugins: PluginRegistr
         detail = MessageDetail.model_validate(await call_plugin(message.plugin_id, client, "get_message", {"ref": message.ref}))
     except (SyncError, InvalidCursor, TimeoutError, ValidationError, MCPError, OSError) as error:
         raise ValueError(f"{message.plugin_id} couldn't read the mail ({error})") from error
-    # One link opened in one browser speaks for one subscriber; a mailto goes out from each account.
-    target = unsubscribe_target(detail.headers, prefer_mailto=len({copy.plugin_id for copy in copies}) > 1)
+    target = unsubscribe_target(detail.headers, prefer_mailto=prefer_mailto)
     if target is None:
         raise ValueError("this mail names no safe way to unsubscribe")
     return target

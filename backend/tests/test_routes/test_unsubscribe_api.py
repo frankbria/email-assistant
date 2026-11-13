@@ -2,7 +2,6 @@
 # the owner and acted on only on their tap; a mailto goes out through the owner's mailbox to exactly its one address,
 # an https link is opened by the owner's browser, never by the server. Real MongoDB; GreenMail + the reference IMAP
 # plugin. The AC half (no unsubscribe without a tap, whatever the permissions) is in tests/test_permissions.py.
-import smtplib
 from datetime import UTC, datetime
 
 import pytest
@@ -19,7 +18,7 @@ from tests.conformance.test_mailbox_conformance import reference_imap_plugin
 from tests.test_routes.test_jobs_api import archived, job_from
 from tests.test_sync.test_inbox_sync import PLUGIN, connected
 from tests.utils.auth import OWNER_ID
-from tests.utils.mail_server import MAIL_HOST, SMTP_PORT, Mailbox, build_message, new_mailbox
+from tests.utils.mail_server import Mailbox, build_message, new_mailbox
 
 pytestmark = pytest.mark.usefixtures("mail_server")
 
@@ -200,15 +199,15 @@ async def test_an_https_tap_never_finishes_a_job_whose_copies_changed_while_its_
 HOME, WORK = "home-imap", "work-imap"
 
 
-async def unsubscribe_job_in_both(home: Mailbox, work: Mailbox, list_unsubscribe: str) -> Job:
-    """One list mail delivered to both accounts in one SMTP transaction, so both copies share its Message-ID (#176)."""
+async def unsubscribe_job_in_both(home: Mailbox, work: Mailbox, list_unsubscribe: str, work_list_unsubscribe: str | None = None) -> Job:
+    """One list mail in both accounts with one Message-ID (#176); `work_list_unsubscribe`: the work copy names its own."""
     mail = build_message(sender="deals@shop.example", to=f"{home.address}, {work.address}", subject="Running shoes", body="30% off")
-    mail["List-Unsubscribe"] = list_unsubscribe
-    with smtplib.SMTP(MAIL_HOST, SMTP_PORT, timeout=10) as smtp:
-        smtp.send_message(mail)
     copies = []
-    for plugin_id, mailbox in ((HOME, home), (WORK, work)):
-        mailbox._wait_for(mail["Message-ID"], "INBOX")
+    for plugin_id, mailbox, header in ((HOME, home, list_unsubscribe), (WORK, work, work_list_unsubscribe or list_unsubscribe)):
+        del mail["List-Unsubscribe"]
+        mail["List-Unsubscribe"] = header
+        with mailbox.imap() as connection:
+            assert connection.append("INBOX", None, None, mail.as_bytes())[0] == "OK"
         mailbox.create_folder("Archive")
         copy = Message.model_validate(
             {
@@ -279,3 +278,15 @@ async def test_a_mail_in_two_accounts_offers_its_mailto_over_its_link_so_each_ac
         target = await executor.unsubscribe_target_of(job.id, registry)
 
     assert target == f"mailto:{leave.address}"
+
+
+async def test_copies_whose_accounts_name_different_targets_are_never_unsubscribed_with_one_of_them(test_db):
+    """A subscriber-specific address (or a forged copy) must not be used for another account."""
+    home, work, leave, other = new_mailbox(), new_mailbox(), new_mailbox(), new_mailbox()
+    job = await unsubscribe_job_in_both(home, work, f"<mailto:{leave.address}>", f"<mailto:{other.address}>")
+
+    async with connected(reference_imap_plugin(home, HOME), reference_imap_plugin(work, WORK)) as registry:
+        with pytest.raises(ValueError, match="different ways to unsubscribe"):
+            await executor.unsubscribe(job.id, registry, f"mailto:{leave.address}", level="never_auto")
+
+    assert leave.messages("INBOX") == other.messages("INBOX") == [] and await still_open(job)
