@@ -15,8 +15,7 @@ permissions:
 
 jobs:
   metrics:
-    # shortcut: same mongod kernel limit as ci.yml (see #105).
-    runs-on: ubuntu-22.04
+    runs-on: ubuntu-latest
     timeout-minutes: 30
     defaults:
       run:
