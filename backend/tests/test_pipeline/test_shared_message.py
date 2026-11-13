@@ -10,7 +10,7 @@ from app.executor import finish, unsubscribe
 from app.models.job import Artifacts, Job
 from app.models.message import Message
 from app.pipeline.proposal import Proposal
-from app.pipeline.run import sibling_job
+from app.pipeline.run import attach_copy, sibling_job
 from app.sync import SyncEngine, close_handled_elsewhere
 from tests.conformance.test_mailbox_conformance import reference_imap_plugin
 from tests.test_sync.test_inbox_sync import OWNER, add_owner, connected
@@ -143,6 +143,9 @@ async def test_a_copy_arriving_while_its_unsubscribe_is_sending_waits_instead_of
     [work_copy] = await Message.find(Message.plugin_id == WORK).to_list()
     assert stored.message_ids == job.message_ids and not work_copy.pipeline_done
     assert [m["Message-ID"] for m in work.messages("INBOX")] == [message_id]
+    # The sync read the job open just before the send claimed it: attaching now must still leave the copy out.
+    after_stale_read = await attach_copy(job, work_copy)
+    assert (after_stale_read.state, after_stale_read.message_ids) == ("sending", job.message_ids)
 
 
 async def test_a_first_connect_copy_is_never_archived_on_another_accounts_decision(test_db):

@@ -368,6 +368,11 @@ async def send(
 async def send_unsubscribe(job: Job, plugins: PluginRegistry, request: UnsubscribeMail) -> str | None:
     """From every account holding a copy, so each one leaves the list (#176): one mail can reach several accounts.
     An account it already went out from is skipped, so a retry after one account failed never asks twice."""
+    if job.sent_at is not None and not job.unsubscribed_from:  # sent before #176 recorded accounts: from the first copy's
+        first = await Message.get(job.message_ids[0])
+        assert first is not None
+        await Job.find(Job.id == job.id).update({"$addToSet": {"unsubscribed_from": first.plugin_id}})
+        job.unsubscribed_from.append(first.plugin_id)
     for message in await Message.find(In(Message.id, job.message_ids)).to_list():
         if message.plugin_id in job.unsubscribed_from:
             continue

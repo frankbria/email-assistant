@@ -63,13 +63,13 @@ async def process(message: Message, client: Client, provider: AIProvider, cap: i
     assert message.id is not None, "only stored messages are processed"
     job = await Job.find_one(Job.owner_id == message.owner_id, Job.message_ids == message.id)
     sibling = await sibling_job(message) if job is None else None
-    if sibling is not None and sibling.verb == "unsubscribe" and sibling.state == "sending":
-        return sibling  # its send covers only the copies it claimed: wait, pending, until it settles (#176)
     finished = sibling is not None and sibling.state in ("done", "dismissed")
     if sibling is not None and not (finished and (message.first_pass or await asks_first(message) or never_left(sibling, message))):
         # A copy that must be asked about (first-connect, §5.3, or a stream that asks first, §10.4), or one in an
         # account a done unsubscribe never left, never rides on a decision already carried out elsewhere.
         job = await attach_copy(sibling, message)
+        if message.id not in job.message_ids:
+            return job  # an unsubscribe mid-send covers only the copies it claimed: pending until it settles (#176)
     if (
         job is not None
         and job.state in ("done", "dismissed")
@@ -168,13 +168,18 @@ def never_left(job: Job, message: Message) -> bool:
 
 async def attach_copy(job: Job, message: Message) -> Job:
     """One job for every copy (spec §5.3). Returns the job as stored right after attaching, so a
-    finish that landed meanwhile is seen (its archive may have missed this copy)."""
+    finish that landed meanwhile is seen (its archive may have missed this copy); without the copy if it wasn't."""
     attach: dict[str, object] = {"$addToSet": {"message_ids": message.id}}
     # A first-connect copy (§5.3), or one whose stream asks first (§10.4), makes the shared job need the owner's tap.
     if message.first_pass or await asks_first(message):
         attach["$set"] = {"requires_approval": True}
-    stored = await Job.get_pymongo_collection().find_one_and_update({"_id": job.id}, attach, return_document=ReturnDocument.AFTER)
-    assert stored is not None
+    # Not to an unsubscribe mid-send, whatever state `job` was read in: that send covers only the copies it claimed.
+    attachable = {"_id": job.id, "$nor": [{"verb": "unsubscribe", "state": "sending"}]}
+    stored = await Job.get_pymongo_collection().find_one_and_update(attachable, attach, return_document=ReturnDocument.AFTER)
+    if stored is None:
+        sending = await Job.get(job.id)
+        assert sending is not None
+        return sending
     return Job.model_validate(stored)
 
 

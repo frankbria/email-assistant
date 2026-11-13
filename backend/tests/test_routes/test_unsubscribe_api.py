@@ -317,3 +317,17 @@ async def test_a_copy_that_joined_after_the_send_still_gets_its_own_accounts_req
 
     assert senders(leave) == [work.address]
     assert finished.state == "done" and archived(home) and archived(work)
+
+
+async def test_a_job_sent_before_accounts_were_recorded_never_asks_again_from_the_account_it_went_out_from(test_db):
+    """Sent from its first copy's account by the code before #176, then reopened by a failed archive."""
+    home, work, leave = new_mailbox(), new_mailbox(), new_mailbox()
+    job = await unsubscribe_job_in_both(home, work, f"<mailto:{leave.address}>")
+    await Job.get_pymongo_collection().update_one(
+        {"_id": job.id}, {"$set": {"sent_at": datetime.now(UTC)}, "$unset": {"unsubscribed_from": ""}}
+    )
+
+    async with connected(reference_imap_plugin(home, HOME), reference_imap_plugin(work, WORK)) as registry:
+        finished = await executor.unsubscribe(job.id, registry, f"mailto:{leave.address}", level="never_auto")
+
+    assert senders(leave) == [work.address] and finished.state == "done"
