@@ -76,7 +76,7 @@ SIGN_OFF = re.compile(
     rf"\b(?:[Rr]egards|Thanks|Cheers|Best|Sincerely|Yours|Love)[,!.]?[ \t]*(?:\n[ \t]*){{1,2}}({WORD}(?: {WORD})?)[ \t]*$",
     re.MULTILINE,
 )
-NAME = re.compile(rf"{WORD}(?: {WORD})*")
+NAME = re.compile(rf"(?<![\w@.]){WORD}(?: {WORD})*(?![\w@.])")
 
 
 @cache
@@ -86,9 +86,10 @@ def named_entity_model() -> Language:
 
 
 def people_named_in(text: str) -> set[str]:
-    """Names the model tags as people, kept only when they look like a name (no placeholder, digit or address)."""
-    people = {without_trailing_stop_words(entity.text) for entity in named_entity_model()(text).ents if entity.label_ == "PERSON"}
-    return {person for person in people if NAME.fullmatch(person)}
+    """The name-shaped parts of what the model tags as people: never a placeholder, digit or address, and a particle or
+    initial ("Ludwig van Beethoven", "J. K. Rowling") drops out rather than the whole name."""
+    people = [without_trailing_stop_words(entity.text) for entity in named_entity_model()(text).ents if entity.label_ == "PERSON"]
+    return {name for person in people for name in NAME.findall(person)}
 
 
 def without_trailing_stop_words(entity: str) -> str:

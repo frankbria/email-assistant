@@ -224,6 +224,8 @@ def test_a_one_time_code_named_after_its_digits_is_redacted(wording: str):
         ("I spoke with John Smith yesterday and he agreed.", ["John Smith"]),
         ("I spoke with Will Smith yesterday and he agreed.", ["Will", "Smith"]),
         ("Meeting with Priya and Ahmed at 3pm in the usual room.", ["Priya", "Ahmed"]),
+        ("Yesterday I talked to Ludwig van Beethoven about the score.", ["Ludwig", "Beethoven"]),
+        ("We met J. K. Rowling at the fair.", ["Rowling"]),
     ],
 )
 def test_a_name_mentioned_only_mid_sentence_is_redacted_and_restored(sentence: str, names: list[str]):
