@@ -41,9 +41,36 @@ public SSH, and no host names or addresses in this repo (see the operator's loca
    `curl -si -X OPTIONS <api>/api/v1/jobs -H 'Origin: <FRONTEND_ORIGIN>' -H 'Access-Control-Request-Method: GET'`
    must answer with `access-control-allow-origin: <FRONTEND_ORIGIN>`.
 
+6. Pin the sign-in keys (below).
+
 `PUBLIC_API_BASE` is baked into the frontend bundle at build time. For GHCR images, set
 the repository variable `PUBLIC_API_BASE` (Settings → Variables) so CI builds the right
 URL in. Building on the host uses the value from `.env`.
+
+## Pin the sign-in keys
+
+The API checks every sign-in token against the frontend's public keys (its JWKS). Unpinned,
+it fetches them from `http://frontend:3200/api/auth/jwks` over plain HTTP on the Compose
+network, so a process that could answer as `frontend` there could serve its own key and
+sign in as anyone. Pinned, the API trusts only the keys in `BETTER_AUTH_JWKS` and never
+fetches. A malformed value stops the backend at startup.
+
+Once the frontend is up (its first JWKS request creates its key pair), pin the current keys
+and recreate the backend:
+
+```bash
+printf "BETTER_AUTH_JWKS='%s'\n" "$(curl -fsS http://<BIND_ADDRESS>:<FRONTEND_PORT>/api/auth/jwks)" >> .env
+docker compose up -d --force-recreate backend
+```
+
+The JWKS holds only public keys, so it is safe in `.env`; check it is a JSON object with
+`"keys"` before restarting.
+
+**Rotation.** The frontend changes its key only if its `jwks` collection is reset or key
+rotation is turned on. Sign-in then fails with 401 ("Invalid or expired sign-in token")
+until you pin again. To rotate without that gap, put both the old and the new key in the
+`keys` array, recreate the backend, and drop the old key once tokens signed with it have
+expired (they are short-lived, minutes).
 
 ## Updating
 

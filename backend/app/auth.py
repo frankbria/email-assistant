@@ -9,7 +9,7 @@ import jwt
 from fastapi import Depends, HTTPException, status
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 
-from app.config import get_settings
+from app.config import Settings, get_settings
 
 bearer_scheme = HTTPBearer(auto_error=False)
 
@@ -18,6 +18,22 @@ bearer_scheme = HTTPBearer(auto_error=False)
 def jwks_client(jwks_url: str) -> jwt.PyJWKClient:
     # Caches the keys and refetches when a token names an unknown key id (rotation).
     return jwt.PyJWKClient(jwks_url, cache_keys=True)
+
+
+@lru_cache
+def pinned_key_set(jwks_json: str) -> jwt.PyJWKSet:
+    return jwt.PyJWKSet.from_json(jwks_json)
+
+
+async def signing_key_for(token: str, settings: Settings) -> jwt.PyJWK:
+    if settings.better_auth_jwks is None:
+        # PyJWKClient fetches over blocking HTTP on a cache miss.
+        return await asyncio.to_thread(jwks_client(settings.better_auth_jwks_url).get_signing_key_from_jwt, token)
+    key_id = jwt.get_unverified_header(token).get("kid")
+    for key in pinned_key_set(settings.better_auth_jwks):
+        if key.key_id == key_id:
+            return key
+    raise jwt.InvalidKeyError("The token's key is not pinned")
 
 
 def unauthorized(detail: str) -> HTTPException:
@@ -37,8 +53,7 @@ async def current_owner_id(
     settings = get_settings()
     token = credentials.credentials
     try:
-        # PyJWKClient fetches over blocking HTTP on a cache miss.
-        signing_key = await asyncio.to_thread(jwks_client(settings.better_auth_jwks_url).get_signing_key_from_jwt, token)
+        signing_key = await signing_key_for(token, settings)
         claims = jwt.decode(
             token,
             signing_key.key,

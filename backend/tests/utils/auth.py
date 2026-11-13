@@ -12,12 +12,27 @@ from jwt.algorithms import OKPAlgorithm
 
 SIGNING_KEY = Ed25519PrivateKey.generate()
 KEY_ID = "test-key-1"
-PUBLIC_JWK = {**json.loads(OKPAlgorithm.to_jwk(SIGNING_KEY.public_key())), "kid": KEY_ID}
+
+
+def public_jwk(signing_key: Ed25519PrivateKey, key_id: str) -> dict[str, str]:
+    jwk: dict[str, str] = json.loads(OKPAlgorithm.to_jwk(signing_key.public_key()))
+    return {**jwk, "kid": key_id}
+
+
+PUBLIC_JWK = public_jwk(SIGNING_KEY, KEY_ID)
+
+
+class JwksServer(HTTPServer):
+    def __init__(self, keys: list[dict[str, str]]) -> None:
+        super().__init__(("127.0.0.1", 0), JwksHandler)
+        self.keys = keys
 
 
 class JwksHandler(BaseHTTPRequestHandler):
+    server: JwksServer
+
     def do_GET(self) -> None:
-        body = json.dumps({"keys": [PUBLIC_JWK]}).encode()
+        body = json.dumps({"keys": self.server.keys}).encode()
         self.send_response(200 if self.path == "/api/auth/jwks" else 404)
         self.send_header("content-type", "application/json")
         self.end_headers()
@@ -27,9 +42,9 @@ class JwksHandler(BaseHTTPRequestHandler):
         pass
 
 
-def start_auth_server() -> str:
-    """Serve the test JWKS at <base>/api/auth/jwks; returns <base>."""
-    server = HTTPServer(("127.0.0.1", 0), JwksHandler)
+def start_auth_server(keys: list[dict[str, str]] | None = None) -> str:
+    """Serve these public keys (default: the test key) as the JWKS at <base>/api/auth/jwks; returns <base>."""
+    server = JwksServer([PUBLIC_JWK] if keys is None else keys)
     threading.Thread(target=server.serve_forever, daemon=True).start()
     return f"http://127.0.0.1:{server.server_port}"
 
