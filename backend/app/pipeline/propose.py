@@ -2,6 +2,7 @@
 only its minimized content, the owner's voice, their forwarding history and, when a rule decided,
 the fixed verb. The email is untrusted data: the prompt says so and fences it off."""
 
+import asyncio
 import re
 import secrets
 from collections.abc import Sequence
@@ -138,7 +139,8 @@ async def propose(
         # The whole prompt, so no part of it (headers, examples, voice, recipients) can skip the stage (§8.2).
         people = [address.name for sent in [message, *voice] for address in [sent.sender, *sent.to, *sent.cc]]
         redaction = Redaction(name for name in people if name)
-        proposal = redaction.restore_model(await provider.propose(redaction.redact(prompt), schema_for(fixed_verb)))
+        redacted = await asyncio.to_thread(redaction.redact, prompt)  # the name model is CPU work: keep the event loop free
+        proposal = redaction.restore_model(await provider.propose(redacted, schema_for(fixed_verb)))
     else:
         proposal = await provider.propose(prompt, schema_for(fixed_verb))
     if proposal.forward_to is not None and proposal.forward_to.lower() not in recipients:

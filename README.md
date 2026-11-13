@@ -124,11 +124,11 @@ Choose a privacy mode on the Settings screen. It decides what is sent to the AI 
 - **Full cloud** (the default): the minimized email goes to the AI, along with a few of your sent emails (so
   drafts sound like you), your forwarding history and similar past decisions.
 - **Redacted cloud**: before anything leaves the server, email addresses, phone numbers, URLs, account and card
-  numbers, one-time codes, and names the app can see (from the From/To/Cc display names and from greetings and
-  sign-offs) become placeholders such as `PERSON_1` or `URL_2`. The mapping stays on the server, and your jobs
-  show the real values. **What it doesn't hide:** a name that appears only mid-sentence and in no header ("ask
-  Maria about it"), lower-case names, and postal addresses still reach the AI (tracked in
-  [#183](https://github.com/frankbria/email-assistant/issues/183)).
+  numbers, one-time codes, and people's names become placeholders such as `PERSON_1` or `URL_2`. Names come from
+  the From/To/Cc display names, greetings and sign-offs, and an English name-recognition model (spaCy) that also
+  finds a name mentioned only mid-sentence ("ask Maria about it"). The mapping stays on the server, and your jobs
+  show the real values. **What it doesn't hide:** lower-case names, postal addresses, and names the small English
+  model doesn't recognize (it misses some, more often in non-English mail) still reach the AI.
 
 **The privacy modes only cover what goes to the AI, not where mail is stored.** With MongoDB Atlas (the default
 database), stored mail content lives in Atlas, off your own machines. If you don't want that, use the local
