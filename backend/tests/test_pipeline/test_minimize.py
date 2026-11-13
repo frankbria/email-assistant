@@ -2,6 +2,7 @@
 import time
 
 import pytest
+from imap_mailbox.mailbox import html_to_text
 
 from app.pipeline.minimize import MINIMIZED_MAX_CHARACTERS, TRUNCATED, minimize
 from tests.fixtures.minimize_corpus import CORPUS, MinimizeCase
@@ -60,5 +61,25 @@ def test_untrusted_attribution_look_alikes_stay_linear(hostile: str):
     started = time.perf_counter()
 
     minimize(hostile)
+
+    assert time.perf_counter() - started < 2
+
+
+def test_an_html_forward_keeps_the_forwarded_text_without_its_senders_signature():
+    html = (
+        "<div>Please pay this.</div><div>Begin forwarded message:</div><blockquote><div>Invoice 4471 is due Friday.</div>"
+        "<div>-- </div><div>Ana Smith | +1 555 0100</div></blockquote>"
+    )
+
+    minimized = minimize(html_to_text(html), "Fwd: Invoice")
+
+    assert "Invoice 4471 is due Friday." in minimized
+    assert "Ana Smith" not in minimized and "555 0100" not in minimized
+
+
+def test_untrusted_deep_quoting_in_a_forward_stays_linear():
+    started = time.perf_counter()
+
+    minimize("Begin forwarded message:\n" + ("> " * 50_000 + "-- x\n") * 20, "Fwd: chain")
 
     assert time.perf_counter() - started < 2

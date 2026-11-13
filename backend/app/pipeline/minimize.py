@@ -28,6 +28,8 @@ ANY_FORWARDED_BLOCK = re.compile(
 YEAR = re.compile(r"\b(?:19|20)\d\d\b")
 QUOTED_LINE = re.compile(r"^>(?!=?[ \t]*\d).*$\n?", re.MULTILINE)  # "> 50 units" is prose, not a quote
 SIGNATURE = re.compile(r"^-- $", re.MULTILINE)  # RFC 3676; a bare "--" is often a divider in the body
+QUOTED_SIGNATURE = re.compile(r"^(?:> ?)+-- $")
+QUOTE_MARKERS = "> "
 MOBILE_FOOTER = re.compile(
     r"^(?:Sent from my (?:iPhone|iPad|Android|Galaxy|BlackBerry|Pixel|mobile|phone)\b.*"
     r"|Sent from (?:Mail|Outlook) for \w.*|Get Outlook for \w.*)$\n?",
@@ -50,7 +52,7 @@ def minimize(text: str, subject: str = "") -> str:
     marker = FORWARDED_BLOCK.search(text)
     payload_start = marker.start() if marker else len(text)
     own = QUOTED_LINE.sub("", without_attributions(text[:payload_start]))
-    text = MOBILE_FOOTER.sub("", own + text[payload_start:])
+    text = MOBILE_FOOTER.sub("", own + without_quoted_signatures(text[payload_start:]))
     text = URL.sub(lambda match: without_tracking(match.group()), text)
     return capped(re.sub(r"\n{3,}", "\n\n", "\n".join(line.rstrip() for line in text.splitlines())).strip())
 
@@ -107,6 +109,30 @@ def without_signature(text: str, forwarded: bool) -> str:
         payload = blocks.search(text, signature.end())
         position = payload.start() if payload else len(text)
     return "".join(pieces) + text[position:]
+
+
+def without_quoted_signatures(payload: str) -> str:
+    """Drops each quoted "-- " delimiter in a forwarded payload with the contiguous lines at its quote
+    depth. Only here: in a bottom-posted reply an answer can follow a quoted signature."""
+    kept: list[str] = []
+    signature_depth = 0
+    for line in payload.split("\n"):
+        if QUOTED_SIGNATURE.match(line):
+            signature_depth = quote_depth(line)
+        elif not continues_signature(line, signature_depth):
+            signature_depth = 0
+            kept.append(line)
+    return "\n".join(kept)
+
+
+def continues_signature(line: str, signature_depth: int) -> bool:
+    """A nested forward marker at the same depth starts more forwarded content, not more signature."""
+    unquoted = line.lstrip(QUOTE_MARKERS)
+    return quote_depth(line) == signature_depth > 0 and not FORWARDED_BLOCK.match(unquoted)
+
+
+def quote_depth(line: str) -> int:
+    return line[: len(line) - len(line.lstrip(QUOTE_MARKERS))].count(">")
 
 
 def without_tracking(match: str) -> str:
