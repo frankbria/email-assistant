@@ -1,0 +1,12 @@
+# Read by the gitleaks pre-commit hook (.pre-commit-config.yaml).
+[extend]
+useDefault = true
+
+# The generic-api-key rule reads a Python annotation as a secret: in
+# `signing_key: Ed25519PrivateKey = SIGNING_KEY` the "secret" is the type name.
+# Skip only lines whose default is an ALL_CAPS constant name, which can't hold a literal.
+[[allowlists]]
+description = "Python annotated default that names a constant"
+targetRules = ["generic-api-key"]
+regexTarget = "line"
+regexes = ['''\w:[ \t]*[A-Z][A-Za-z0-9]*(?:\[[^\]]*\])?[ \t]*=[ \t]*[A-Z_][A-Z0-9_]*[ \t]*(?:[,)]|$)''']
