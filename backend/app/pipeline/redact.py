@@ -1,16 +1,20 @@
 """Redaction stage (spec §8.2), redacted_cloud only: names, email addresses, URLs, account and card numbers, one-time
 codes and phone numbers become typed placeholders (`PERSON_1`, `URL_2`, …) before anything leaves the server. The
 mapping stays here; `restore` swaps placeholders in the AI's answer back to the real values.
-shortcut: deterministic regexes plus names known from headers and greeting / sign-off lines; a name that appears only
-mid-sentence and in no header (e.g. "ask Maria about it") goes through. Move to an NER model (e.g. Presidio + spaCy)
-if owners need that, at the cost of a much larger image."""
+Names come from the headers, from greeting / sign-off lines, and from spaCy's small English NER model, which finds a
+name mentioned only mid-sentence ("ask Maria about it").
+shortcut: English model only, and it misses lower-case names and postal addresses; switch to a multilingual or larger
+model (or Presidio) if owners get much non-English mail."""
 
 import re
 from collections.abc import Iterable
-from functools import partial
+from functools import cache, partial
 from typing import TypeVar
 
+import spacy
 from pydantic import BaseModel
+from spacy.lang.en.stop_words import STOP_WORDS
+from spacy.language import Language
 
 from app.services.ai_provider import AIProposalError
 
@@ -72,6 +76,28 @@ SIGN_OFF = re.compile(
     rf"\b(?:[Rr]egards|Thanks|Cheers|Best|Sincerely|Yours|Love)[,!.]?[ \t]*(?:\n[ \t]*){{1,2}}({WORD}(?: {WORD})?)[ \t]*$",
     re.MULTILINE,
 )
+NAME = re.compile(rf"{WORD}(?: {WORD})*")
+
+
+@cache
+def named_entity_model() -> Language:
+    """Loaded once per process (about two seconds); only the stages the entity recognizer needs."""
+    return spacy.load("en_core_web_sm", exclude=["parser", "tagger", "attribute_ruler", "lemmatizer", "senter"])
+
+
+def people_named_in(text: str) -> set[str]:
+    """Names the model tags as people, kept only when they look like a name (no placeholder, digit or address)."""
+    people = {without_trailing_stop_words(entity.text) for entity in named_entity_model()(text).ents if entity.label_ == "PERSON"}
+    return {person for person in people if NAME.fullmatch(person)}
+
+
+def without_trailing_stop_words(entity: str) -> str:
+    """The model can take the next sentence's first word as a surname ("Hi Frank Please send…"); a first name can be a
+    stop word itself ("Will Smith"), so only the end is trimmed."""
+    words = entity.split()
+    while words and words[-1].lower() in STOP_WORDS:
+        words.pop()
+    return " ".join(words)
 
 
 class Redaction:
@@ -86,7 +112,7 @@ class Redaction:
 
     def redact(self, text: str) -> str:
         self.taken |= set(PLACEHOLDER.findall(text))
-        names = self.names | {found for pattern in (GREETING, SIGN_OFF) for found in pattern.findall(text)}
+        names = self.names | people_named_in(text) | {found for pattern in (GREETING, SIGN_OFF) for found in pattern.findall(text)}
         for kind, pattern in PATTERNS:
             text = pattern.sub(partial(self.swap, kind=kind), text)
         parts = {part for name in names for part in re.split(r"[\s,]+", name) if len(part) > 1 and part[0].isupper()}

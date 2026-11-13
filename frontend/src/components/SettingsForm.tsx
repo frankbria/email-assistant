@@ -171,7 +171,7 @@ export default function SettingsForm() {
         <Field
           name="privacy_mode"
           label="Privacy mode"
-          hint="Redacted cloud swaps personal details for placeholders before mail reaches the AI, and puts the real values back in your jobs. Names that appear only mid-sentence may still reach the AI."
+          hint="Redacted cloud swaps personal details for placeholders before mail reaches the AI, and puts the real values back in your jobs. Lower-case names and postal addresses may still reach the AI."
           error={fieldErrors.privacy_mode}
         >
           <select

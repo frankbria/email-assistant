@@ -61,9 +61,9 @@ def test_dates_times_and_ordinary_numbers_are_left_alone():
 
 
 def test_names_are_matched_as_whole_words_with_their_case():
-    redacted = Redaction(["Will Smith"]).redact("Will said he will call Smithers and Will Smith.")
+    redacted = Redaction(["Will Smith"]).redact("Will said he will call the Smithsonian and Will Smith.")
 
-    assert redacted == "PERSON_2 said he will call Smithers and PERSON_1."
+    assert redacted == "PERSON_2 said he will call the Smithsonian and PERSON_1."
 
 
 def test_a_placeholder_already_in_the_mail_is_never_reused_or_restored_to_something_else():
@@ -215,3 +215,23 @@ def test_a_bare_domain_link_keeps_its_query_or_fragment_inside_the_placeholder(l
 def test_a_one_time_code_named_after_its_digits_is_redacted(wording: str):
     redacted = Redaction([]).redact(f"{wording}.")
     assert "482" not in redacted and "913" not in redacted
+
+
+@pytest.mark.parametrize(
+    ("sentence", "names"),
+    [
+        ("Can you ask Maria about it before Friday?", ["Maria"]),
+        ("I spoke with John Smith yesterday and he agreed.", ["John Smith"]),
+        ("I spoke with Will Smith yesterday and he agreed.", ["Will", "Smith"]),
+        ("Meeting with Priya and Ahmed at 3pm in the usual room.", ["Priya", "Ahmed"]),
+    ],
+)
+def test_a_name_mentioned_only_mid_sentence_is_redacted_and_restored(sentence: str, names: list[str]):
+    redaction = Redaction([])
+
+    redacted = redaction.redact(sentence)
+
+    for name in names:
+        assert name not in redacted, name
+    assert "PERSON_1" in redacted
+    assert redaction.restore(redacted) == sentence
