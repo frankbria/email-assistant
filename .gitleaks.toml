@@ -10,4 +10,4 @@ useDefault = true
 description = "Python annotated default that names a constant"
 targetRules = ["generic-api-key"]
 regexTarget = "line"
-regexes = ['''(?m)^[ \t]*\w+:[ \t]*[A-Z][A-Za-z0-9]*(?:\[[^\]]*\])?[ \t]*=[ \t]*[A-Z_][A-Z0-9_]*[ \t]*,?[ \t]*$''']
+regexes = ['''(?m)^[ \t]*\w+:[ \t]*[A-Z][A-Za-z0-9]*(?:\[[\w., |]*\])?[ \t]*=[ \t]*[A-Z_][A-Z0-9_]*[ \t]*,?[ \t]*$''']
