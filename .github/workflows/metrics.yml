@@ -13,6 +13,11 @@ concurrency:
 permissions:
   contents: read
 
+env:
+  # ubuntu-latest's system CPython 3.14.4 predates an imaplib fix the tests rely on;
+  # uv's own build tracks the latest patch release, like the python:3.14-slim image.
+  UV_PYTHON_PREFERENCE: only-managed
+
 jobs:
   metrics:
     runs-on: ubuntu-latest
