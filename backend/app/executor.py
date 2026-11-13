@@ -256,13 +256,13 @@ async def execute(
     by: Actor,
     level: PermissionLevel,
     unsubscribe_request: UnsubscribeMail | None = None,
-    unsubscribe_source: PydanticObjectId | None = None,
+    unsubscribe_copies: list[PydanticObjectId] | None = None,
 ) -> Job:
     """The owner approved a reply, forward or unsubscribe email: send it from the account that received the mail,
     then finish the job (archive-on-done). A failed send leaves the job `failed` and the mail in the inbox
     (AC-2.2); calling this again retries, and once it was sent a retry only archives. `body` is the
     owner's text (None: the draft); `forward_to` is the recipient the owner confirmed; `unsubscribe_request` is the
-    mailto the owner confirmed (see unsubscribe), and `unsubscribe_source` the copy it was read from."""
+    mailto the owner confirmed (see unsubscribe), and `unsubscribe_copies` the copies it goes out for."""
     job = await Job.get(job_id)
     if job is None or job.verb not in ("reply", "forward", "unsubscribe"):
         raise ValueError(f"only reply, forward and unsubscribe jobs send; job {job_id} isn't one")
@@ -271,7 +271,7 @@ async def execute(
         raise ValueError(f"job {job_id} changed since it was approved, look at it again")
     now = datetime.now(UTC)
     # Still the verb read above: another action chosen meanwhile must not be sent as this one.
-    claimable = {
+    claimable: dict[str, object] = {
         "_id": job_id,
         "verb": job.verb,
         "ask_owner": False,
@@ -280,8 +280,8 @@ async def execute(
             {"state": "sending", "sending_since": {"$lt": now - STALE_SENDING}},
         ],
     }
-    if unsubscribe_source is not None:  # send goes through message_ids[0]: the account whose header named the target
-        claimable["message_ids.0"] = unsubscribe_source
+    if unsubscribe_copies is not None:  # it goes out from each copy's account: only the accounts the owner tapped for
+        claimable["message_ids"] = unsubscribe_copies
     # Out of open/failed first, so a sync pass can't close it as handled elsewhere mid-send.
     claimed = await Job.get_pymongo_collection().find_one_and_update(
         claimable, {"$set": {"state": "sending", "sending_since": now, "error": None}}, return_document=ReturnDocument.AFTER
@@ -333,6 +333,8 @@ async def send(
     job: Job, plugins: PluginRegistry, body: str | None, forward_to: str | None, unsubscribe_request: UnsubscribeMail | None
 ) -> str | None:
     """Sends the job's message; what went wrong, or None."""
+    if job.verb == "unsubscribe":
+        return await send_unsubscribe(job, plugins, unsubscribe_request) if unsubscribe_request else "confirm the unsubscribe target first"
     message = await Message.get(job.message_ids[0])  # any copy: they share the sender and the content
     assert message is not None
     client = plugins.clients.get(message.plugin_id)
@@ -348,14 +350,6 @@ async def send(
             "body_text": text,
             "in_reply_to_ref": message.ref,
         }
-    elif job.verb == "unsubscribe":
-        if unsubscribe_request is None:
-            return "confirm the unsubscribe target first"
-        arguments = {
-            "to": [{"email": unsubscribe_request.address}],
-            "subject": unsubscribe_request.subject,
-            "body_text": unsubscribe_request.body,
-        }
     else:
         if not forward_to:  # never the AI's suggestion alone: a forward's recipient is the owner's call (§4)
             return "choose who to forward it to"
@@ -369,10 +363,29 @@ async def send(
     return None if result.ok else f"{message.plugin_id} didn't send it"
 
 
+async def send_unsubscribe(job: Job, plugins: PluginRegistry, request: UnsubscribeMail) -> str | None:
+    """From every account holding a copy, so each one leaves the list (#176): one mail can reach several accounts.
+    An account it already went out from is skipped, so a retry after one account failed never asks twice."""
+    for message in await Message.find(In(Message.id, job.message_ids)).to_list():
+        if message.plugin_id in job.unsubscribed_from:
+            continue
+        client = plugins.clients.get(message.plugin_id)
+        if client is None:
+            return f"{message.plugin_id} isn't connected"
+        arguments: dict[str, object] = {"to": [{"email": request.address}], "subject": request.subject, "body_text": request.body}
+        if not SendResult.model_validate(await call_plugin(message.plugin_id, client, "send", arguments)).ok:
+            return f"{message.plugin_id} didn't send it"
+        await Job.find(Job.id == job.id).update({"$addToSet": {"unsubscribed_from": message.plugin_id}})
+        job.unsubscribed_from.append(message.plugin_id)
+    return None
+
+
 async def unsubscribe(job_id: PydanticObjectId, plugins: PluginRegistry, confirmed_target: str | None, *, level: PermissionLevel) -> Job:
     """The owner's tap on an unsubscribe job, so always `by` the owner (spec §4: never_auto). The target is read from
     the mail again and must be the one the owner was shown: an https link was opened by their browser, so the job
-    only finishes; a mailto is sent to its one address."""
+    only finishes; a mailto is sent to its one address from every account holding a copy.
+    shortcut: a mail in several accounts that names only an https link leaves the list for whichever subscriber that
+    one link names, and the other accounts stay subscribed. Split such a job per account if owners hit it."""
     job = await Job.get(job_id)
     copies = job.message_ids if job else []  # before the read: copies changed meanwhile fail the claim below
     target = await unsubscribe_target_of(job_id, plugins)
@@ -386,7 +399,7 @@ async def unsubscribe(job_id: PydanticObjectId, plugins: PluginRegistry, confirm
         by="owner",
         level=level,
         unsubscribe_request=unsubscribe_mail(target),
-        unsubscribe_source=copies[0] if copies else None,
+        unsubscribe_copies=copies,
     )
 
 
@@ -395,7 +408,8 @@ async def unsubscribe_target_of(job_id: PydanticObjectId, plugins: PluginRegistr
     job = await Job.get(job_id)
     if job is None or job.verb != "unsubscribe":
         raise ValueError(f"job {job_id} isn't an unsubscribe")
-    message = await Message.get(job.message_ids[0])  # any copy: they share the headers
+    copies = await Message.find(In(Message.id, job.message_ids)).to_list()
+    message = next((copy for copy in copies if copy.id == job.message_ids[0]), None)  # any copy: they share the headers
     assert message is not None
     client = plugins.clients.get(message.plugin_id)
     if client is None:
@@ -404,7 +418,8 @@ async def unsubscribe_target_of(job_id: PydanticObjectId, plugins: PluginRegistr
         detail = MessageDetail.model_validate(await call_plugin(message.plugin_id, client, "get_message", {"ref": message.ref}))
     except (SyncError, InvalidCursor, TimeoutError, ValidationError, MCPError, OSError) as error:
         raise ValueError(f"{message.plugin_id} couldn't read the mail ({error})") from error
-    target = unsubscribe_target(detail.headers)
+    # One link opened in one browser speaks for one subscriber; a mailto goes out from each account.
+    target = unsubscribe_target(detail.headers, prefer_mailto=len({copy.plugin_id for copy in copies}) > 1)
     if target is None:
         raise ValueError("this mail names no safe way to unsubscribe")
     return target
