@@ -68,10 +68,8 @@ async def process(message: Message, client: Client, provider: AIProvider, cap: i
         # A copy that must be asked about (first-connect, §5.3, or a stream that asks first, §10.4), or one in an
         # account a done unsubscribe never left, never rides on a decision already carried out elsewhere.
         job = await attach_copy(sibling, message)
-        if message.id not in job.message_ids and job.state == "sending":
-            return job  # an unsubscribe mid-send covers only the copies it claimed: pending until it settles (#176)
         if message.id not in job.message_ids:
-            job = None  # a done unsubscribe that never left this copy's account: the copy gets its own job (#176)
+            return job  # the attach was refused (#176): pending, and the next pass decides from the settled job
     if (
         job is not None
         and job.state in ("done", "dismissed")
