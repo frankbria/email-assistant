@@ -290,7 +290,9 @@ async def execute(
         raise JobNotOpen(f"job {job_id} isn't open or failed")
     job = Job.model_validate(claimed)  # as of the claim: an overlapping approval may have sent it meanwhile
     try:
-        problem = None if job.sent_at else await send(job, plugins, body, forward_to, unsubscribe_request)
+        # An unsubscribe skips per account instead: a copy that joined after the send still needs its own account's.
+        already_sent = job.sent_at is not None and job.verb != "unsubscribe"
+        problem = None if already_sent else await send(job, plugins, body, forward_to, unsubscribe_request)
     except asyncio.CancelledError:  # a BaseException: interrupted, it must still end retryable
         await asyncio.shield(mark_failed(job_id, "interrupted before it finished"))
         raise
@@ -424,8 +426,11 @@ async def unsubscribe_target_of(job_id: PydanticObjectId, plugins: PluginRegistr
     one_per_account = {copies[copy_id].plugin_id: copies[copy_id] for copy_id in reversed(job.message_ids) if copy_id in copies}
     if not one_per_account:
         raise ValueError("this mail is no longer in any of your accounts")
+    # Accounts it already went out from needn't be connected for the rest; once all have, any one confirms the target.
+    waiting = [copy for account, copy in one_per_account.items() if account not in job.unsubscribed_from]
     # One link opened in one browser speaks for one subscriber; a mailto goes out from each account.
-    targets = {await target_named_by(copy, plugins, prefer_mailto=len(one_per_account) > 1) for copy in one_per_account.values()}
+    prefer_mailto = len(one_per_account) > 1
+    targets = {await target_named_by(copy, plugins, prefer_mailto=prefer_mailto) for copy in waiting or list(one_per_account.values())[:1]}
     if len(targets) > 1:
         raise ValueError("your accounts' copies of this mail name different ways to unsubscribe, so leave from each copy's mail app")
     [target] = targets
