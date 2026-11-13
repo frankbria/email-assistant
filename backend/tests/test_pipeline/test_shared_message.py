@@ -146,6 +146,10 @@ async def test_a_copy_arriving_while_its_unsubscribe_is_sending_waits_instead_of
     # The sync read the job open just before the send claimed it: attaching now must still leave the copy out.
     after_stale_read = await attach_copy(job, work_copy)
     assert (after_stale_read.state, after_stale_read.message_ids) == ("sending", job.message_ids)
+    # Or just before its finish went done: work's account never got the request, so its copy stays out of that archive.
+    await Job.find(Job.id == job.id).update({"$set": {"state": "done", "unsubscribed_from": [HOME]}})
+    after_finish = await attach_copy(job, work_copy)
+    assert (after_finish.state, after_finish.message_ids) == ("done", job.message_ids)
 
 
 async def test_a_first_connect_copy_is_never_archived_on_another_accounts_decision(test_db):

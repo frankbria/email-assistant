@@ -68,8 +68,10 @@ async def process(message: Message, client: Client, provider: AIProvider, cap: i
         # A copy that must be asked about (first-connect, §5.3, or a stream that asks first, §10.4), or one in an
         # account a done unsubscribe never left, never rides on a decision already carried out elsewhere.
         job = await attach_copy(sibling, message)
-        if message.id not in job.message_ids:
+        if message.id not in job.message_ids and job.state == "sending":
             return job  # an unsubscribe mid-send covers only the copies it claimed: pending until it settles (#176)
+        if message.id not in job.message_ids:
+            job = None  # a done unsubscribe that never left this copy's account: the copy gets its own job (#176)
     if (
         job is not None
         and job.state in ("done", "dismissed")
@@ -173,13 +175,19 @@ async def attach_copy(job: Job, message: Message) -> Job:
     # A first-connect copy (§5.3), or one whose stream asks first (§10.4), makes the shared job need the owner's tap.
     if message.first_pass or await asks_first(message):
         attach["$set"] = {"requires_approval": True}
-    # Not to an unsubscribe mid-send, whatever state `job` was read in: that send covers only the copies it claimed.
-    attachable = {"_id": job.id, "$nor": [{"verb": "unsubscribe", "state": "sending"}]}
-    stored = await Job.get_pymongo_collection().find_one_and_update(attachable, attach, return_document=ReturnDocument.AFTER)
+    # Whatever state `job` was read in, never to an unsubscribe mid-send (that send covers only the copies it claimed)
+    # nor to a done one that never left this copy's account (its finish would archive the copy unsent, #176).
+    unsent = [
+        {"verb": "unsubscribe", "state": "sending"},
+        {"verb": "unsubscribe", "state": "done", "unsubscribed_from": {"$ne": message.plugin_id}},
+    ]
+    stored = await Job.get_pymongo_collection().find_one_and_update(
+        {"_id": job.id, "$nor": unsent}, attach, return_document=ReturnDocument.AFTER
+    )
     if stored is None:
-        sending = await Job.get(job.id)
-        assert sending is not None
-        return sending
+        refused = await Job.get(job.id)
+        assert refused is not None
+        return refused
     return Job.model_validate(stored)
 
 
