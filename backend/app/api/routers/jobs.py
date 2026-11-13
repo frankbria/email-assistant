@@ -4,7 +4,7 @@
 correct it, which also teaches a rule and an example."""
 
 import logging
-from collections.abc import Awaitable, Callable
+from collections.abc import Awaitable, Callable, Iterable
 from datetime import UTC, datetime
 from typing import Literal, Self
 
@@ -44,6 +44,7 @@ class JobCard(BaseModel):
     sender: Address
     subject: str
     list_id: str | None  # the raw List-Id header: an "always" rule keys on it before the sender
+    email_count: int  # distinct emails behind the job, by the guard's rule: copies in several accounts count once
 
 
 class JobEdit(BaseModel):
@@ -100,8 +101,11 @@ async def for_one_message(job_id: PydanticObjectId, owner_id: str) -> Job:
 
 
 async def distinct_emails(job: Job) -> set[str]:
+    return email_keys(await Message.find(In(Message.id, job.message_ids)).to_list())
+
+
+def email_keys(messages: Iterable[Message]) -> set[str]:
     """Copies of one email in several accounts share its Message-ID; mail without one counts on its own."""
-    messages = await Message.find(In(Message.id, job.message_ids)).to_list()
     return {message.message_id or str(message.id) for message in messages}
 
 
@@ -121,10 +125,16 @@ async def list_jobs(owner_id: OwnerId) -> list[JobCard]:
     stuck = {"state": "sending", "sending_since": {"$lt": datetime.now(UTC) - STALE_SENDING}}
     waiting = {"owner_id": owner_id, "$or": [{"state": {"$in": IN_QUEUE}}, stuck]}
     jobs = await Job.find(waiting).sort("-created_at").to_list()
-    messages = await Message.find(In(Message.id, [job.message_ids[0] for job in jobs])).to_list()
+    messages = await Message.find(In(Message.id, [message_id for job in jobs for message_id in job.message_ids])).to_list()
     by_id = {message.id: message for message in messages}
     return [
-        JobCard(job=job, sender=message.sender, subject=message.subject, list_id=message.list_id)
+        JobCard(
+            job=job,
+            sender=message.sender,
+            subject=message.subject,
+            list_id=message.list_id,
+            email_count=len(email_keys(by_id[message_id] for message_id in job.message_ids if message_id in by_id)),
+        )
         for job in jobs
         if (message := by_id.get(job.message_ids[0]))
     ]

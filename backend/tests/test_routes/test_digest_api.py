@@ -234,3 +234,19 @@ async def test_emails_without_a_message_id_are_never_taken_for_copies_of_one(asy
     corrected = await async_client.post(f"/api/v1/jobs/{digest.id}/correct", json={"kind": "noise"})
 
     assert corrected.status_code == 409 and len(mailbox.messages("INBOX")) == 3
+
+
+async def test_a_digests_card_counts_copies_of_one_email_once(async_client, test_db, mailbox, plugins):
+    """The card offers another action or a correction exactly when the guard would allow it."""
+    digest = await three_newsletters_in_one_digest(test_db, mailbox, plugins)
+    original = await message_of_digest(digest)
+    copy = original.model_copy(update={"id": None, "plugin_id": "other-account"})
+    await copy.insert()
+    await Job.find(Job.id == digest.id).update({"$set": {"message_ids": [original.id, copy.id]}})
+
+    [one_email] = (await async_client.get("/api/v1/jobs")).json()
+    await Job.find(Job.id == digest.id).update({"$set": {"message_ids": digest.message_ids}})
+    [three_emails] = (await async_client.get("/api/v1/jobs")).json()
+
+    assert (len(one_email["job"]["message_ids"]), one_email["email_count"]) == (2, 1)
+    assert (len(three_emails["job"]["message_ids"]), three_emails["email_count"]) == (3, 3)

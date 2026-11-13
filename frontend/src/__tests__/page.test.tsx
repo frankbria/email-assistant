@@ -74,6 +74,7 @@ const jobCard: JobCard = {
   sender: { name: null, email: 'teammate@company.com' },
   subject: 'Project Update',
   list_id: null,
+  email_count: 1,
 }
 
 describe('Open jobs page', () => {
@@ -122,6 +123,7 @@ describe('Open jobs page', () => {
           digest: 'Garden News: Spring planting.\nCooking Weekly: Three soups.\nCycling Digest: A new trail.',
         },
       },
+      email_count: 3,
     }
     mockFetch.mockResolvedValueOnce(Response.json([digest]))
 
@@ -149,6 +151,24 @@ describe('Open jobs page', () => {
     await userEvent.click(within(card).getByRole('button', { name: /Approve/ }))
     await waitFor(() => expect(mockFetch).toHaveBeenCalledTimes(2))
     expect(requestTo(1).body).toEqual({ message_ids: ['m1', 'm2', 'm3'] })
+  })
+
+  it('offers one-email actions on a digest whose messages are copies of one email', async () => {
+    const copies: JobCard = {
+      ...jobCard,
+      job: { ...jobCard.job, verb: 'digest', title: 'One email in two accounts', message_ids: ['m1', 'm2'] },
+      email_count: 1,
+    }
+    mockFetch.mockResolvedValueOnce(Response.json([copies]))
+
+    await act(async () => {
+      renderPage()
+    })
+
+    const card = await screen.findByRole('article', { name: 'One email in two accounts' })
+    expect(within(card).getByText('1 message')).toBeInTheDocument()
+    expect(within(card).getByRole('button', { name: /Other action/ })).toBeInTheDocument()
+    expect(within(card).getByRole('button', { name: /Correct/ })).toBeInTheDocument()
   })
 
   it('shows the empty state when there are no open jobs', async () => {
