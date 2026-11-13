@@ -63,6 +63,8 @@ async def process(message: Message, client: Client, provider: AIProvider, cap: i
     assert message.id is not None, "only stored messages are processed"
     job = await Job.find_one(Job.owner_id == message.owner_id, Job.message_ids == message.id)
     sibling = await sibling_job(message) if job is None else None
+    if sibling is not None and sibling.verb == "unsubscribe" and sibling.state == "sending":
+        return sibling  # its send covers only the copies it claimed: wait, pending, until it settles (#176)
     finished = sibling is not None and sibling.state in ("done", "dismissed")
     if sibling is not None and not (finished and (message.first_pass or await asks_first(message) or never_left(sibling, message))):
         # A copy that must be asked about (first-connect, §5.3, or a stream that asks first, §10.4), or one in an
