@@ -399,7 +399,10 @@ async def unsubscribe(job_id: PydanticObjectId, plugins: PluginRegistry, confirm
     if target != confirmed_target:
         raise ValueError("confirm the unsubscribe target this mail names")
     if is_https(target):
-        return await finish(job_id, "done", plugins, verb="unsubscribe", by="owner", level=level, messages=copies)
+        finished = await finish(job_id, "done", plugins, verb="unsubscribe", by="owner", level=level, messages=copies)
+        accounts = [copy.plugin_id for copy in await Message.find(In(Message.id, copies)).to_list()]
+        await Job.find(Job.id == job_id).update({"$addToSet": {"unsubscribed_from": {"$each": accounts}}})
+        return await Job.get(job_id) or finished
     return await execute(
         job_id,
         plugins,

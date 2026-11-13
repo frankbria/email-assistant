@@ -6,7 +6,7 @@ from datetime import UTC, datetime
 
 import pytest
 
-from app.executor import finish
+from app.executor import finish, unsubscribe
 from app.models.job import Artifacts, Job
 from app.models.message import Message
 from app.pipeline.proposal import Proposal
@@ -21,11 +21,13 @@ pytestmark = pytest.mark.usefixtures("mail_server")
 HOME, WORK = "home-imap", "work-imap"
 
 
-def deliver_to_both(home: Mailbox, work: Mailbox, subject: str) -> str:
-    """One SMTP delivery to both addresses: both copies carry the same Message-ID."""
+def deliver_to_both(home: Mailbox, work: Mailbox, subject: str, headers: dict[str, str] | None = None) -> str:
+    """One SMTP delivery to both addresses: both copies carry the same Message-ID. `headers` adds more."""
     message = build_message(
         sender="ana@example.com", to=f"{home.address}, {work.address}", subject=subject, body="Pay invoice 4471 by Friday."
     )
+    for name, value in (headers or {}).items():
+        message[name] = value
     with smtplib.SMTP(MAIL_HOST, SMTP_PORT, timeout=10) as smtp:
         smtp.send_message(message)
     for mailbox in (home, work):
@@ -83,6 +85,36 @@ async def test_a_copy_arriving_after_its_job_was_done_is_archived_at_once(test_d
     assert len(shared.message_ids) == 2 and (shared.state, shared.error) == ("done", None)
     assert work.messages("INBOX") == [] and [m["Message-ID"] for m in work.messages("Archive")] == [message_id]
     assert len(provider.prompts) == 1
+
+
+async def test_a_copy_arriving_after_its_unsubscribe_was_done_gets_its_own_job_so_its_account_leaves_too(test_db):
+    """#176: the unsubscribe went out only from the accounts whose copies it covered; archiving a late copy on it would
+    leave that copy's account subscribed with no job left to unsubscribe it."""
+    await add_owner(test_db)
+    home, work, leave = new_mailbox(), new_mailbox(), new_mailbox()
+    provider = FakeAIProvider(
+        result=Proposal(
+            needs_owner=False,
+            verb="unsubscribe",
+            title="Leave Ana's invoices",
+            evidence=["Pay invoice 4471 by Friday."],
+            noise_rationale="Bulk mail",
+            confidence=0.9,
+        )
+    )
+    async with connected(reference_imap_plugin(home, HOME), reference_imap_plugin(work, WORK)) as registry:
+        await SyncEngine(registry, test_db["user"], poll_seconds=60, ai_provider_for=provider).sync_all()  # first passes, empty
+    message_id = deliver_to_both(home, work, "Invoice 4471", {"List-Unsubscribe": f"<mailto:{leave.address}>"})
+    async with connected(reference_imap_plugin(home, HOME)) as registry:
+        await SyncEngine(registry, test_db["user"], poll_seconds=60, ai_provider_for=provider).sync_all()
+        [job] = await Job.find(Job.owner_id == OWNER).to_list()
+        await unsubscribe(job.id, registry, f"mailto:{leave.address}", level="never_auto")
+    async with connected(reference_imap_plugin(home, HOME), reference_imap_plugin(work, WORK)) as registry:
+        await SyncEngine(registry, test_db["user"], poll_seconds=60, ai_provider_for=provider).sync_all()
+
+    jobs = await Job.find(Job.owner_id == OWNER).sort("created_at").to_list()
+    assert [(job.verb, job.state, len(job.message_ids)) for job in jobs] == [("unsubscribe", "done", 1), ("unsubscribe", "open", 1)]
+    assert [m["Message-ID"] for m in work.messages("INBOX")] == [message_id]
 
 
 async def test_a_first_connect_copy_is_never_archived_on_another_accounts_decision(test_db):
