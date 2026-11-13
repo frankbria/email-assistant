@@ -44,6 +44,7 @@ class Job(Document):
     error: str | None = None  # why finishing it didn't go through, naming the plugin (§10.3, AC-1.3)
     sending_since: datetime | None = None  # when execute() claimed it; a stale claim (a crash) can be retried
     sent_at: datetime | None = None  # its reply/forward went out: a retry only archives, never resends
+    unsubscribed_from: list[str] = Field(default_factory=list)  # accounts (plugin ids) its unsubscribe mail left: never twice
     reminder: str | None = None  # why a follow-up came back: nobody answered by its date
     created_at: datetime = Field(default_factory=lambda: datetime.now(UTC))
 

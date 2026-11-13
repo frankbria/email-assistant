@@ -64,13 +64,21 @@ async def process(message: Message, client: Client, provider: AIProvider, cap: i
     job = await Job.find_one(Job.owner_id == message.owner_id, Job.message_ids == message.id)
     sibling = await sibling_job(message) if job is None else None
     finished = sibling is not None and sibling.state in ("done", "dismissed")
-    if sibling is not None and not (finished and (message.first_pass or await asks_first(message))):
-        # A copy that must be asked about (first-connect, §5.3, or a stream that asks first, §10.4) never rides on a
-        # decision already carried out elsewhere.
+    if sibling is not None and not (finished and (message.first_pass or await asks_first(message) or never_left(sibling, message))):
+        # A copy that must be asked about (first-connect, §5.3, or a stream that asks first, §10.4), or one in an
+        # account a done unsubscribe never left, never rides on a decision already carried out elsewhere.
         job = await attach_copy(sibling, message)
-    if job is not None and job.state in ("done", "dismissed") and len(job.message_ids) > 1 and await asks_first(message):
-        # A copy of an ask-first stream that joined a job which finished meanwhile must still be asked; after a crash
-        # that may ask twice, the safe way. A first-connect copy that joined in time made the job ask (attach_copy),
+        if message.id not in job.message_ids:
+            return job  # the attach was refused (#176): pending, and the next pass decides from the settled job
+    if (
+        job is not None
+        and job.state in ("done", "dismissed")
+        and len(job.message_ids) > 1
+        and (never_left(job, message) or await asks_first(message))
+    ):
+        # A copy of an ask-first stream (or of an account the unsubscribe never left) that joined a job which finished
+        # meanwhile must still be asked; after a crash that may ask twice, the safe way. A first-connect copy that
+        # joined in time made the job ask (attach_copy),
         # and a finished job of this message alone was decided on it, so their archive below stands.
         await Job.find(Job.id == job.id).update({"$pull": {"message_ids": message.id}})
         job = None
@@ -153,15 +161,31 @@ async def sibling_job(message: Message) -> Job | None:
     return unfinished or await Job.find_one(*over_copies, In(Job.state, ["done", "dismissed"]))
 
 
+def never_left(job: Job, message: Message) -> bool:
+    """A done unsubscribe left only the accounts it went out from: a copy in another one must leave too (#176)."""
+    return job.verb == "unsubscribe" and job.state == "done" and message.plugin_id not in job.unsubscribed_from
+
+
 async def attach_copy(job: Job, message: Message) -> Job:
     """One job for every copy (spec §5.3). Returns the job as stored right after attaching, so a
-    finish that landed meanwhile is seen (its archive may have missed this copy)."""
+    finish that landed meanwhile is seen (its archive may have missed this copy); without the copy if it wasn't."""
     attach: dict[str, object] = {"$addToSet": {"message_ids": message.id}}
     # A first-connect copy (§5.3), or one whose stream asks first (§10.4), makes the shared job need the owner's tap.
     if message.first_pass or await asks_first(message):
         attach["$set"] = {"requires_approval": True}
-    stored = await Job.get_pymongo_collection().find_one_and_update({"_id": job.id}, attach, return_document=ReturnDocument.AFTER)
-    assert stored is not None
+    # Whatever state `job` was read in, never to an unsubscribe mid-send (that send covers only the copies it claimed)
+    # nor to a done one that never left this copy's account (its finish would archive the copy unsent, #176).
+    unsent = [
+        {"verb": "unsubscribe", "state": "sending"},
+        {"verb": "unsubscribe", "state": "done", "unsubscribed_from": {"$ne": message.plugin_id}},
+    ]
+    stored = await Job.get_pymongo_collection().find_one_and_update(
+        {"_id": job.id, "$nor": unsent}, attach, return_document=ReturnDocument.AFTER
+    )
+    if stored is None:
+        refused = await Job.get(job.id)
+        assert refused is not None
+        return refused
     return Job.model_validate(stored)
 
 

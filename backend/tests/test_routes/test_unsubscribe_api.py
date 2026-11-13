@@ -14,10 +14,11 @@ from app.models.job import Artifacts, Job
 from app.models.message import Message
 from app.plugins.registry import PluginRegistry
 from app.unsubscribe import unsubscribe_mail
+from tests.conformance.test_mailbox_conformance import reference_imap_plugin
 from tests.test_routes.test_jobs_api import archived, job_from
-from tests.test_sync.test_inbox_sync import PLUGIN
+from tests.test_sync.test_inbox_sync import PLUGIN, connected
 from tests.utils.auth import OWNER_ID
-from tests.utils.mail_server import Mailbox, new_mailbox
+from tests.utils.mail_server import Mailbox, build_message, new_mailbox
 
 pytestmark = pytest.mark.usefixtures("mail_server")
 
@@ -169,7 +170,7 @@ async def test_an_unsubscribe_request_never_goes_out_through_another_copy_than_t
             by="owner",
             level="never_auto",
             unsubscribe_request=unsubscribe_mail(f"mailto:{leave.address}"),
-            unsubscribe_source=read_copy,
+            unsubscribe_copies=[read_copy],
         )
 
     assert leave.messages("INBOX") == [] and await still_open(job)
@@ -193,3 +194,140 @@ async def test_an_https_tap_never_finishes_a_job_whose_copies_changed_while_its_
         await executor.unsubscribe(job.id, plugins, "https://shop.example/u?id=7", level="never_auto")
 
     assert (await Job.get(job.id)).state == "open" and not archived(mailbox)
+
+
+HOME, WORK = "home-imap", "work-imap"
+
+
+async def unsubscribe_job_in_both(home: Mailbox, work: Mailbox, list_unsubscribe: str, work_list_unsubscribe: str | None = None) -> Job:
+    """One list mail in both accounts with one Message-ID (#176); `work_list_unsubscribe`: the work copy names its own."""
+    mail = build_message(sender="deals@shop.example", to=f"{home.address}, {work.address}", subject="Running shoes", body="30% off")
+    copies = []
+    for plugin_id, mailbox, header in ((HOME, home, list_unsubscribe), (WORK, work, work_list_unsubscribe or list_unsubscribe)):
+        del mail["List-Unsubscribe"]
+        mail["List-Unsubscribe"] = header
+        with mailbox.imap() as connection:
+            assert connection.append("INBOX", None, None, mail.as_bytes())[0] == "OK"
+        mailbox.create_folder("Archive")
+        copy = Message.model_validate(
+            {
+                "owner_id": OWNER_ID,
+                "plugin_id": plugin_id,
+                "ref": mail["Message-ID"],
+                "message_id": mail["Message-ID"],
+                "sender": {"email": "deals@shop.example"},
+                "to": [{"email": home.address}, {"email": work.address}],
+                "cc": [],
+                "date": datetime.now(UTC),
+                "subject": "Running shoes",
+                "snippet": "",
+            }
+        )
+        await copy.insert()
+        copies.append(copy.id)
+    job = Job(
+        owner_id=OWNER_ID,
+        verb="unsubscribe",
+        title="Leave Shop deals",
+        evidence=["30% off"],
+        artifacts=Artifacts(noise_rationale="Bulk promotions"),
+        message_ids=copies,
+    )
+    await job.insert()
+    return job
+
+
+def senders(mailbox: Mailbox) -> list[str]:
+    return sorted(str(mail["From"]) for mail in mailbox.messages("INBOX"))
+
+
+async def test_one_mail_in_two_accounts_is_unsubscribed_from_each_account_before_both_copies_are_archived(test_db):
+    home, work, leave = new_mailbox(), new_mailbox(), new_mailbox()
+    job = await unsubscribe_job_in_both(home, work, f"<mailto:{leave.address}?subject=unsubscribe>")
+
+    async with connected(reference_imap_plugin(home, HOME), reference_imap_plugin(work, WORK)) as registry:
+        target = await executor.unsubscribe_target_of(job.id, registry)
+        finished = await executor.unsubscribe(job.id, registry, target, level="never_auto")
+
+    assert senders(leave) == sorted([home.address, work.address])
+    assert finished.state == "done" and archived(home) and archived(work)
+
+
+async def test_a_retry_after_one_account_failed_sends_only_from_the_account_still_subscribed(test_db):
+    home, work, leave = new_mailbox(), new_mailbox(), new_mailbox()
+    job = await unsubscribe_job_in_both(home, work, f"<mailto:{leave.address}>")
+    target = f"mailto:{leave.address}"
+
+    async with connected(reference_imap_plugin(home, HOME), reference_imap_plugin(work, WORK, MAILBOX_SMTP_PORT="1")) as registry:
+        failed = await executor.unsubscribe(job.id, registry, target, level="never_auto")
+    archived_after_the_failure = archived(home)
+    async with connected(reference_imap_plugin(home, HOME), reference_imap_plugin(work, WORK)) as registry:
+        retried = await executor.unsubscribe(job.id, registry, target, level="never_auto")
+
+    assert failed.state == "failed" and not archived_after_the_failure
+    assert senders(leave) == sorted([home.address, work.address])  # home's request went out once, not again
+    assert retried.state == "done" and archived(home) and archived(work)
+
+
+async def test_a_mail_in_two_accounts_offers_its_mailto_over_its_link_so_each_account_can_leave(test_db):
+    """The owner's browser opens one link for one subscriber; a mailto goes out from every account."""
+    home, work, leave = new_mailbox(), new_mailbox(), new_mailbox()
+    job = await unsubscribe_job_in_both(home, work, f"<https://shop.example/u?id=7>, <mailto:{leave.address}>")
+
+    async with connected(reference_imap_plugin(home, HOME), reference_imap_plugin(work, WORK)) as registry:
+        target = await executor.unsubscribe_target_of(job.id, registry)
+
+    assert target == f"mailto:{leave.address}"
+
+
+async def test_copies_whose_accounts_name_different_targets_are_never_unsubscribed_with_one_of_them(test_db):
+    """A subscriber-specific address (or a forged copy) must not be used for another account."""
+    home, work, leave, other = new_mailbox(), new_mailbox(), new_mailbox(), new_mailbox()
+    job = await unsubscribe_job_in_both(home, work, f"<mailto:{leave.address}>", f"<mailto:{other.address}>")
+
+    async with connected(reference_imap_plugin(home, HOME), reference_imap_plugin(work, WORK)) as registry:
+        with pytest.raises(ValueError, match="different ways to unsubscribe"):
+            await executor.unsubscribe(job.id, registry, f"mailto:{leave.address}", level="never_auto")
+
+    assert leave.messages("INBOX") == other.messages("INBOX") == [] and await still_open(job)
+
+
+async def test_a_retry_needs_only_the_accounts_still_subscribed_to_be_connected(test_db):
+    home, work, leave = new_mailbox(), new_mailbox(), new_mailbox()
+    job = await unsubscribe_job_in_both(home, work, f"<mailto:{leave.address}>")
+    target = f"mailto:{leave.address}"
+
+    async with connected(reference_imap_plugin(home, HOME), reference_imap_plugin(work, WORK, MAILBOX_SMTP_PORT="1")) as registry:
+        await executor.unsubscribe(job.id, registry, target, level="never_auto")
+    async with connected(reference_imap_plugin(work, WORK)) as registry:
+        shown = await executor.unsubscribe_target_of(job.id, registry)
+        await executor.unsubscribe(job.id, registry, target, level="never_auto")
+
+    assert shown == target and senders(leave) == sorted([home.address, work.address]) and archived(work)
+
+
+async def test_a_copy_that_joined_after_the_send_still_gets_its_own_accounts_request_on_the_retry(test_db):
+    """Sent from home, then the finish's archive failed and reopened the job; work's copy joined meanwhile."""
+    home, work, leave = new_mailbox(), new_mailbox(), new_mailbox()
+    job = await unsubscribe_job_in_both(home, work, f"<mailto:{leave.address}>")
+    await Job.find(Job.id == job.id).update({"$set": {"sent_at": datetime.now(UTC), "unsubscribed_from": [HOME]}})
+
+    async with connected(reference_imap_plugin(home, HOME), reference_imap_plugin(work, WORK)) as registry:
+        finished = await executor.unsubscribe(job.id, registry, f"mailto:{leave.address}", level="never_auto")
+
+    assert senders(leave) == [work.address]
+    assert finished.state == "done" and archived(home) and archived(work)
+
+
+async def test_a_job_sent_before_accounts_were_recorded_never_asks_again_from_the_account_it_went_out_from(test_db):
+    """Sent from its first copy's account by the code before #176, then reopened by a failed archive."""
+    home, work, leave = new_mailbox(), new_mailbox(), new_mailbox()
+    job = await unsubscribe_job_in_both(home, work, f"<mailto:{leave.address}>")
+    await Job.get_pymongo_collection().update_one(
+        {"_id": job.id}, {"$set": {"sent_at": datetime.now(UTC)}, "$unset": {"unsubscribed_from": ""}}
+    )
+
+    async with connected(reference_imap_plugin(home, HOME), reference_imap_plugin(work, WORK)) as registry:
+        finished = await executor.unsubscribe(job.id, registry, f"mailto:{leave.address}", level="never_auto")
+
+    assert senders(leave) == [work.address] and finished.state == "done"

@@ -26,11 +26,14 @@ class UnsubscribeMail:
     body: str
 
 
-def unsubscribe_target(headers: list[Header]) -> str | None:
-    """The header's https link, else its mailto; any other scheme, or a target that fails the checks, isn't offered."""
+def unsubscribe_target(headers: list[Header], prefer_mailto: bool = False) -> str | None:
+    """The header's https link, else its mailto (`prefer_mailto`: the other way round); any other scheme, or a target
+    that fails the checks, isn't offered."""
     value = next((header.value for header in headers if header.name.lower() == "list-unsubscribe"), "")
     targets = ["".join(found.split()) for found in BRACKETED.findall(value)]  # RFC 2369: whitespace in a URL is ignored
-    return next((target for target in targets if is_https(target)), None) or next((target for target in targets if is_mailto(target)), None)
+    link = next((target for target in targets if is_https(target)), None)
+    mailto = next((target for target in targets if is_mailto(target)), None)
+    return (mailto or link) if prefer_mailto else (link or mailto)
 
 
 def is_https(target: str) -> bool:
