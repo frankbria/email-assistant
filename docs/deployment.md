@@ -59,12 +59,14 @@ Once the frontend is up (its first JWKS request creates its key pair), pin the c
 and recreate the backend:
 
 ```bash
-printf "BETTER_AUTH_JWKS='%s'\n" "$(curl -fsS http://<BIND_ADDRESS>:<FRONTEND_PORT>/api/auth/jwks)" >> .env
-docker compose up -d --force-recreate backend
+jwks=$(curl -fsS http://<BIND_ADDRESS>:<FRONTEND_PORT>/api/auth/jwks) &&
+  printf "BETTER_AUTH_JWKS='%s'\n" "$jwks" >> .env &&
+  docker compose up -d --force-recreate backend
 ```
 
-The JWKS holds only public keys, so it is safe in `.env`; check it is a JSON object with
-`"keys"` before restarting.
+If `curl` fails, nothing is written and nothing restarts. Delete the empty
+`BETTER_AUTH_JWKS=` line the template left, so `.env` holds one value. The JWKS holds only
+public keys, so it is safe in `.env`.
 
 **Rotation.** The frontend changes its key only if its `jwks` collection is reset or key
 rotation is turned on. Sign-in then fails with 401 ("Invalid or expired sign-in token")
