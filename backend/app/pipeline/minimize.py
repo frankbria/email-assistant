@@ -131,11 +131,15 @@ def without_quoted_signatures(payload: str) -> str:
 def signature_end(lines: list[str], start: int, depth: int) -> int:
     """Where the run at the delimiter's depth ends, or earlier at a forwarded block inside it, which is content."""
     end = start
-    while end < len(lines) and quote_depth(lines[end]) == depth:
+    while end < len(lines) and quote_depth(lines[end]) == depth and not starts_forwarded_block(lines, end):
         end += 1
-    run = "\n".join(line.lstrip(QUOTE_MARKERS) for line in lines[start:end])
-    block = ANY_FORWARDED_BLOCK.search(run)
-    return start + run.count("\n", 0, block.start()) if block else end
+    return end
+
+
+def starts_forwarded_block(lines: list[str], index: int) -> bool:
+    """Outlook's longest block header spans three lines; a fixed window keeps the scan linear."""
+    window = "\n".join(line.lstrip(QUOTE_MARKERS) for line in lines[index : index + 3])
+    return ANY_FORWARDED_BLOCK.match(window) is not None
 
 
 def quote_depth(line: str) -> int:

@@ -91,3 +91,11 @@ def test_history_past_the_html_extractors_quote_cap_is_kept_after_a_signature():
     html = f"<div>Begin forwarded message:</div>{nested}<blockquote><div>Invoice 4471 is due Friday.</div></blockquote>"
 
     assert "Invoice 4471 is due Friday." in minimize(html_to_text(html), "Fwd: Invoice")
+
+
+def test_untrusted_signature_and_forward_repeats_in_a_payload_stay_linear():
+    started = time.perf_counter()
+
+    minimize("Begin forwarded message:\n" + "> -- \n> Alice\n> Begin forwarded message:\n> Payload\n" * 5000, "Fwd: chain")
+
+    assert time.perf_counter() - started < 2
