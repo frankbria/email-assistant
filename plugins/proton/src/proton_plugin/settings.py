@@ -29,6 +29,10 @@ class ProtonSettings(ImapMailboxSettings):
         default=None,
         description='How to restart Bridge, as a JSON list (e.g. ["systemctl", "--user", "restart", "proton-bridge"]). Enables repair.',
     )
+    companion_start_commands: dict[int, list[str]] = Field(
+        default_factory=dict,
+        description='Other services on this machine the watchdog keeps up: loopback port → command that starts it, as JSON (e.g. {"8099": ["schtasks", "/Run", "/TN", "My Gateway"]}).',
+    )
     repair_wait_seconds: int = Field(default=60, description="How long repair waits for Bridge to answer again.")
     watchdog_port: int = Field(default=8766, description="Watchdog status endpoint port (on http_host).")
     watchdog_token: str | None = Field(default=None, description="Bearer token for the watchdog status endpoint.")

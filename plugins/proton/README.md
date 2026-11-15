@@ -20,7 +20,8 @@ IMAP/SMTP plugin (`packages/imap-mailbox`). It runs on the machine where Bridge 
 | `MAILBOX_IMAP_PORT`, `MAILBOX_SMTP_PORT` | Bridge's ports if not 1143/1025 |
 | `MAILBOX_TLS` (or `MAILBOX_IMAP_TLS`/`MAILBOX_SMTP_TLS`) | `starttls` (default) or `ssl`, matching Bridge |
 | `MAILBOX_HTTP_HOST`, `MAILBOX_HTTP_PORT`, `MAILBOX_HTTP_TOKEN` | HTTP mode only: this machine's Tailscale IP, a port, and the bearer token the app sends |
-| `MAILBOX_BRIDGE_RESTART_COMMAND` | Optional JSON list that restarts Bridge, e.g. `["systemctl", "--user", "restart", "proton-bridge"]`. Turns on the `repair` tool |
+| `MAILBOX_BRIDGE_RESTART_COMMAND` | Optional JSON list that restarts Bridge, e.g. `["systemctl", "--user", "restart", "proton-bridge"]`; on Windows `["C:\\Program Files\\Proton AG\\Proton Mail Bridge\\proton-bridge.exe", "--no-window"]`. Turns on the `repair` tool |
+| `MAILBOX_COMPANION_START_COMMANDS` | Watchdog only, optional JSON: loopback port → command that starts another local service (e.g. a gateway) when nothing answers on that port |
 
 ## Health and repair
 
@@ -57,6 +58,10 @@ match the pinned one … Export it again from Bridge".
   2 m, 5 m, 15 m. After that it stops and asks for the owner.
 - stops restarting immediately on owner-only failures (e.g. Bridge needs re-login), and
   keeps checking, so it recovers by itself within a minute of the owner's fix.
+- treats a rejected login as "Bridge is still loading the account" for 2½ minutes
+  (Bridge opens its port first and answers "no such user" until then), re-checking after
+  5 s, 10 s, 20 s, 40 s… before it asks for the owner.
+- starts each `MAILBOX_COMPANION_START_COMMANDS` service whose port isn't answering.
 - in HTTP mode (`MAILBOX_HTTP_HOST` set), starts the plugin and restarts it if it dies.
 - serves `GET /status` (JSON: Bridge state, first failing layer, restarts; plugin state)
   on `MAILBOX_HTTP_HOST:MAILBOX_WATCHDOG_PORT` (default 8766), only with
