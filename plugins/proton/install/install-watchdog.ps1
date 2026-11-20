@@ -16,6 +16,8 @@ $ErrorActionPreference = 'Stop'
 if (-not (Test-Path $EnvFile)) { throw "Settings file not found: $EnvFile (copy proton.env.example there and fill it in)." }
 $uv = (Get-Command uv -ErrorAction Stop).Source
 $pluginDirectory = Split-Path -Parent $PSScriptRoot
+# A lone copy of this script (e.g. in %APPDATA%) would register a task that can't start.
+if (-not (Test-Path (Join-Path $pluginDirectory 'pyproject.toml'))) { throw "Run this from plugins\proton\install inside a copy of the repo; $pluginDirectory isn't the plugin project." }
 
 # Hidden PowerShell sets MAILBOX_ENV_FILE, then runs the watchdog from the plugin project.
 # Values go inside single-quoted strings, so their own single quotes are doubled.
