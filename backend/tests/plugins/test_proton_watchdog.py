@@ -293,3 +293,31 @@ def test_a_companion_service_is_started_only_while_its_port_is_down(tmp_path: Pa
     finally:
         if pid_file.exists():
             os.kill(int(pid_file.read_text()), signal.SIGTERM)
+
+
+def test_a_companion_start_is_not_repeated_within_a_check_interval(tmp_path: Path):
+    """Checks come every few seconds while Bridge loads; a service still binding its port
+    isn't started a second time until a full check interval has passed."""
+    port, imap_port, smtp_port = free_ports(3)
+    starts = tmp_path / "starts"
+    start = f"open({str(starts)!r}, 'a').write('x')"  # never binds, like a slow service
+    cert, _ = write_certificate(tmp_path, "bridge")
+    layout = {
+        "cert": cert,
+        "key": cert,
+        "pid_file": tmp_path / "unused.pid",
+        "bridge_log": tmp_path / "unused.log",
+        "imap_port": imap_port,
+        "smtp_port": smtp_port,
+    }
+    watchdog = Watchdog(
+        settings(layout, bridge_restart_command=None, companion_start_commands={port: [sys.executable, "-c", start]}),
+        plugin_command=None,
+    )
+
+    for now in (1, 6, 16, 36):
+        watchdog.tick(now=now)
+    assert starts.read_text() == "x"
+
+    watchdog.tick(now=61)
+    assert starts.read_text() == "xx"

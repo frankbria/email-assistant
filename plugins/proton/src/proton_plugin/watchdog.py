@@ -65,6 +65,7 @@ class Watchdog:
         self._next_restart_at = 0.0
         self._next_plugin_start_at = 0.0
         self._login_rejected_since: float | None = None
+        self._companion_started_at: dict[int, float] = {}
         self._lock = threading.Lock()
 
     def status(self) -> dict[str, object]:
@@ -75,7 +76,7 @@ class Watchdog:
         """One round of checks. `now` is a monotonic time in seconds. Returns the seconds to wait
         before the next round."""
         self._supervise_plugin(now)
-        self._supervise_companions()
+        self._supervise_companions(now)
         health = self.mailbox.health()
         failing = next((check for check in health.checks if not check.ok), None)
         with self._lock:
@@ -124,12 +125,18 @@ class Watchdog:
             with self._lock:
                 self.bridge.detail = f"Restarting Bridge failed: {error}"
 
-    def _supervise_companions(self) -> None:
-        """Start each companion service (e.g. a local gateway) that isn't answering on its port."""
+    def _supervise_companions(self, now: float) -> None:
+        """Start each companion service (e.g. a local gateway) that isn't answering on its port.
+        A port's command runs at most once per check interval, since checks come every few
+        seconds while Bridge loads and a service may still be binding its port."""
         for port, command in self.settings.companion_start_commands.items():
             try:
                 socket.create_connection(("127.0.0.1", port), timeout=3).close()
             except OSError:
+                # -inf, not 0: monotonic time starts near 0 after a boot.
+                if now - self._companion_started_at.get(port, float("-inf")) < CHECK_INTERVAL_SECONDS:
+                    continue
+                self._companion_started_at[port] = now
                 error = run_start_command(command)
                 if error is not None:
                     logger.warning("Starting the service for port %s failed: %s", port, error)

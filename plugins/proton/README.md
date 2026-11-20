@@ -20,7 +20,7 @@ IMAP/SMTP plugin (`packages/imap-mailbox`). It runs on the machine where Bridge 
 | `MAILBOX_IMAP_PORT`, `MAILBOX_SMTP_PORT` | Bridge's ports if not 1143/1025 |
 | `MAILBOX_TLS` (or `MAILBOX_IMAP_TLS`/`MAILBOX_SMTP_TLS`) | `starttls` (default) or `ssl`, matching Bridge |
 | `MAILBOX_HTTP_HOST`, `MAILBOX_HTTP_PORT`, `MAILBOX_HTTP_TOKEN` | HTTP mode only: this machine's Tailscale IP, a port, and the bearer token the app sends |
-| `MAILBOX_BRIDGE_RESTART_COMMAND` | Optional JSON list that restarts Bridge, e.g. `["systemctl", "--user", "restart", "proton-bridge"]`; on Windows `["C:\\Program Files\\Proton AG\\Proton Mail Bridge\\proton-bridge.exe", "--no-window"]`. Turns on the `repair` tool |
+| `MAILBOX_BRIDGE_RESTART_COMMAND` | Optional JSON list that starts Bridge in the background and returns (a command still running after 60 s is stopped), e.g. `["systemctl", "--user", "restart", "proton-bridge"]`; on Windows `["powershell", "-NoProfile", "-Command", "Start-Process -WindowStyle Hidden -FilePath 'C:\\Program Files\\Proton AG\\Proton Mail Bridge\\proton-bridge.exe' -ArgumentList '--no-window'"]`. Turns on the `repair` tool |
 | `MAILBOX_COMPANION_START_COMMANDS` | Watchdog only, optional JSON: loopback port → command that starts another local service (e.g. a gateway) when nothing answers on that port |
 
 ## Health and repair
