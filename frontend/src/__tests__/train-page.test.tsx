@@ -55,7 +55,7 @@ const proposal: Job = {
   created_at: '2026-11-02T10:00:00Z',
 }
 
-const card: JobCard = { job: proposal, sender: { name: 'Garden Shop', email: 'deals@shop.example' }, subject: 'Weekly deals', list_id: null }
+const card: JobCard = { job: proposal, sender: { name: 'Garden Shop', email: 'deals@shop.example' }, subject: 'Weekly deals', list_id: null, email_count: 1 }
 
 async function renderTrain(...cards: JobCard[]) {
   mockFetch.mockResolvedValueOnce(Response.json(cards))

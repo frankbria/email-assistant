@@ -30,10 +30,22 @@ class UnsureAI(FakeAIProvider):
     it fills in that verb's details, as a real model does."""
 
     async def propose(self, prompt, schema):
-        unsure = Proposal(needs_owner=True, verb="reply", title="The shop's garden tools offer", evidence=["garden tools"],
-                          draft="Thanks, not now.", confidence=0.4)
-        noise = Proposal(needs_owner=False, verb="archive_noise", title="The shop's weekly garden tools deals",
-                         evidence=["garden tools"], noise_rationale="A promotional mailing", confidence=0.9)
+        unsure = Proposal(
+            needs_owner=True,
+            verb="reply",
+            title="The shop's garden tools offer",
+            evidence=["garden tools"],
+            draft="Thanks, not now.",
+            confidence=0.4,
+        )
+        noise = Proposal(
+            needs_owner=False,
+            verb="archive_noise",
+            title="The shop's weekly garden tools deals",
+            evidence=["garden tools"],
+            noise_rationale="A promotional mailing",
+            confidence=0.9,
+        )
         self.result = unsure if schema is Proposal else noise
         return await super().propose(prompt, schema)
 
@@ -91,8 +103,14 @@ async def test_a_choice_without_always_is_an_example_but_not_a_rule(async_client
 
 async def test_another_action_chosen_for_a_proposed_job_isnt_an_ask_owner_answer(async_client, test_db, mailbox, plugins, ai):
     job = await job_from(new_mailbox(), mailbox, "reply", Artifacts(draft="Yes"))
-    ai.result = Proposal(needs_owner=False, verb="todo", title="Book the Thursday meeting room", evidence=[QUESTION],
-                         link="https://rooms.example", confidence=0.9)
+    ai.result = Proposal(
+        needs_owner=False,
+        verb="todo",
+        title="Book the Thursday meeting room",
+        evidence=[QUESTION],
+        link="https://rooms.example",
+        confidence=0.9,
+    )
 
     response = await async_client.post(f"/api/v1/jobs/{job.id}/choose", json={"verb": "todo", "always": True})
 
@@ -103,8 +121,14 @@ async def test_another_action_chosen_for_a_proposed_job_isnt_an_ask_owner_answer
 async def test_always_on_a_list_message_teaches_a_rule_for_the_list(async_client, test_db, mailbox, plugins, ai):
     job = await job_from(new_mailbox(), mailbox, "todo", ask_owner=True, suggested_verbs=["todo"])
     await Message.find(Message.id == job.message_ids[0]).update({"$set": {"list_id": "Garden deals <Deals.Shop.Example>"}})
-    ai.result = Proposal(needs_owner=False, verb="todo", title="Book the Thursday meeting room", evidence=[QUESTION],
-                         link="https://rooms.example", confidence=0.9)
+    ai.result = Proposal(
+        needs_owner=False,
+        verb="todo",
+        title="Book the Thursday meeting room",
+        evidence=[QUESTION],
+        link="https://rooms.example",
+        confidence=0.9,
+    )
 
     await async_client.post(f"/api/v1/jobs/{job.id}/choose", json={"verb": "todo", "always": True})
 
@@ -117,8 +141,14 @@ async def test_always_for_a_list_leaves_a_broader_sender_rule_alone(async_client
     job = await job_from(ana, mailbox, "todo", ask_owner=True, suggested_verbs=["todo"])
     await Message.find(Message.id == job.message_ids[0]).update({"$set": {"list_id": "Garden deals <Deals.Shop.Example>"}})
     await Rule(owner_id=OWNER_ID, match="sender", value=ana.address.lower(), verb="reply").insert()
-    ai.result = Proposal(needs_owner=False, verb="todo", title="Book the Thursday meeting room", evidence=[QUESTION],
-                         link="https://rooms.example", confidence=0.9)
+    ai.result = Proposal(
+        needs_owner=False,
+        verb="todo",
+        title="Book the Thursday meeting room",
+        evidence=[QUESTION],
+        link="https://rooms.example",
+        confidence=0.9,
+    )
 
     await async_client.post(f"/api/v1/jobs/{job.id}/choose", json={"verb": "todo", "always": True})
 
@@ -138,8 +168,14 @@ async def test_the_queue_says_which_list_a_card_s_mail_came_from(async_client, t
 async def test_a_lesson_that_fails_to_store_still_returns_the_chosen_job(async_client, test_db, mailbox, plugins, ai, caplog):
     ana = new_mailbox()
     job = await job_from(ana, mailbox, "todo", ask_owner=True, suggested_verbs=["todo"])
-    ai.result = Proposal(needs_owner=False, verb="todo", title="Book the Thursday meeting room", evidence=[QUESTION],
-                         link="https://rooms.example", confidence=0.9)
+    ai.result = Proposal(
+        needs_owner=False,
+        verb="todo",
+        title="Book the Thursday meeting room",
+        evidence=[QUESTION],
+        link="https://rooms.example",
+        confidence=0.9,
+    )
     examples = Example.get_pymongo_collection().name
     # MongoDB itself refuses every example write, as a full disk or a broken collection would.
     await test_db.command("collMod", examples, validator={"source": {"$in": []}}, validationAction="error")

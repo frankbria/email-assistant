@@ -68,10 +68,14 @@ CORPUS = (
 # A club notice the AI would likely file away unprompted; the owner replied to the last one (#82).
 RIDE_NOTICE = "Saturday long run is {miles} miles from the boathouse at 7am. Route map and water stops are on the club page."
 EARLIER_RIDE = ProposalCase(
-    name="earlier ride notice", sender="coach@runclub.example", subject="Saturday long run: 18 miles",
+    name="earlier ride notice",
+    sender="coach@runclub.example",
+    subject="Saturday long run: 18 miles",
     body=RIDE_NOTICE.format(miles=18),
 )
 NEXT_RIDE = ProposalCase(
-    name="next ride notice", sender="coach@runclub.example", subject="Saturday long run: 16 miles",
+    name="next ride notice",
+    sender="coach@runclub.example",
+    subject="Saturday long run: 16 miles",
     body=RIDE_NOTICE.format(miles=16),
 )

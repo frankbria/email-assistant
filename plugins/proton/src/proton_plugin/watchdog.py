@@ -87,7 +87,9 @@ class Watchdog:
             elif self._login_rejected_since is None:
                 self._login_rejected_since = now
             if failing is None:
-                self.bridge = self.bridge.model_copy(update={"state": "ok", "detail": "", "first_failing_layer": None, "failed_restarts": 0})
+                self.bridge = self.bridge.model_copy(
+                    update={"state": "ok", "detail": "", "first_failing_layer": None, "failed_restarts": 0}
+                )
                 self._next_restart_at = now
                 return CHECK_INTERVAL_SECONDS
             self.bridge.first_failing_layer = failing.layer
@@ -104,9 +106,7 @@ class Watchdog:
                 return CHECK_INTERVAL_SECONDS
             if self.bridge.failed_restarts >= len(BACKOFF_SECONDS):
                 self.bridge.state = "needs_owner"
-                self.bridge.detail = (
-                    f"Bridge didn't come back after {self.bridge.failed_restarts} restarts. {failing.detail}"
-                )
+                self.bridge.detail = f"Bridge didn't come back after {self.bridge.failed_restarts} restarts. {failing.detail}"
                 return CHECK_INTERVAL_SECONDS
             self.bridge.state, self.bridge.detail = "restarting", failing.detail
             self.bridge.failed_restarts += 1

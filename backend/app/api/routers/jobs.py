@@ -4,13 +4,14 @@
 correct it, which also teaches a rule and an example."""
 
 import logging
-from collections.abc import Awaitable, Callable
+from collections.abc import Awaitable, Callable, Iterable
 from datetime import UTC, datetime
 from typing import Literal, Self
 
 from beanie import PydanticObjectId
 from beanie.operators import In
 from fastapi import APIRouter, Depends, HTTPException, Request
+from mailbox_contract import Address
 from pydantic import BaseModel, Field, model_validator
 
 from app.auth import OwnerId
@@ -26,7 +27,6 @@ from app.pipeline.run import decide
 from app.pipeline.validate import ask_owner_job
 from app.plugins.registry import PluginRegistry
 from app.services.ai_provider import AIProvider, get_ai_provider
-from mailbox_contract import Address
 
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/api/v1/jobs", tags=["jobs"])
@@ -44,6 +44,7 @@ class JobCard(BaseModel):
     sender: Address
     subject: str
     list_id: str | None  # the raw List-Id header: an "always" rule keys on it before the sender
+    email_count: int  # distinct emails behind the job, by the guard's rule: copies in several accounts count once
 
 
 class JobEdit(BaseModel):
@@ -93,13 +94,18 @@ async def for_one_message(job_id: PydanticObjectId, owner_id: str) -> Job:
     """Another action, a correction or an edit is about one message, while a digest's done archives all of them."""
     job = await owned(job_id, owner_id)
     if job.verb == "digest" and len(job.message_ids) > 1 and len(await distinct_emails(job)) > 1:
-        raise HTTPException(status_code=409, detail="a digest speaks for several messages; approve or dismiss it, or archive them one by one")
+        raise HTTPException(
+            status_code=409, detail="a digest speaks for several messages; approve or dismiss it, or archive them one by one"
+        )
     return job
 
 
 async def distinct_emails(job: Job) -> set[str]:
+    return email_keys(await Message.find(In(Message.id, job.message_ids)).to_list())
+
+
+def email_keys(messages: Iterable[Message]) -> set[str]:
     """Copies of one email in several accounts share its Message-ID; mail without one counts on its own."""
-    messages = await Message.find(In(Message.id, job.message_ids)).to_list()
     return {message.message_id or str(message.id) for message in messages}
 
 
@@ -119,10 +125,16 @@ async def list_jobs(owner_id: OwnerId) -> list[JobCard]:
     stuck = {"state": "sending", "sending_since": {"$lt": datetime.now(UTC) - STALE_SENDING}}
     waiting = {"owner_id": owner_id, "$or": [{"state": {"$in": IN_QUEUE}}, stuck]}
     jobs = await Job.find(waiting).sort("-created_at").to_list()
-    messages = await Message.find(In(Message.id, [job.message_ids[0] for job in jobs])).to_list()
+    messages = await Message.find(In(Message.id, [message_id for job in jobs for message_id in job.message_ids])).to_list()
     by_id = {message.id: message for message in messages}
     return [
-        JobCard(job=job, sender=message.sender, subject=message.subject, list_id=message.list_id)
+        JobCard(
+            job=job,
+            sender=message.sender,
+            subject=message.subject,
+            list_id=message.list_id,
+            email_count=len(email_keys(by_id[message_id] for message_id in job.message_ids if message_id in by_id)),
+        )
         for job in jobs
         if (message := by_id.get(job.message_ids[0]))
     ]
@@ -158,7 +170,9 @@ async def approve_job(
         "follow_up": lambda: defer(job_id, by="owner", level=level),
         "unsubscribe": lambda: unsubscribe(job_id, plugins, approval.unsubscribe_target, level=level),
     }
-    acted = await acting(actions.get(job.verb, lambda: finish(job_id, "done", plugins, verb=job.verb, by="owner", level=level, messages=messages)))
+    acted = await acting(
+        actions.get(job.verb, lambda: finish(job_id, "done", plugins, verb=job.verb, by="owner", level=level, messages=messages))
+    )
     if acted.state in ("done", "snoozed"):
         # shortcut: a DB failure after the action and before this write loses this one streak tick (the job is final, so
         # a retry gets 409); move it into the executor if promotion offers ever need the streak exact.
@@ -228,9 +242,7 @@ async def message_of(job: Job) -> Message:
     return message
 
 
-async def propose_instead(
-    job: Job, message: Message, verb: Verb, plugins: PluginRegistry, provider: AIProvider, settings: Settings
-) -> Job:
+async def propose_instead(job: Job, message: Message, verb: Verb, plugins: PluginRegistry, provider: AIProvider, settings: Settings) -> Job:
     """A fresh proposal for `verb` replaces the job's."""
     if job.state not in IN_QUEUE or job.sent_at is not None:
         raise HTTPException(status_code=409, detail=f"job {job.id} isn't open")
@@ -251,9 +263,9 @@ async def replace_proposal(job: Job, proposed: Job) -> Job:
     # was proposing; the proposal speaks only for the messages it was made for.
     # A failed job (its send didn't go out) is back to open with the new proposal.
     fresh = {**replaced, "state": "open", "edited": False, "error": None, "reminder": None, "permission_level": None}  # the old action's
-    stored = await Job.find(
-        {"_id": job.id, "state": {"$in": IN_QUEUE}, "sent_at": None, "message_ids": job.message_ids}
-    ).update({"$set": fresh})
+    stored = await Job.find({"_id": job.id, "state": {"$in": IN_QUEUE}, "sent_at": None, "message_ids": job.message_ids}).update(
+        {"$set": fresh}
+    )
     if not stored.modified_count:
         raise HTTPException(status_code=409, detail=f"job {job.id} isn't open or its mail changed, try again")
     assert job.id is not None
@@ -265,7 +277,9 @@ async def dismiss_job(
     job_id: PydanticObjectId, owner_id: OwnerId, seen: Seen | None = None, plugins: PluginRegistry = Depends(plugin_registry)
 ) -> Job:
     messages = shown_messages(await owned(job_id, owner_id), seen or Seen())
-    return await acting(lambda: finish(job_id, "dismissed", plugins, claim_from=("open", "failed"), by="owner", level=None, messages=messages))
+    return await acting(
+        lambda: finish(job_id, "dismissed", plugins, claim_from=("open", "failed"), by="owner", level=None, messages=messages)
+    )
 
 
 def shown_messages(job: Job, seen: Seen) -> list[PydanticObjectId] | None:
@@ -316,14 +330,26 @@ async def archive_as_noise(job: Job, message: Message, plugins: PluginRegistry) 
     job_id = job.id
     assert job_id is not None
     # Nothing of the old action survives: its title, quotes, date and messages were about another verb.
-    noise: dict[str, object] = {"verb": "archive_noise", "title": message.subject.strip() or "(no subject)", "evidence": [], "due": None,
-             "ask_owner": False, "suggested_verbs": [], "problems": [], "edited": False, "error": None, "reminder": None,
-             "artifacts": Artifacts(noise_rationale="you marked this as noise").model_dump()}
+    noise: dict[str, object] = {
+        "verb": "archive_noise",
+        "title": message.subject.strip() or "(no subject)",
+        "evidence": [],
+        "due": None,
+        "ask_owner": False,
+        "suggested_verbs": [],
+        "problems": [],
+        "edited": False,
+        "error": None,
+        "reminder": None,
+        "artifacts": Artifacts(noise_rationale="you marked this as noise").model_dump(),
+    }
     # Only over the mail the owner judged: a digest may have gathered more since the guard (see replace_proposal).
-    marked = await Job.find(
-        {"_id": job_id, "state": {"$in": IN_QUEUE}, "sent_at": None, "message_ids": job.message_ids}
-    ).update({"$set": noise})
+    marked = await Job.find({"_id": job_id, "state": {"$in": IN_QUEUE}, "sent_at": None, "message_ids": job.message_ids}).update(
+        {"$set": noise}
+    )
     if not marked.matched_count:
         raise HTTPException(status_code=409, detail=f"job {job_id} isn't open or its mail changed, try again")
     level = await tapped_level(job.owner_id, "archive_noise")
-    return await acting(lambda: finish(job_id, "done", plugins, claim_from=("open", "failed"), verb="archive_noise", by="owner", level=level))
+    return await acting(
+        lambda: finish(job_id, "done", plugins, claim_from=("open", "failed"), verb="archive_noise", by="owner", level=level)
+    )

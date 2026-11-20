@@ -28,6 +28,11 @@ ANY_FORWARDED_BLOCK = re.compile(
 YEAR = re.compile(r"\b(?:19|20)\d\d\b")
 QUOTED_LINE = re.compile(r"^>(?!=?[ \t]*\d).*$\n?", re.MULTILINE)  # "> 50 units" is prose, not a quote
 SIGNATURE = re.compile(r"^-- $", re.MULTILINE)  # RFC 3676; a bare "--" is often a divider in the body
+QUOTED_SIGNATURE = re.compile(r"^(?:> ?)+-- $")
+QUOTE_MARKERS = "> "
+# The IMAP plugin renders deeper HTML quotes at this depth too, so a run there can't tell a
+# signature's lines from older history below it.
+CAPPED_QUOTE_DEPTH = 8
 MOBILE_FOOTER = re.compile(
     r"^(?:Sent from my (?:iPhone|iPad|Android|Galaxy|BlackBerry|Pixel|mobile|phone)\b.*"
     r"|Sent from (?:Mail|Outlook) for \w.*|Get Outlook for \w.*)$\n?",
@@ -50,7 +55,7 @@ def minimize(text: str, subject: str = "") -> str:
     marker = FORWARDED_BLOCK.search(text)
     payload_start = marker.start() if marker else len(text)
     own = QUOTED_LINE.sub("", without_attributions(text[:payload_start]))
-    text = MOBILE_FOOTER.sub("", own + text[payload_start:])
+    text = MOBILE_FOOTER.sub("", own + without_quoted_signatures(text[payload_start:]))
     text = URL.sub(lambda match: without_tracking(match.group()), text)
     return capped(re.sub(r"\n{3,}", "\n\n", "\n".join(line.rstrip() for line in text.splitlines())).strip())
 
@@ -107,6 +112,38 @@ def without_signature(text: str, forwarded: bool) -> str:
         payload = blocks.search(text, signature.end())
         position = payload.start() if payload else len(text)
     return "".join(pieces) + text[position:]
+
+
+def without_quoted_signatures(payload: str) -> str:
+    """Drops each quoted "-- " delimiter in a forwarded payload with the contiguous lines at its quote
+    depth. Only here: in a bottom-posted reply an answer can follow a quoted signature."""
+    lines, kept, index = payload.split("\n"), [], 0
+    while index < len(lines):
+        depth = quote_depth(lines[index])
+        if QUOTED_SIGNATURE.match(lines[index]) and depth < CAPPED_QUOTE_DEPTH:
+            index = signature_end(lines, index + 1, depth)
+        else:
+            kept.append(lines[index])
+            index += 1
+    return "\n".join(kept)
+
+
+def signature_end(lines: list[str], start: int, depth: int) -> int:
+    """Where the run at the delimiter's depth ends, or earlier at a forwarded block inside it, which is content."""
+    end = start
+    while end < len(lines) and quote_depth(lines[end]) == depth and not starts_forwarded_block(lines, end):
+        end += 1
+    return end
+
+
+def starts_forwarded_block(lines: list[str], index: int) -> bool:
+    """Outlook's longest block header spans three lines; a fixed window keeps the scan linear."""
+    window = "\n".join(line.lstrip(QUOTE_MARKERS) for line in lines[index : index + 3])
+    return ANY_FORWARDED_BLOCK.match(window) is not None
+
+
+def quote_depth(line: str) -> int:
+    return line[: len(line) - len(line.lstrip(QUOTE_MARKERS))].count(">")
 
 
 def without_tracking(match: str) -> str:

@@ -7,10 +7,10 @@ import re
 from collections.abc import Awaitable, Callable
 from datetime import UTC, datetime
 
+from beanie.operators import In, NotIn
+from mailbox_contract import MessageDetail
 from mcp import Client
 from pydantic import ValidationError
-
-from beanie.operators import In, NotIn
 from pymongo import ReturnDocument
 
 from app.executor import STALE_SENDING, ArchiveFailed, JobNotOpen, archive, defer, execute, finish, record, reopen
@@ -26,7 +26,6 @@ from app.pipeline.validate import ask_owner_job, to_job
 from app.plugins.calls import call_plugin, refs_in_inbox
 from app.plugins.registry import PluginRegistry
 from app.services.ai_provider import AIProposalError, AIProvider
-from mailbox_contract import MessageDetail
 
 logger = logging.getLogger(__name__)
 
@@ -37,7 +36,9 @@ async def process_pending(
     """Every inbox message of this plugin still without its job, oldest first, including any a crash
     left behind. Returns how many were processed; one failure doesn't stop the rest."""
     pending = Message.find(
-        Message.owner_id == owner_id, Message.plugin_id == plugin_id, Message.folder == "inbox",
+        Message.owner_id == owner_id,
+        Message.plugin_id == plugin_id,
+        Message.folder == "inbox",
         {"pipeline_done": {"$ne": True}},  # also documents stored before the field existed
     )
     messages = await pending.sort("date").to_list()
@@ -63,15 +64,21 @@ async def process(message: Message, client: Client, provider: AIProvider, cap: i
     job = await Job.find_one(Job.owner_id == message.owner_id, Job.message_ids == message.id)
     sibling = await sibling_job(message) if job is None else None
     finished = sibling is not None and sibling.state in ("done", "dismissed")
-    if sibling is not None and not (finished and (message.first_pass or await asks_first(message))):
-        # A copy that must be asked about (first-connect, §5.3, or a stream that asks first, §10.4) never rides on a
-        # decision already carried out elsewhere.
+    if sibling is not None and not (finished and (message.first_pass or await asks_first(message) or never_left(sibling, message))):
+        # A copy that must be asked about (first-connect, §5.3, or a stream that asks first, §10.4), or one in an
+        # account a done unsubscribe never left, never rides on a decision already carried out elsewhere.
         job = await attach_copy(sibling, message)
+        if message.id not in job.message_ids:
+            return job  # the attach was refused (#176): pending, and the next pass decides from the settled job
     if (
-        job is not None and job.state in ("done", "dismissed") and len(job.message_ids) > 1 and await asks_first(message)
+        job is not None
+        and job.state in ("done", "dismissed")
+        and len(job.message_ids) > 1
+        and (never_left(job, message) or await asks_first(message))
     ):
-        # A copy of an ask-first stream that joined a job which finished meanwhile must still be asked; after a crash
-        # that may ask twice, the safe way. A first-connect copy that joined in time made the job ask (attach_copy),
+        # A copy of an ask-first stream (or of an account the unsubscribe never left) that joined a job which finished
+        # meanwhile must still be asked; after a crash that may ask twice, the safe way. A first-connect copy that
+        # joined in time made the job ask (attach_copy),
         # and a finished job of this message alone was decided on it, so their archive below stands.
         await Job.find(Job.id == job.id).update({"$pull": {"message_ids": message.id}})
         job = None
@@ -154,17 +161,31 @@ async def sibling_job(message: Message) -> Job | None:
     return unfinished or await Job.find_one(*over_copies, In(Job.state, ["done", "dismissed"]))
 
 
+def never_left(job: Job, message: Message) -> bool:
+    """A done unsubscribe left only the accounts it went out from: a copy in another one must leave too (#176)."""
+    return job.verb == "unsubscribe" and job.state == "done" and message.plugin_id not in job.unsubscribed_from
+
+
 async def attach_copy(job: Job, message: Message) -> Job:
     """One job for every copy (spec §5.3). Returns the job as stored right after attaching, so a
-    finish that landed meanwhile is seen (its archive may have missed this copy)."""
+    finish that landed meanwhile is seen (its archive may have missed this copy); without the copy if it wasn't."""
     attach: dict[str, object] = {"$addToSet": {"message_ids": message.id}}
     # A first-connect copy (§5.3), or one whose stream asks first (§10.4), makes the shared job need the owner's tap.
     if message.first_pass or await asks_first(message):
         attach["$set"] = {"requires_approval": True}
+    # Whatever state `job` was read in, never to an unsubscribe mid-send (that send covers only the copies it claimed)
+    # nor to a done one that never left this copy's account (its finish would archive the copy unsent, #176).
+    unsent = [
+        {"verb": "unsubscribe", "state": "sending"},
+        {"verb": "unsubscribe", "state": "done", "unsubscribed_from": {"$ne": message.plugin_id}},
+    ]
     stored = await Job.get_pymongo_collection().find_one_and_update(
-        {"_id": job.id}, attach, return_document=ReturnDocument.AFTER
+        {"_id": job.id, "$nor": unsent}, attach, return_document=ReturnDocument.AFTER
     )
-    assert stored is not None
+    if stored is None:
+        refused = await Job.get(job.id)
+        assert refused is not None
+        return refused
     return Job.model_validate(stored)
 
 
@@ -176,16 +197,22 @@ async def join_open_digest(job: Job, message: Message) -> Job:
     line = f"{message.sender.name or message.sender.email}: {summary}"
     joined = await Job.get_pymongo_collection().find_one_and_update(
         {"owner_id": job.owner_id, "verb": "digest", "state": "open", "ask_owner": False},
-        [{"$set": {
-            "message_ids": {"$concatArrays": ["$message_ids", [message.id]]},
-            "artifacts.digest": {"$cond": [
-                {"$gt": [{"$strLenCP": {"$ifNull": ["$artifacts.digest", ""]}}, 0]},
-                # $literal: mail text starting with "$" would otherwise be read as a field path
-                {"$concat": ["$artifacts.digest", "\n", {"$literal": line}]},
-                {"$literal": line},
-            ]},
-            "requires_approval": {"$or": ["$requires_approval", job.requires_approval]},
-        }}],
+        [
+            {
+                "$set": {
+                    "message_ids": {"$concatArrays": ["$message_ids", [message.id]]},
+                    "artifacts.digest": {
+                        "$cond": [
+                            {"$gt": [{"$strLenCP": {"$ifNull": ["$artifacts.digest", ""]}}, 0]},
+                            # $literal: mail text starting with "$" would otherwise be read as a field path
+                            {"$concat": ["$artifacts.digest", "\n", {"$literal": line}]},
+                            {"$literal": line},
+                        ]
+                    },
+                    "requires_approval": {"$or": ["$requires_approval", job.requires_approval]},
+                }
+            }
+        ],
         sort=[("created_at", 1)],
         return_document=ReturnDocument.AFTER,
     )

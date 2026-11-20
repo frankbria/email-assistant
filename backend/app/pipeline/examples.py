@@ -37,7 +37,8 @@ async def record_example(message: Message, body: str, verb: Verb, source: Exampl
     stored = await Example.get_pymongo_collection().find_one_and_update(
         {"owner_id": example.owner_id, "message_id": example.message_id},
         {"$set": example.model_dump(exclude={"id", "revision_id"})},
-        upsert=True, return_document=ReturnDocument.AFTER,
+        upsert=True,
+        return_document=ReturnDocument.AFTER,
     )
     assert stored is not None  # an upsert returning the document after it always has one
     return Example.model_validate(stored)

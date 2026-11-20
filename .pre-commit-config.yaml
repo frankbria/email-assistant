@@ -1,0 +1,29 @@
+# Install once from the repo root: uvx pre-commit install
+# Run on everything: uvx pre-commit run --all-files
+repos:
+  - repo: https://github.com/gitleaks/gitleaks
+    rev: v8.30.1
+    hooks:
+      # --staged scans only the lines a commit adds, so existing code never blocks a commit.
+      - id: gitleaks
+
+  - repo: local
+    hooks:
+      # uv run uses the locked ruff from backend/uv.lock, the same version CI runs.
+      - id: ruff-check
+        name: ruff check
+        entry: uv run --project backend --locked ruff check --force-exclude
+        language: system
+        types: [python]
+      - id: ruff-format
+        name: ruff format --check
+        entry: uv run --project backend --locked ruff format --check --force-exclude
+        language: system
+        types: [python]
+      - id: eslint
+        name: eslint
+        entry: npm --prefix frontend run lint
+        language: system
+        files: ^frontend/
+        types_or: [javascript, jsx, ts, tsx]
+        pass_filenames: false

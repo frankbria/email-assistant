@@ -11,10 +11,12 @@ from typing import Literal
 
 from beanie import PydanticObjectId
 from beanie.operators import In, NotIn
+from mailbox_contract import MessageDetail, MoveResult, SendResult
 from mcp import Client
 from mcp.shared.exceptions import MCPError
 from pydantic import ValidationError
 from pymongo import ReturnDocument
+from pymongo.results import UpdateResult
 
 from app.models.action_log import Action, ActionLogEntry, Actor
 from app.models.job import Job, JobState, PermissionLevel, Verb
@@ -22,7 +24,6 @@ from app.models.message import Message
 from app.plugins.calls import InvalidCursor, SyncError, call_plugin, refs_in_inbox
 from app.plugins.registry import PluginRegistry
 from app.unsubscribe import UnsubscribeMail, is_https, unsubscribe_mail, unsubscribe_target
-from mailbox_contract import MessageDetail, MoveResult, SendResult
 
 logger = logging.getLogger(__name__)
 
@@ -47,14 +48,29 @@ class ArchiveFailed(Exception):
 
 
 async def record(
-    owner_id: str, job_id: PydanticObjectId, action: Action, message_ids: list[PydanticObjectId], by: Actor,
-    level: PermissionLevel | None, error: str | None = None, undoable: bool = False,
+    owner_id: str,
+    job_id: PydanticObjectId,
+    action: Action,
+    message_ids: list[PydanticObjectId],
+    by: Actor,
+    level: PermissionLevel | None,
+    error: str | None = None,
+    undoable: bool = False,
 ) -> ActionLogEntry:
     """Writes one action to the history.
     shortcut: written after the action, not in one transaction with it, so a DB failure in between loses the entry;
     use a transaction once MongoDB runs as a replica set."""
-    entry = ActionLogEntry(owner_id=owner_id, action=action, job_id=job_id, message_ids=message_ids, by=by,
-                           permission_level=level, ok=error is None, error=error, undoable=undoable)
+    entry = ActionLogEntry(
+        owner_id=owner_id,
+        action=action,
+        job_id=job_id,
+        message_ids=message_ids,
+        by=by,
+        permission_level=level,
+        ok=error is None,
+        error=error,
+        undoable=undoable,
+    )
     await entry.insert()
     return entry
 
@@ -79,7 +95,9 @@ async def finish(
     if messages is not None:
         unchanged["message_ids"] = messages
     # Out of `open` before any archive, so a sync pass can't close it as handled elsewhere meanwhile.
-    claimed = await Job.find(Job.id == job_id, In(Job.state, list(claim_from)), unchanged).update({"$set": {"state": outcome, "error": None}})
+    claimed = await Job.find(Job.id == job_id, In(Job.state, list(claim_from)), unchanged).update(
+        {"$set": {"state": outcome, "error": None}}
+    )
     if not claimed.modified_count:
         raise JobNotOpen(f"job {job_id} isn't open")
     archived: list[PydanticObjectId] = []
@@ -102,13 +120,20 @@ async def finish(
     assert refreshed is not None
     if outcome == "done" and not archived:
         action = "done"
-    await record(refreshed.owner_id, job_id, action, archived or refreshed.message_ids, by, level, "; ".join(errors) or None, bool(archived))
+    await record(
+        refreshed.owner_id, job_id, action, archived or refreshed.message_ids, by, level, "; ".join(errors) or None, bool(archived)
+    )
     return refreshed
 
 
 async def interrupted(
-    job: Job | None, job_id: PydanticObjectId, outcome: Outcome, action: Action, archived: list[PydanticObjectId],
-    by: Actor, level: PermissionLevel | None,
+    job: Job | None,
+    job_id: PydanticObjectId,
+    outcome: Outcome,
+    action: Action,
+    archived: list[PydanticObjectId],
+    by: Actor,
+    level: PermissionLevel | None,
 ) -> None:
     """A finish cut short ends retryable; the copies it already archived left the inbox, so they keep their
     history entry and its undo."""
@@ -141,9 +166,9 @@ async def archive_settled_messages(job: Job, plugins: PluginRegistry, archived: 
         except ArchiveFailed as problem:
             errors.append(str(problem))
         finally:
-            await asyncio.shield(Message.find(Message.id == message.id, Message.archive_claim == job.id).update(
-                {"$set": {"archive_claim": None}}
-            ))
+            await asyncio.shield(
+                Message.find(Message.id == message.id, Message.archive_claim == job.id).update({"$set": {"archive_claim": None}})
+            )
     return errors
 
 
@@ -152,9 +177,7 @@ async def claim_archive(message: Message, job: Job) -> bool:
     archives it. A job may retake its own claim.
     shortcut: a process dying mid-archive strands its claim (as it strands its job final); expire claims like
     STALE_SENDING if that is ever seen."""
-    claimed = await Message.find({"_id": message.id, "archive_claim": {"$in": [None, job.id]}}).update(
-        {"$set": {"archive_claim": job.id}}
-    )
+    claimed = await Message.find({"_id": message.id, "archive_claim": {"$in": [None, job.id]}}).update({"$set": {"archive_claim": job.id}})
     return bool(claimed.matched_count)
 
 
@@ -169,7 +192,9 @@ async def archive(message: Message, client: Client | None) -> bool:
             return False  # already out of the inbox (moved elsewhere): nothing to archive
         result = MoveResult.model_validate(await call_plugin(plugin_id, client, "archive", {"ref": message.ref}))
     except ValidationError as error:
-        raise ArchiveFailed(f"{plugin_id} couldn't archive the message (it answered outside the contract), so it is still in the inbox") from error
+        raise ArchiveFailed(
+            f"{plugin_id} couldn't archive the message (it answered outside the contract), so it is still in the inbox"
+        ) from error
     except (SyncError, InvalidCursor, TimeoutError, MCPError, OSError) as error:
         raise ArchiveFailed(f"{plugin_id} couldn't archive the message ({error}), so it is still in the inbox") from error
     if not (result.ok and result.verified):
@@ -223,15 +248,21 @@ async def undo(entry: ActionLogEntry, plugins: PluginRegistry) -> ActionLogEntry
 
 
 async def execute(
-    job_id: PydanticObjectId, plugins: PluginRegistry, body: str | None = None, forward_to: str | None = None,
-    *, by: Actor, level: PermissionLevel, unsubscribe_request: UnsubscribeMail | None = None,
-    unsubscribe_source: PydanticObjectId | None = None,
+    job_id: PydanticObjectId,
+    plugins: PluginRegistry,
+    body: str | None = None,
+    forward_to: str | None = None,
+    *,
+    by: Actor,
+    level: PermissionLevel,
+    unsubscribe_request: UnsubscribeMail | None = None,
+    unsubscribe_copies: list[PydanticObjectId] | None = None,
 ) -> Job:
     """The owner approved a reply, forward or unsubscribe email: send it from the account that received the mail,
     then finish the job (archive-on-done). A failed send leaves the job `failed` and the mail in the inbox
     (AC-2.2); calling this again retries, and once it was sent a retry only archives. `body` is the
     owner's text (None: the draft); `forward_to` is the recipient the owner confirmed; `unsubscribe_request` is the
-    mailto the owner confirmed (see unsubscribe), and `unsubscribe_source` the copy it was read from."""
+    mailto the owner confirmed (see unsubscribe), and `unsubscribe_copies` the copies it goes out for."""
     job = await Job.get(job_id)
     if job is None or job.verb not in ("reply", "forward", "unsubscribe"):
         raise ValueError(f"only reply, forward and unsubscribe jobs send; job {job_id} isn't one")
@@ -240,12 +271,17 @@ async def execute(
         raise ValueError(f"job {job_id} changed since it was approved, look at it again")
     now = datetime.now(UTC)
     # Still the verb read above: another action chosen meanwhile must not be sent as this one.
-    claimable = {"_id": job_id, "verb": job.verb, "ask_owner": False, "$or": [
-        {"state": {"$in": ["open", "failed"]}},
-        {"state": "sending", "sending_since": {"$lt": now - STALE_SENDING}},
-    ]}
-    if unsubscribe_source is not None:  # send goes through message_ids[0]: the account whose header named the target
-        claimable["message_ids.0"] = unsubscribe_source
+    claimable: dict[str, object] = {
+        "_id": job_id,
+        "verb": job.verb,
+        "ask_owner": False,
+        "$or": [
+            {"state": {"$in": ["open", "failed"]}},
+            {"state": "sending", "sending_since": {"$lt": now - STALE_SENDING}},
+        ],
+    }
+    if unsubscribe_copies is not None:  # it goes out from each copy's account: only the accounts the owner tapped for
+        claimable["message_ids"] = unsubscribe_copies
     # Out of open/failed first, so a sync pass can't close it as handled elsewhere mid-send.
     claimed = await Job.get_pymongo_collection().find_one_and_update(
         claimable, {"$set": {"state": "sending", "sending_since": now, "error": None}}, return_document=ReturnDocument.AFTER
@@ -254,7 +290,9 @@ async def execute(
         raise JobNotOpen(f"job {job_id} isn't open or failed")
     job = Job.model_validate(claimed)  # as of the claim: an overlapping approval may have sent it meanwhile
     try:
-        problem = None if job.sent_at else await send(job, plugins, body, forward_to, unsubscribe_request)
+        # An unsubscribe skips per account instead: a copy that joined after the send still needs its own account's.
+        already_sent = job.sent_at is not None and job.verb != "unsubscribe"
+        problem = None if already_sent else await send(job, plugins, body, forward_to, unsubscribe_request)
     except asyncio.CancelledError:  # a BaseException: interrupted, it must still end retryable
         await asyncio.shield(mark_failed(job_id, "interrupted before it finished"))
         raise
@@ -280,7 +318,9 @@ async def execute(
 
 
 async def mark_failed(job_id: PydanticObjectId, problem: str) -> None:
-    await Job.find(Job.id == job_id, Job.state == "sending").update({"$set": {"state": "failed", "error": f"send failed — retry: {problem}"}})
+    await Job.find(Job.id == job_id, Job.state == "sending").update(
+        {"$set": {"state": "failed", "error": f"send failed — retry: {problem}"}}
+    )
 
 
 def reply_subject(subject: str) -> str:
@@ -295,6 +335,8 @@ async def send(
     job: Job, plugins: PluginRegistry, body: str | None, forward_to: str | None, unsubscribe_request: UnsubscribeMail | None
 ) -> str | None:
     """Sends the job's message; what went wrong, or None."""
+    if job.verb == "unsubscribe":
+        return await send_unsubscribe(job, plugins, unsubscribe_request) if unsubscribe_request else "confirm the unsubscribe target first"
     message = await Message.get(job.message_ids[0])  # any copy: they share the sender and the content
     assert message is not None
     client = plugins.clients.get(message.plugin_id)
@@ -304,46 +346,103 @@ async def send(
     if job.verb == "reply":
         if not text.strip():
             return "write the reply first"
-        arguments: dict[str, object] = {"to": [{"email": message.sender.email}], "subject": reply_subject(message.subject),
-                                        "body_text": text, "in_reply_to_ref": message.ref}
-    elif job.verb == "unsubscribe":
-        if unsubscribe_request is None:
-            return "confirm the unsubscribe target first"
-        arguments = {"to": [{"email": unsubscribe_request.address}], "subject": unsubscribe_request.subject,
-                     "body_text": unsubscribe_request.body}
+        arguments: dict[str, object] = {
+            "to": [{"email": message.sender.email}],
+            "subject": reply_subject(message.subject),
+            "body_text": text,
+            "in_reply_to_ref": message.ref,
+        }
     else:
         if not forward_to:  # never the AI's suggestion alone: a forward's recipient is the owner's call (§4)
             return "choose who to forward it to"
         original = MessageDetail.model_validate(await call_plugin(message.plugin_id, client, "get_message", {"ref": message.ref}))
-        quoted = (f"---------- Forwarded message ---------\nFrom: {original.sender.email}\nDate: {original.date.isoformat()}\n"
-                  f"Subject: {original.subject}\n\n{original.text}")
+        quoted = (
+            f"---------- Forwarded message ---------\nFrom: {original.sender.email}\nDate: {original.date.isoformat()}\n"
+            f"Subject: {original.subject}\n\n{original.text}"
+        )
         arguments = {"to": [{"email": forward_to}], "subject": forward_subject(message.subject), "body_text": f"{text}\n\n{quoted}"}
     result = SendResult.model_validate(await call_plugin(message.plugin_id, client, "send", arguments))
     return None if result.ok else f"{message.plugin_id} didn't send it"
 
 
+async def send_unsubscribe(job: Job, plugins: PluginRegistry, request: UnsubscribeMail) -> str | None:
+    """From every account holding a copy, so each one leaves the list (#176): one mail can reach several accounts.
+    An account it already went out from is skipped, so a retry after one account failed never asks twice."""
+    if job.sent_at is not None and not job.unsubscribed_from:  # sent before #176 recorded accounts: from the first copy's
+        first = await Message.get(job.message_ids[0])
+        assert first is not None
+        await Job.find(Job.id == job.id).update({"$addToSet": {"unsubscribed_from": first.plugin_id}})
+        job.unsubscribed_from.append(first.plugin_id)
+    for message in await Message.find(In(Message.id, job.message_ids)).to_list():
+        if message.plugin_id in job.unsubscribed_from:
+            continue
+        client = plugins.clients.get(message.plugin_id)
+        if client is None:
+            return f"{message.plugin_id} isn't connected"
+        arguments: dict[str, object] = {"to": [{"email": request.address}], "subject": request.subject, "body_text": request.body}
+        if not SendResult.model_validate(await call_plugin(message.plugin_id, client, "send", arguments)).ok:
+            return f"{message.plugin_id} didn't send it"
+        # The plugin confirmed it: stored before a cancellation reaches execute(), which then makes the job retryable,
+        # so no retry asks from this account again.
+        stored = asyncio.ensure_future(Job.find(Job.id == job.id).update({"$addToSet": {"unsubscribed_from": message.plugin_id}}))
+        try:
+            await asyncio.shield(stored)
+        except asyncio.CancelledError:
+            await stored
+            raise
+        job.unsubscribed_from.append(message.plugin_id)
+    return None
+
+
 async def unsubscribe(job_id: PydanticObjectId, plugins: PluginRegistry, confirmed_target: str | None, *, level: PermissionLevel) -> Job:
     """The owner's tap on an unsubscribe job, so always `by` the owner (spec §4: never_auto). The target is read from
     the mail again and must be the one the owner was shown: an https link was opened by their browser, so the job
-    only finishes; a mailto is sent to its one address."""
+    only finishes; a mailto is sent to its one address from every account holding a copy.
+    shortcut: a mail in several accounts whose one shared target is an https link is opened once, for whichever
+    subscriber the list ties that link to; split such a job per account if owners find an account still subscribed."""
     job = await Job.get(job_id)
     copies = job.message_ids if job else []  # before the read: copies changed meanwhile fail the claim below
     target = await unsubscribe_target_of(job_id, plugins)
     if target != confirmed_target:
         raise ValueError("confirm the unsubscribe target this mail names")
     if is_https(target):
-        return await finish(job_id, "done", plugins, verb="unsubscribe", by="owner", level=level, messages=copies)
-    return await execute(job_id, plugins, by="owner", level=level, unsubscribe_request=unsubscribe_mail(target),
-                         unsubscribe_source=copies[0] if copies else None)
+        finished = await finish(job_id, "done", plugins, verb="unsubscribe", by="owner", level=level, messages=copies)
+        accounts = [copy.plugin_id for copy in await Message.find(In(Message.id, copies)).to_list()]
+        await Job.find(Job.id == job_id).update({"$addToSet": {"unsubscribed_from": {"$each": accounts}}})
+        return await Job.get(job_id) or finished
+    return await execute(
+        job_id,
+        plugins,
+        by="owner",
+        level=level,
+        unsubscribe_request=unsubscribe_mail(target),
+        unsubscribe_copies=copies,
+    )
 
 
 async def unsubscribe_target_of(job_id: PydanticObjectId, plugins: PluginRegistry) -> str:
-    """The job's List-Unsubscribe target, read from the mail through its plugin; ValueError says why there's none."""
+    """The job's List-Unsubscribe target, read from one copy in each account through its plugin; ValueError says why
+    there's none. Copies sharing a Message-ID can still name different targets (a per-subscriber address, or a forged
+    copy), and one account's target must never be used for another, so those aren't unsubscribed in one tap."""
     job = await Job.get(job_id)
     if job is None or job.verb != "unsubscribe":
         raise ValueError(f"job {job_id} isn't an unsubscribe")
-    message = await Message.get(job.message_ids[0])  # any copy: they share the headers
-    assert message is not None
+    copies = {copy.id: copy for copy in await Message.find(In(Message.id, job.message_ids)).to_list()}
+    one_per_account = {copies[copy_id].plugin_id: copies[copy_id] for copy_id in reversed(job.message_ids) if copy_id in copies}
+    if not one_per_account:
+        raise ValueError("this mail is no longer in any of your accounts")
+    # Accounts it already went out from needn't be connected for the rest; once all have, any one confirms the target.
+    waiting = [copy for account, copy in one_per_account.items() if account not in job.unsubscribed_from]
+    # One link opened in one browser speaks for one subscriber; a mailto goes out from each account.
+    prefer_mailto = len(one_per_account) > 1
+    targets = {await target_named_by(copy, plugins, prefer_mailto=prefer_mailto) for copy in waiting or list(one_per_account.values())[:1]}
+    if len(targets) > 1:
+        raise ValueError("your accounts' copies of this mail name different ways to unsubscribe, so leave from each copy's mail app")
+    [target] = targets
+    return target
+
+
+async def target_named_by(message: Message, plugins: PluginRegistry, *, prefer_mailto: bool) -> str:
     client = plugins.clients.get(message.plugin_id)
     if client is None:
         raise ValueError(f"{message.plugin_id} isn't connected, so the mail can't be read")
@@ -351,7 +450,7 @@ async def unsubscribe_target_of(job_id: PydanticObjectId, plugins: PluginRegistr
         detail = MessageDetail.model_validate(await call_plugin(message.plugin_id, client, "get_message", {"ref": message.ref}))
     except (SyncError, InvalidCursor, TimeoutError, ValidationError, MCPError, OSError) as error:
         raise ValueError(f"{message.plugin_id} couldn't read the mail ({error})") from error
-    target = unsubscribe_target(detail.headers)
+    target = unsubscribe_target(detail.headers, prefer_mailto=prefer_mailto)
     if target is None:
         raise ValueError("this mail names no safe way to unsubscribe")
     return target
@@ -404,7 +503,9 @@ async def wake(job: Job, plugins: PluginRegistry) -> int:
         return 1
     if job.state == "open":
         return 0  # a reminder still without an answer: it stays as it is
-    claimed = await Job.find(Job.id == job.id, Job.state == "snoozed").update({"$set": {"state": "open", "reminder": reminder}})
+    claimed: UpdateResult = await Job.find(Job.id == job.id, Job.state == "snoozed").update(
+        {"$set": {"state": "open", "reminder": reminder}}
+    )
     return claimed.modified_count
 
 
@@ -419,17 +520,21 @@ async def missing_answer(job: Job) -> str | None:
     # The owner's turns: threaded to the original, or later mail to the correspondent (a reply to their answer
     # threads to the answer, not the original).
     replies = await Message.find(
-        Message.owner_id == job.owner_id, Message.folder == "sent",
+        Message.owner_id == job.owner_id,
+        Message.folder == "sent",
         {"$or": [{"in_reply_to": original.message_id}, {"to.email": to_them, "date": {"$gte": original.date}}]},
     ).to_list()
     since = max([original.date, *(reply.date for reply in replies)])
     answered = await Message.find(
-        Message.owner_id == job.owner_id, Message.folder == "inbox", Message.id != original.id,
+        Message.owner_id == job.owner_id,
+        Message.folder == "inbox",
+        Message.id != original.id,
         {"date": {"$gt": since}},  # after the owner's latest reply: an earlier exchange doesn't count
-        {"$or": [
-            {"in_reply_to": {"$in": [reply.message_id for reply in replies if reply.message_id]}},
-            {"sender.email": to_them},
-        ]},
+        {
+            "$or": [
+                {"in_reply_to": {"$in": [reply.message_id for reply in replies if reply.message_id]}},
+                {"sender.email": to_them},
+            ]
+        },
     ).exists()
     return None if answered else f"No answer from {correspondent} to “{original.subject}” since {since:%Y-%m-%d}"
-

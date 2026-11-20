@@ -170,10 +170,10 @@ function EditForm({ job, onSaved, onCancel }: { job: Job; onSaved: (job: Job) =>
 }
 
 export function JobCard({ card, onReplaced, onRemoved }: JobCardProps) {
-  const { job, sender, subject } = card
+  const { job, sender, subject, email_count } = card
   const titleId = useId()
   // Another action, a correction or an edit would act on the first message alone, while done archives them all.
-  const speaksForSeveral = job.verb === 'digest' && job.message_ids.length > 1
+  const speaksForSeveral = job.verb === 'digest' && email_count > 1
   const shownDigest = job.verb === 'digest' ? job.message_ids : undefined // the tap covers only these
   const [editing, setEditing] = useState(false)
   const [busy, setBusy] = useState(false)
@@ -222,7 +222,7 @@ export function JobCard({ card, onReplaced, onRemoved }: JobCardProps) {
       <CardHeader>
         <CardTitle id={titleId}>{job.title}</CardTitle>
         <CardDescription className="break-words">
-          {job.verb === 'digest' ? messageCount(job.message_ids.length) : `${sender.name ?? sender.email} - ${subject}`}
+          {job.verb === 'digest' ? messageCount(email_count) : `${sender.name ?? sender.email} - ${subject}`}
         </CardDescription>
       </CardHeader>
       <CardContent className="space-y-3 text-sm">

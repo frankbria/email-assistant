@@ -12,7 +12,15 @@ from app.models.action_log import ActionLogEntry
 from app.models.job import Job
 from app.models.message import Message
 from app.models.rule import Rule
-from app.permissions import CEILINGS, PermissionSettings, PermissionsRejected, level_for, parse_permissions, set_levels, sync_permissions_file
+from app.permissions import (
+    CEILINGS,
+    PermissionSettings,
+    PermissionsRejected,
+    level_for,
+    parse_permissions,
+    set_levels,
+    sync_permissions_file,
+)
 from app.pipeline.proposal import Proposal
 from app.sync import SyncEngine
 from tests.conformance.test_mailbox_conformance import reference_imap_plugin
@@ -21,14 +29,17 @@ from tests.utils.fakes import FakeAIProvider
 from tests.utils.mail_server import Mailbox, new_mailbox
 
 
-@pytest.mark.parametrize(("text", "explained"), [
-    ("unsubscribe: autonomous", "unsubscribe can't be autonomous: its highest level is never_auto (links in email are untrusted)"),
-    ("forward: autonomous", "forward can't be autonomous: its highest level is ask (new recipients come from AI judgment)"),
-    ("todo: autonomous", "todo can't be autonomous: its highest level is ask (completing it needs the owner)"),
-    ("reply: sometimes", "reply: 'sometimes' isn't a level (autonomous, ask or never_auto)"),
-    ("replay: ask", "replay isn't a verb"),
-    ("- reply", "permissions.yaml must map each verb to a level"),
-])
+@pytest.mark.parametrize(
+    ("text", "explained"),
+    [
+        ("unsubscribe: autonomous", "unsubscribe can't be autonomous: its highest level is never_auto (links in email are untrusted)"),
+        ("forward: autonomous", "forward can't be autonomous: its highest level is ask (new recipients come from AI judgment)"),
+        ("todo: autonomous", "todo can't be autonomous: its highest level is ask (completing it needs the owner)"),
+        ("reply: sometimes", "reply: 'sometimes' isn't a level (autonomous, ask or never_auto)"),
+        ("replay: ask", "replay isn't a verb"),
+        ("- reply", "permissions.yaml must map each verb to a level"),
+    ],
+)
 def test_a_file_above_a_ceiling_or_malformed_is_rejected_with_the_reason(text: str, explained: str):
     """AC-K.3 (file half)."""
     with pytest.raises(PermissionsRejected) as rejected:
@@ -80,18 +91,23 @@ async def test_the_settings_screen_gets_the_same_ceilings(test_db, tmp_path: Pat
         await set_levels(OWNER, {"forward": "autonomous"}, tmp_path / "permissions.yaml")
 
 
-
-
 def proposal(**changes: object) -> Proposal:
-    base = Proposal(needs_owner=False, verb="archive_noise", title="Shop.example promo for running shoes",
-                    evidence=["30% off all running shoes"], noise_rationale="Bulk promotion", confidence=0.9)
+    base = Proposal(
+        needs_owner=False,
+        verb="archive_noise",
+        title="Shop.example promo for running shoes",
+        evidence=["30% off all running shoes"],
+        noise_rationale="Bulk promotion",
+        confidence=0.9,
+    )
     return base.model_copy(update=changes)
 
 
 async def pipeline_pass(test_db, mailbox: Mailbox, path: Path, result: Proposal) -> None:
     async with connected(reference_imap_plugin(mailbox)) as registry:
-        await SyncEngine(registry, test_db["user"], poll_seconds=60, ai_provider_for=FakeAIProvider(result=result),
-                         permissions_file=path).sync_all()
+        await SyncEngine(
+            registry, test_db["user"], poll_seconds=60, ai_provider_for=FakeAIProvider(result=result), permissions_file=path
+        ).sync_all()
 
 
 @pytest.mark.usefixtures("mail_server")
@@ -111,9 +127,7 @@ async def test_autonomous_noise_is_archived_without_a_tap(test_db, mailbox: Mail
     assert (job.state, job.permission_level) == ("done", "autonomous") and job.artifacts.noise_rationale
     assert mailbox.messages("INBOX") == [] and [m["Message-ID"] for m in mailbox.messages("Archive")] == [ref]
     [logged] = await ActionLogEntry.find(ActionLogEntry.job_id == job.id).to_list()
-    assert (logged.action, logged.by, logged.permission_level, logged.ok, logged.undoable) == (
-        "archived", "app", "autonomous", True, True
-    )
+    assert (logged.action, logged.by, logged.permission_level, logged.ok, logged.undoable) == ("archived", "app", "autonomous", True, True)
 
 
 @pytest.mark.usefixtures("mail_server")
@@ -125,8 +139,9 @@ async def test_a_reply_set_to_ask_is_never_sent_without_a_tap(test_db, mailbox: 
     path.write_text("reply: ask\n")
     await pipeline_pass(test_db, mailbox, path, proposal())
     ana.deliver_to(mailbox, subject="Lunch?", body="Lunch on Friday?")
-    reply = proposal(verb="reply", title="Ana asks about lunch Friday", evidence=["Lunch on Friday?"], noise_rationale=None,
-                     draft="Friday works!")
+    reply = proposal(
+        verb="reply", title="Ana asks about lunch Friday", evidence=["Lunch on Friday?"], noise_rationale=None, draft="Friday works!"
+    )
 
     await pipeline_pass(test_db, mailbox, path, reply)
 
@@ -144,8 +159,9 @@ async def test_an_autonomous_reply_goes_only_to_the_sender(test_db, mailbox: Mai
     path.write_text("reply: autonomous\n")
     await pipeline_pass(test_db, mailbox, path, proposal())
     ana.deliver_to(mailbox, subject="Lunch?", body="Lunch on Friday?")
-    reply = proposal(verb="reply", title="Ana asks about lunch Friday", evidence=["Lunch on Friday?"], noise_rationale=None,
-                     draft="Friday works!")
+    reply = proposal(
+        verb="reply", title="Ana asks about lunch Friday", evidence=["Lunch on Friday?"], noise_rationale=None, draft="Friday works!"
+    )
 
     await pipeline_pass(test_db, mailbox, path, reply)
 
@@ -220,8 +236,9 @@ async def test_list_mail_is_never_replied_to_autonomously(test_db, mailbox: Mail
     path = tmp_path / "permissions.yaml"
     path.write_text("reply: autonomous\n")
     await pipeline_pass(test_db, mailbox, path, proposal())
-    mailbox.append("INBOX", sender="team@lists.example", subject="Standup", body="Who's in?",
-                   headers={"List-Id": "Team <team.lists.example>"})
+    mailbox.append(
+        "INBOX", sender="team@lists.example", subject="Standup", body="Who's in?", headers={"List-Id": "Team <team.lists.example>"}
+    )
     reply = proposal(verb="reply", title="Team standup check", evidence=["Who's in?"], noise_rationale=None, draft="I'm in")
 
     await pipeline_pass(test_db, mailbox, path, reply)
@@ -232,8 +249,9 @@ async def test_list_mail_is_never_replied_to_autonomously(test_db, mailbox: Mail
 
 @pytest.mark.usefixtures("mail_server")
 @pytest.mark.parametrize("ceiling_lifted", [False, True])
-async def test_no_route_to_autonomy_unsubscribes_without_the_owners_tap(test_db, mailbox: Mailbox, tmp_path: Path, monkeypatch,
-                                                                         ceiling_lifted: bool):
+async def test_no_route_to_autonomy_unsubscribes_without_the_owners_tap(
+    test_db, mailbox: Mailbox, tmp_path: Path, monkeypatch, ceiling_lifted: bool
+):
     """#90 AC: the file says autonomous, the store says so too (written past validation), a rule decides the stream
     and the mail isn't first-connect mail; even with the ceiling lifted (as a later version might), a real pass
     sends nothing and opens nothing, and the job waits for the owner's tap."""
@@ -247,8 +265,13 @@ async def test_no_route_to_autonomy_unsubscribes_without_the_owners_tap(test_db,
     await pipeline_pass(test_db, mailbox, path, proposal())
     await PermissionSettings.find(PermissionSettings.owner_id == OWNER).update({"$set": {"levels.unsubscribe": "autonomous"}})
     await Rule(owner_id=OWNER, match="list_id", value="<deals.shop.example>", verb="unsubscribe").insert()
-    mailbox.append("INBOX", sender="deals@shop.example", subject="Running shoes", body="30% off all running shoes",
-                   headers={"List-Id": "<deals.shop.example>", "List-Unsubscribe": f"<mailto:{leave.address}>, <https://shop.example/u>"})
+    mailbox.append(
+        "INBOX",
+        sender="deals@shop.example",
+        subject="Running shoes",
+        body="30% off all running shoes",
+        headers={"List-Id": "<deals.shop.example>", "List-Unsubscribe": f"<mailto:{leave.address}>, <https://shop.example/u>"},
+    )
 
     await pipeline_pass(test_db, mailbox, path, proposal(verb="unsubscribe", title="Leave Shop deals"))
 
@@ -301,14 +324,20 @@ async def test_an_autonomous_send_interrupted_by_a_crash_is_recovered_once_its_c
     path.write_text("reply: ask\n")
     await pipeline_pass(test_db, mailbox, path, proposal())
     ana.deliver_to(mailbox, subject="Lunch?", body="Lunch on Friday?")
-    reply = proposal(verb="reply", title="Ana asks about lunch Friday", evidence=["Lunch on Friday?"], noise_rationale=None, draft="Friday works!")
+    reply = proposal(
+        verb="reply", title="Ana asks about lunch Friday", evidence=["Lunch on Friday?"], noise_rationale=None, draft="Friday works!"
+    )
     await pipeline_pass(test_db, mailbox, path, reply)
     path.write_text("reply: autonomous\n")
     await Message.find_all().update({"$set": {"pipeline_done": False}})
     await Job.find_all().update({"$set": {"state": "sending", "sending_since": datetime.now(UTC) - timedelta(minutes=1)}})
 
     await pipeline_pass(test_db, mailbox, path, reply)  # claim still fresh: wait
-    fresh = [(job.state, m.pipeline_done) for job in await Job.find_all().to_list() for m in await Message.find(Message.folder == "inbox").to_list()]
+    fresh = [
+        (job.state, m.pipeline_done)
+        for job in await Job.find_all().to_list()
+        for m in await Message.find(Message.folder == "inbox").to_list()
+    ]
     await Job.find_all().update({"$set": {"sending_since": datetime.now(UTC) - timedelta(minutes=30)}})
     await pipeline_pass(test_db, mailbox, path, reply)  # stale: recovered
 

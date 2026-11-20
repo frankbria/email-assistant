@@ -35,8 +35,9 @@ async def list_calibration(owner_id: OwnerId) -> list[JobCard]:
     jobs = await CalibrationJob.find(CalibrationJob.owner_id == owner_id).to_list()
     messages = {message.id: message for message in await Message.find(In(Message.id, [job.message_ids[0] for job in jobs])).to_list()}
     cards = [(messages[job.message_ids[0]], job) for job in jobs if job.message_ids[0] in messages]
+    # Calibration proposes for each of the newest messages on its own, so every card speaks for one email.
     return [
-        JobCard(job=job, sender=message.sender, subject=message.subject, list_id=message.list_id)
+        JobCard(job=job, sender=message.sender, subject=message.subject, list_id=message.list_id, email_count=1)
         for message, job in sorted(cards, key=lambda card: card[0].date, reverse=True)
     ]
 

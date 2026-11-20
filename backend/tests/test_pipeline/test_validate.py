@@ -18,18 +18,31 @@ HISTORY = ["Legal@Example.com"]
 
 def proposal(**changes: object) -> Proposal:
     base = Proposal(
-        needs_owner=False, verb="reply", title="Ana asks to meet Thursday about the Q4 budget",
-        evidence=["Could we meet Thursday at 3pm"], options=["Thursday works", "Can't make it", "Later"], confidence=0.9,
+        needs_owner=False,
+        verb="reply",
+        title="Ana asks to meet Thursday about the Q4 budget",
+        evidence=["Could we meet Thursday at 3pm"],
+        options=["Thursday works", "Can't make it", "Later"],
+        confidence=0.9,
     )
     return base.model_copy(update=changes)
 
 
 def message() -> Message:
-    return Message.model_validate({
-        "owner_id": "owner-1", "plugin_id": "proton", "ref": "r1", "message_id": "<m@x>",
-        "sender": {"email": "ana@example.com"}, "to": [], "cc": [], "date": datetime(2026, 11, 2, tzinfo=UTC),
-        "subject": "Q4 budget review", "snippet": "Could we meet Thursday",
-    })
+    return Message.model_validate(
+        {
+            "owner_id": "owner-1",
+            "plugin_id": "proton",
+            "ref": "r1",
+            "message_id": "<m@x>",
+            "sender": {"email": "ana@example.com"},
+            "to": [],
+            "cc": [],
+            "date": datetime(2026, 11, 2, tzinfo=UTC),
+            "subject": "Q4 budget review",
+            "snippet": "Could we meet Thursday",
+        }
+    )
 
 
 def test_a_grounded_specific_proposal_has_no_problems():
@@ -69,7 +82,10 @@ def test_each_failed_check_is_named(changes: dict[str, object], problem: str):
         ({"options": ["", "  "], "draft": " "}, "a reply needs a draft or options"),
         ({"verb": "archive_noise", "options": [], "noise_rationale": "  "}, "archiving as noise needs a reason"),
         ({"verb": "todo", "options": [], "link": "https://trusted.example"}, "link not in the email: https://trusted.example"),
-        ({"verb": "todo", "options": [], "link": "https://vendor.example/pay/447"}, "link not in the email: https://vendor.example/pay/447"),
+        (
+            {"verb": "todo", "options": [], "link": "https://vendor.example/pay/447"},
+            "link not in the email: https://vendor.example/pay/447",
+        ),
         ({"title": "Reply."}, "the title doesn't say what this email is"),
         ({"title": "Follow-up!"}, "the title doesn't say what this email is"),
     ],

@@ -3,28 +3,39 @@ from datetime import UTC, datetime
 
 import pytest
 from beanie import PydanticObjectId
+from mailbox_contract import Address
 from pydantic import ValidationError
 from pymongo.errors import DuplicateKeyError
 
 from app.models.job import Artifacts, Job
 from app.models.message import Message
 from app.models.sync_cursor import SyncCursor
-from mailbox_contract import Address
 from tests.utils.auth import OWNER_ID
 
 
 def message(ref: str, message_id: str, plugin_id: str = "proton") -> Message:
     return Message(
-        owner_id=OWNER_ID, plugin_id=plugin_id, ref=ref, message_id=message_id,
-        sender=Address(name="Dana", email="dana@example.com"), to=[Address(email="owner@example.com")], cc=[],
-        date=datetime(2026, 11, 2, 9, 0, tzinfo=UTC), subject="Lunch Thursday?", snippet="Are you free at noon",
+        owner_id=OWNER_ID,
+        plugin_id=plugin_id,
+        ref=ref,
+        message_id=message_id,
+        sender=Address(name="Dana", email="dana@example.com"),
+        to=[Address(email="owner@example.com")],
+        cc=[],
+        date=datetime(2026, 11, 2, 9, 0, tzinfo=UTC),
+        subject="Lunch Thursday?",
+        snippet="Are you free at noon",
     )
 
 
 def job(verb: str, title: str, messages: list[Message], artifacts: Artifacts) -> Job:
     return Job(
-        owner_id=OWNER_ID, verb=verb, title=title, evidence=["Are you free at noon"],
-        artifacts=artifacts, message_ids=[saved.id for saved in messages],
+        owner_id=OWNER_ID,
+        verb=verb,
+        title=title,
+        evidence=["Are you free at noon"],
+        artifacts=artifacts,
+        message_ids=[saved.id for saved in messages],
     )
 
 
@@ -82,8 +93,7 @@ async def test_jobs_are_indexed_on_the_messages_they_reference(test_db):
 
 def test_a_job_state_outside_the_lifecycle_is_rejected():
     with pytest.raises(ValidationError, match="state"):
-        Job(owner_id=OWNER_ID, verb="reply", title="t", state="archived", artifacts=Artifacts(draft="d"),
-            message_ids=[PydanticObjectId()])
+        Job(owner_id=OWNER_ID, verb="reply", title="t", state="archived", artifacts=Artifacts(draft="d"), message_ids=[PydanticObjectId()])
 
 
 def test_a_job_without_a_message_is_rejected():

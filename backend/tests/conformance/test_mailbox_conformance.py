@@ -10,11 +10,11 @@ from contextlib import asynccontextmanager
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 
+import mailbox_contract as contract
 import pytest
 from mcp import Client
 from pydantic import BaseModel
 
-import mailbox_contract as contract
 from app.plugins.config import PluginConfig, StdioTransport
 from app.plugins.registry import PluginRegistry
 from tests.conformance.test_no_permanent_remove import DESTRUCTIVE_NAME
@@ -119,9 +119,7 @@ TARGETS = [
     pytest.param(
         Target("gmail", gmail_plugin, mailbox=gmail_account, recipient=lambda account: account, greenmail=False),
         id="gmail",
-        marks=pytest.mark.skipif(
-            not (GMAIL_ADDRESS and GMAIL_APP_KEY), reason="live Gmail run: set GMAIL_ADDRESS and GMAIL_APP_PASSWORD"
-        ),
+        marks=pytest.mark.skipif(not (GMAIL_ADDRESS and GMAIL_APP_KEY), reason="live Gmail run: set GMAIL_ADDRESS and GMAIL_APP_PASSWORD"),
     ),
 ]
 
@@ -180,11 +178,7 @@ async def open_session(target: Target) -> AsyncIterator[Session]:
 
 
 def every_message_id(mailbox: Mailbox) -> set[str]:
-    return {
-        str(message["Message-ID"])
-        for folder in ("INBOX", "Archive", "Sent")
-        for message in mailbox.messages(folder)
-    }
+    return {str(message["Message-ID"]) for folder in ("INBOX", "Archive", "Sent") for message in mailbox.messages(folder)}
 
 
 async def test_mailbox_info_reports_a_supported_contract(target: Target):
@@ -220,15 +214,14 @@ async def test_list_messages_pages_and_resumes_after_a_restart(target: Target):
 
         # The cursor is all a restarted app has; new mail after it, and only that, comes back.
         newest = session.mailbox.deliver(sender="ana@example.com", subject="m3", body="Body 3")
-        resumed = await session.call_as(
-            "list_messages", contract.ListMessagesOutput, {"folder": "inbox", "cursor": second.next_cursor}
-        )
+        resumed = await session.call_as("list_messages", contract.ListMessagesOutput, {"folder": "inbox", "cursor": second.next_cursor})
         assert [m.message_id for m in resumed.messages] == [newest]
 
 
 async def test_a_since_listing_keeps_its_window_across_pages_and_ends_past_older_mail(target: Target):
     """Imported history can sit at higher UIDs than recent mail; it stays out of the window."""
     async with open_session(target) as session:
+
         def received(days: int, subject: str) -> str:
             ago = datetime.now(UTC) - timedelta(days=days)
             return session.mailbox.append("INBOX", sender="ana@example.com", subject=subject, body="x", received=ago)
@@ -390,6 +383,7 @@ async def test_a_push_plugin_announces_new_mail(target: Target):
             pytest.skip(f"{target.name} doesn't offer push")
 
         async with session.client.listen(resource_subscriptions=[contract.INBOX_URI]) as subscription:
+
             async def deliver_until_pushed() -> None:
                 # Mail that lands before the plugin is idling isn't pushed, so keep delivering.
                 while True:

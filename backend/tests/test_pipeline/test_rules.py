@@ -15,17 +15,31 @@ OWNER = "owner-1"
 
 
 def message_from(sender: str, list_id: str | None = None, owner_id: str = OWNER) -> Message:
-    return Message.model_validate({
-        "owner_id": owner_id, "plugin_id": "proton", "ref": "r1", "message_id": "<m@x>",
-        "sender": {"email": sender}, "to": [], "cc": [], "date": datetime(2026, 11, 2, tzinfo=UTC),
-        "subject": "Weekly deals", "snippet": "", "list_id": list_id,
-    })
+    return Message.model_validate(
+        {
+            "owner_id": owner_id,
+            "plugin_id": "proton",
+            "ref": "r1",
+            "message_id": "<m@x>",
+            "sender": {"email": sender},
+            "to": [],
+            "cc": [],
+            "date": datetime(2026, 11, 2, tzinfo=UTC),
+            "subject": "Weekly deals",
+            "snippet": "",
+            "list_id": list_id,
+        }
+    )
 
 
 def ai_reply() -> Proposal:
     return Proposal(
-        needs_owner=False, verb="reply", title="Reply to Shop about weekly deals",
-        evidence=["Weekly deals"], draft="Thanks!", confidence=0.7,
+        needs_owner=False,
+        verb="reply",
+        title="Reply to Shop about weekly deals",
+        evidence=["Weekly deals"],
+        draft="Thanks!",
+        confidence=0.7,
     )
 
 
@@ -101,11 +115,19 @@ async def test_a_blank_sender_or_list_matches_no_rule(test_db):
 async def test_details_written_for_another_verb_are_dropped_when_the_rule_changes_it(test_db):
     rule = Rule(owner_id=OWNER, match="sender", value="a@example.com", verb="archive_noise")
 
-    written_for_reply = {"options": ["Yes", "No"], "forward_to": "a@x.example", "link": "https://x.example",
-                         "noise_rationale": "n", "digest": "d", "due": datetime(2026, 12, 1, tzinfo=UTC)}
+    written_for_reply = {
+        "options": ["Yes", "No"],
+        "forward_to": "a@x.example",
+        "link": "https://x.example",
+        "noise_rationale": "n",
+        "digest": "d",
+        "due": datetime(2026, 12, 1, tzinfo=UTC),
+    }
     decided = apply_rule(ai_reply().model_copy(update=written_for_reply), rule)
 
-    assert {field: getattr(decided, field) for field in ARTIFACTS} == {field: Proposal.model_fields[field].get_default(call_default_factory=True) for field in ARTIFACTS}
+    assert {field: getattr(decided, field) for field in ARTIFACTS} == {
+        field: Proposal.model_fields[field].get_default(call_default_factory=True) for field in ARTIFACTS
+    }
     assert decided.title == ai_reply().title and decided.evidence == ai_reply().evidence
 
 

@@ -6,11 +6,10 @@ import re
 import tokenize
 from pathlib import Path
 
-from mcp import Client
-
 from imap_mailbox.mailbox import ImapMailbox
 from imap_mailbox.server import build_server
 from imap_mailbox.settings import ImapMailboxSettings
+from mcp import Client
 
 REPO = Path(__file__).resolve().parents[3]
 SCANNED = [REPO / "backend" / "app", REPO / "packages", REPO / "plugins"]

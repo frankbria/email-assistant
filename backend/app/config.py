@@ -1,12 +1,14 @@
 # backend/app/config.py
 
-from pydantic import Field
-from pydantic_settings import BaseSettings
-from functools import lru_cache
-from typing import List, Literal
 import os
-from dotenv import load_dotenv
 import sys
+from functools import lru_cache
+from typing import Literal
+
+import jwt
+from dotenv import load_dotenv
+from pydantic import Field, field_validator
+from pydantic_settings import BaseSettings
 
 # Load environment variables
 load_dotenv()
@@ -27,14 +29,15 @@ class Settings(BaseSettings):
     mongodb_test_db: str = os.getenv("MONGODB_TEST_DB", "email_assistant_test")
 
     # API settings
-    api_environment: str = os.getenv(
-        "API_ENVIRONMENT", "test" if "pytest" in sys.modules else "development"
-    )
+    api_environment: str = os.getenv("API_ENVIRONMENT", "test" if "pytest" in sys.modules else "development")
 
     # Better Auth (the Next.js app): JWT issuer/audience, and where its JWKS lives.
     # BETTER_AUTH_JWKS_URL overrides the JWKS location, e.g. an internal Docker address.
     better_auth_url: str = "http://localhost:3200"
     better_auth_jwks_url_override: str | None = Field(default=None, alias="BETTER_AUTH_JWKS_URL")
+    # BETTER_AUTH_JWKS pins the public keys (the JWKS JSON) so the API never trusts fetched ones
+    # (docs/deployment.md, "Pin the sign-in keys").
+    better_auth_jwks: str | None = None
 
     # The defaults until the owner chooses on the settings screen (env AI_PROVIDER / AI_MODEL, SYNC_POLL_SECONDS,
     # FIRST_CONNECT_DAYS). The Anthropic key is ANTHROPIC_API_KEY and never leaves the env.
@@ -59,7 +62,7 @@ class Settings(BaseSettings):
     test_set_file: str = "calibration/test_set.jsonl"
 
     # CORS settings
-    allow_origins: List[str] = [
+    allow_origins: list[str] = [
         origin
         for origin in [
             os.getenv("FRONTEND_ORIGIN"),
@@ -69,6 +72,18 @@ class Settings(BaseSettings):
         ]
         if origin
     ]
+
+    @field_validator("better_auth_jwks")
+    @classmethod
+    def pinned_keys_must_be_usable(cls, pinned: str | None) -> str | None:
+        # The .env template leaves it empty, and Compose passes that through as "".
+        if not pinned:
+            return None
+        try:
+            jwt.PyJWKSet.from_json(pinned)
+        except (ValueError, jwt.PyJWTError) as error:
+            raise ValueError(f"BETTER_AUTH_JWKS is not a usable JWKS: {error}") from error
+        return pinned
 
     @property
     def better_auth_jwks_url(self) -> str:
@@ -95,7 +110,7 @@ class Settings(BaseSettings):
         extra = "ignore"
 
 
-@lru_cache()
+@lru_cache
 def get_settings() -> Settings:
     """Get cached settings instance"""
     return Settings()

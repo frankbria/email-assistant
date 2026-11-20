@@ -9,6 +9,7 @@ from contextlib import AsyncExitStack
 from dataclasses import dataclass
 
 import httpx2
+from mailbox_contract import SUPPORTED_MAJOR, Health, MailboxInfo, is_supported
 from mcp import Client, StdioServerParameters
 from mcp.client import Transport
 from mcp.client.streamable_http import streamable_http_client
@@ -17,7 +18,6 @@ from mcp.types import CallToolResult, TextContent
 from app.plugins.config import HttpTransport, PluginConfig, StdioTransport
 from app.plugins.diagnosis import ConnectionState, diagnose
 from app.plugins.state import PluginState
-from mailbox_contract import SUPPORTED_MAJOR, Health, MailboxInfo, is_supported
 
 logger = logging.getLogger(__name__)
 
@@ -113,9 +113,7 @@ class PluginRegistry:
                 await self._drop(plugin_id)
                 self.states[plugin_id] = await self._connect(config)
             health = await self._health(plugin_id)
-            diagnosis = await diagnose(
-                self.states[plugin_id], health, config.watchdog, timeout, self._seen_restarts.get(plugin_id)
-            )
+            diagnosis = await diagnose(self.states[plugin_id], health, config.watchdog, timeout, self._seen_restarts.get(plugin_id))
             if diagnosis.bridge_restarts is not None:
                 self._seen_restarts[plugin_id] = diagnosis.bridge_restarts
             self.healths[plugin_id] = health
@@ -185,20 +183,17 @@ class PluginRegistry:
                 id=config.id,
                 status="refused",
                 info=info,
-                reason=f"Plugin speaks mailbox/{info.contract_version}; "
-                f"this app supports mailbox/{SUPPORTED_MAJOR}.x",
+                reason=f"Plugin speaks mailbox/{info.contract_version}; this app supports mailbox/{SUPPORTED_MAJOR}.x",
             )
         self._connections[config.id] = connection
         self.clients[config.id] = client
         return PluginState(id=config.id, status="connected", info=info)
 
     @classmethod
-    async def _hold(cls, config: PluginConfig, opened: "asyncio.Future[Client]", closing: asyncio.Event) -> None:
+    async def _hold(cls, config: PluginConfig, opened: asyncio.Future[Client], closing: asyncio.Event) -> None:
         try:
             async with AsyncExitStack() as connection:
-                client = await connection.enter_async_context(
-                    Client(await cls._target(config.transport, connection))
-                )
+                client = await connection.enter_async_context(Client(await cls._target(config.transport, connection)))
                 opened.set_result(client)
                 await closing.wait()
         except Exception as error:
@@ -211,17 +206,11 @@ class PluginRegistry:
                 opened.cancel()
 
     @staticmethod
-    async def _target(
-        transport: StdioTransport | HttpTransport, connection: AsyncExitStack
-    ) -> StdioServerParameters | Transport:
+    async def _target(transport: StdioTransport | HttpTransport, connection: AsyncExitStack) -> StdioServerParameters | Transport:
         if isinstance(transport, StdioTransport):
             env = {name: read_env(source) for name, source in transport.env_from.items()}
             return StdioServerParameters(command=transport.command, args=transport.args, env=env)
-        headers = (
-            {"Authorization": f"Bearer {read_env(transport.bearer_token_env)}"}
-            if transport.bearer_token_env
-            else {}
-        )
+        headers = {"Authorization": f"Bearer {read_env(transport.bearer_token_env)}"} if transport.bearer_token_env else {}
         http_client = await connection.enter_async_context(httpx2.AsyncClient(headers=headers))
         return streamable_http_client(transport.url, http_client=http_client)
 

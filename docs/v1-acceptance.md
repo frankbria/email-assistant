@@ -69,7 +69,8 @@ Checked on 2026-11-04 against `main` at `d5d6d47` (README for the v1 architectur
     AC-4.3. The owner's real test set is measured locally with the same command.
   - **Disposable Gmail account** (#96): AC-1.1 (Gmail target), AC-C.3. The Auto-Expunge check (#97) runs in the
     same session: `GMAIL_AUTO_EXPUNGE=on|off uv run pytest tests/plugins/test_gmail_setup_live.py` (with the same
-    two variables set).
+    two variables set). Or add those two as repository secrets and run the manual **Gmail live** workflow,
+    once with Auto-Expunge off and once on.
   - **Watchdog at-logon install on the Bridge machine** (#49): AC-P.1 (live restart within 5 minutes), AC-P.5
     (reboot).
 - Not an acceptance criterion but part of shipping (§12): the Compose deploy on the tailnet host (#111).

@@ -33,8 +33,9 @@ whose name lacks `_test`.
 cd backend
 uv sync --locked
 uv run pytest
-uv run ruff check .
-uv run mypy app
+uv run ruff check . ../packages ../plugins
+uv run ruff format --check . ../packages ../plugins
+uv run mypy app ../packages/mailbox-contract/src ../packages/imap-mailbox/src ../plugins/proton/src ../plugins/gmail/src  # strict
 ```
 
 ```bash
@@ -46,6 +47,13 @@ npx vitest run
 ```
 
 CI (`.github/workflows/ci.yml`) runs exactly these on every PR.
+
+Pre-commit hooks (`.pre-commit-config.yaml`: gitleaks secret scan, ruff, eslint), installed
+once per clone from the repo root after the two installs above:
+
+```bash
+uvx pre-commit install
+```
 
 ## Conventions
 
@@ -70,9 +78,10 @@ CI (`.github/workflows/ci.yml`) runs exactly these on every PR.
 - No real infrastructure identifiers in the repo: production or tailnet host names and
   IPs, SSH users, cluster names. Those live in the operator's local runbook. Loopback
   addresses (`localhost`, `127.0.0.1`) and Compose service names (`mongo`) are fine.
-- GitGuardian scans every PR for secrets. A local pre-commit secret scan exists only in
-  the maintainer's clone (`.git/hooks` isn't versioned; versioned hooks are #113). If a
-  scanner flags a false positive, restructure the code. Never bypass it with `--no-verify`.
+- GitGuardian scans every PR for secrets. Locally, install the versioned pre-commit hooks
+  once per clone (see Commands): a gitleaks scan of the lines each commit adds, plus ruff
+  and eslint. If a scanner flags a false positive, restructure the code. Never bypass it
+  with `--no-verify`.
 
 ## Email is untrusted input (prompt injection)
 

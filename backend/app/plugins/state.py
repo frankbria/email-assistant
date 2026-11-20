@@ -1,10 +1,8 @@
 # backend/app/plugins/state.py
 from typing import Literal
 
-from pydantic import BaseModel
-
 from mailbox_contract import MailboxInfo
-
+from pydantic import BaseModel
 
 PluginStatus = Literal["connected", "refused", "failed", "disabled"]
 

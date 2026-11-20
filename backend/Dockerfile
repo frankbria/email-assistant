@@ -10,7 +10,8 @@ ENV UV_COMPILE_BYTECODE=1 UV_LINK_MODE=copy PATH="/app/backend/.venv/bin:$PATH"
 COPY packages /app/packages
 COPY plugins /app/plugins
 COPY backend/pyproject.toml backend/uv.lock ./
-RUN uv sync --locked --no-dev --no-install-project
+# --no-cache: the download cache would otherwise ship in this layer (over 300 MB with spaCy).
+RUN uv sync --locked --no-dev --no-install-project --no-cache
 
 COPY backend/app ./app
 

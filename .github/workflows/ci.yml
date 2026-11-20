@@ -11,11 +11,14 @@ concurrency:
 permissions:
   contents: read
 
+env:
+  # ubuntu-latest's system CPython 3.14.4 predates an imaplib fix the tests rely on;
+  # uv's own build tracks the latest patch release, like the python:3.14-slim image.
+  UV_PYTHON_PREFERENCE: only-managed
+
 jobs:
   backend:
-    # shortcut: mongod refuses to start on ubuntu-24.04's 7.0 kernel (SERVER-121912);
-    # move back to ubuntu-latest once a MongoDB release accepts fixed kernels.
-    runs-on: ubuntu-22.04
+    runs-on: ubuntu-latest
     timeout-minutes: 15
     defaults:
       run:
@@ -47,14 +50,15 @@ jobs:
       - run: uv sync --locked
       - name: ruff
         run: uv run ruff check . ../packages ../plugins
+      - name: ruff format
+        run: uv run ruff format --check . ../packages ../plugins
       - name: mypy
         run: uv run mypy app ../packages/mailbox-contract/src ../packages/imap-mailbox/src ../plugins/proton/src ../plugins/gmail/src
       - name: pytest
         run: uv run pytest -q
 
   frontend:
-    # shortcut: same mongod kernel limit as the backend job (see #105).
-    runs-on: ubuntu-22.04
+    runs-on: ubuntu-latest
     timeout-minutes: 15
     defaults:
       run:
@@ -84,8 +88,8 @@ jobs:
 
   e2e:
     # Playwright against the real stack (frontend/playwright.config.ts starts FastAPI and Next itself).
-    # shortcut: same mongod kernel limit as the backend job (see #105).
-    runs-on: ubuntu-22.04
+    # shortcut: Playwright 1.58 has no chromium for ubuntu-latest (26.04); move it there with the upgrade to 1.65+.
+    runs-on: ubuntu-24.04
     timeout-minutes: 15
     services:
       mongodb:

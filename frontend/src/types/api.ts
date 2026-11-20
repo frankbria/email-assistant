@@ -132,6 +132,7 @@ export interface JobCard {
   sender: { name: string | null; email: string }
   subject: string
   list_id: string | null // the raw List-Id header
+  email_count: number // distinct emails: copies of one email in several accounts count once
 }
 
 export interface JobEdit {

@@ -4,9 +4,9 @@ import hmac
 import sys
 
 import uvicorn
+from imap_mailbox.server import build_server
 from starlette.types import ASGIApp, Receive, Scope, Send
 
-from imap_mailbox.server import build_server
 from proton_plugin.mailbox import ProtonMailbox
 from proton_plugin.settings import load_settings
 

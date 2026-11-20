@@ -30,8 +30,14 @@ from tests.utils.mail_server import Mailbox, new_mailbox
 pytestmark = pytest.mark.usefixtures("mail_server")
 BACKEND = Path(__file__).resolve().parents[2]
 DEALS = "This week only: 20% off garden tools. Shop now before it ends."
-NOISE = Proposal(needs_owner=False, verb="archive_noise", title="The shop's weekly garden tools deals",
-                 evidence=["garden tools"], noise_rationale="A promotional mailing", confidence=0.9)
+NOISE = Proposal(
+    needs_owner=False,
+    verb="archive_noise",
+    title="The shop's weekly garden tools deals",
+    evidence=["garden tools"],
+    noise_rationale="A promotional mailing",
+    confidence=0.9,
+)
 
 
 @pytest.fixture
@@ -47,11 +53,21 @@ def test_set() -> Iterator[Path]:
 async def stored(sender: Mailbox, mailbox: Mailbox, subject: str, age: timedelta) -> Message:
     """A synced inbox message: `sender` mailed `mailbox`, the owner's account."""
     ref = sender.deliver_to(mailbox, subject=subject, body=DEALS)
-    message = Message.model_validate({
-        "owner_id": OWNER_ID, "plugin_id": PLUGIN, "ref": ref, "message_id": ref, "sender": {"email": sender.address},
-        "to": [{"email": mailbox.address}], "cc": [], "date": datetime.now(UTC) - age, "subject": subject,
-        "snippet": DEALS, "pipeline_done": True,
-    })
+    message = Message.model_validate(
+        {
+            "owner_id": OWNER_ID,
+            "plugin_id": PLUGIN,
+            "ref": ref,
+            "message_id": ref,
+            "sender": {"email": sender.address},
+            "to": [{"email": mailbox.address}],
+            "cc": [],
+            "date": datetime.now(UTC) - age,
+            "subject": subject,
+            "snippet": DEALS,
+            "pipeline_done": True,
+        }
+    )
     await message.insert()
     return message
 
@@ -141,9 +157,8 @@ async def test_a_reaction_that_cant_be_saved_keeps_its_card(async_client, test_d
     assert await Example.find_all().count() == 0
 
 
-
 async def test_two_overlapping_runs_leave_one_card_per_message(test_db, mailbox, plugins, ai):
-    """"Calibrate again" while a run is going: each message still has one card, so one reaction is one test-set line.
+    """ "Calibrate again" while a run is going: each message still has one card, so one reaction is one test-set line.
     The runs rarely interleave on their own, so the store itself must refuse a second card for a message."""
     shop = new_mailbox()
     messages = [await stored(shop, mailbox, f"Weekly deals #{number}", timedelta(days=number)) for number in range(1, 4)]
@@ -157,7 +172,9 @@ async def test_two_overlapping_runs_leave_one_card_per_message(test_db, mailbox,
         await CalibrationJob(**cards[0].model_dump(exclude={"id", "revision_id"})).insert()
 
 
-async def test_a_new_run_gives_a_message_a_new_card_so_a_reaction_to_the_old_one_is_refused(async_client, test_db, mailbox, plugins, ai, test_set):
+async def test_a_new_run_gives_a_message_a_new_card_so_a_reaction_to_the_old_one_is_refused(
+    async_client, test_db, mailbox, plugins, ai, test_set
+):
     """The owner judged the card they saw: a reaction must never be recorded against a proposal that replaced it."""
     message = await stored(new_mailbox(), mailbox, "Weekly deals", timedelta(days=1))
     ai.result = NOISE

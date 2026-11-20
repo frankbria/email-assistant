@@ -14,10 +14,8 @@ import os
 import sys
 
 import anyio
-
-from mcp.server.mcpserver import Context, MCPServer
-
 from mailbox_contract import INBOX_URI, Capability, Folders, Health, HealthCheck, ListMessagesOutput, MailboxInfo, MoveResult
+from mcp.server.mcpserver import Context, MCPServer
 
 server = MCPServer("fake-mailbox")
 
@@ -97,8 +95,9 @@ if os.environ.get("FAKE_RESTORE") == "slow":
 if os.environ.get("FAKE_SEND") == "slow":
 
     @server.tool()
-    async def send(to: list[dict[str, str]], subject: str, body_text: str, cc: list[dict[str, str]] | None = None,
-                   in_reply_to_ref: str | None = None) -> dict[str, object]:
+    async def send(
+        to: list[dict[str, str]], subject: str, body_text: str, cc: list[dict[str, str]] | None = None, in_reply_to_ref: str | None = None
+    ) -> dict[str, object]:
         await anyio.sleep(30)
         return {"ok": True, "sent_message_id": "<sent@fake>"}
 

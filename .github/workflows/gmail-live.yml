@@ -1,0 +1,91 @@
+# Live Gmail checks (#96 AC-C.3 / AC-1.1 Gmail target, #97 Auto-Expunge warning) against a
+# DISPOSABLE Gmail account: the conformance suite archives everything in its inbox and sends mail to
+# itself. GreenMail has no X-GM extensions or Auto-Expunge setting, so these can't run in normal CI.
+# Manual only; only this workflow sees the GMAIL_* secrets, and never on push or pull_request.
+name: Gmail live
+on:
+  workflow_dispatch:
+    inputs:
+      auto_expunge:
+        description: "What the test account's Gmail → Settings → Forwarding and POP/IMAP → Auto-Expunge is set to right now"
+        type: choice
+        options: ["off", "on"]
+        required: true
+
+# One run at a time: every run uses the same inbox.
+concurrency:
+  group: gmail-live
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+env:
+  # ubuntu-latest's system CPython 3.14.4 predates an imaplib fix the tests rely on;
+  # uv's own build tracks the latest patch release, like the python:3.14-slim image.
+  UV_PYTHON_PREFERENCE: only-managed
+
+jobs:
+  gmail-live:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    defaults:
+      run:
+        working-directory: backend
+    services:
+      mongodb:
+        image: mongo:8
+        ports: ["27017:27017"]
+        options: >-
+          --health-cmd "mongosh --quiet --eval 'db.runCommand({ping: 1})'"
+          --health-interval 5s
+          --health-retries 12
+    steps:
+      # Without both secrets the Gmail tests skip, and a green run would claim a check that never ran.
+      - name: require the GMAIL_ADDRESS and GMAIL_APP_PASSWORD secrets
+        run: |
+          missing=""
+          [ -n "$GMAIL_ADDRESS" ] || missing="$missing GMAIL_ADDRESS"
+          [ -n "$GMAIL_APP_PASSWORD" ] || missing="$missing GMAIL_APP_PASSWORD"
+          if [ -n "$missing" ]; then
+            echo "::error::Add the repository secret(s)$missing (Settings > Secrets and variables > Actions): a disposable Gmail address and its app password."
+            exit 1
+          fi
+        working-directory: .
+        env:
+          GMAIL_ADDRESS: ${{ secrets.GMAIL_ADDRESS }}
+          GMAIL_APP_PASSWORD: ${{ secrets.GMAIL_APP_PASSWORD }}
+      - uses: actions/checkout@v7
+      - uses: astral-sh/setup-uv@v10.3.3 # no floating major tag upstream
+        with:
+          python-version: "3.14"
+      - run: uv sync --locked
+      - name: conformance suite, Gmail target (#96)
+        id: conformance
+        run: uv run pytest tests/conformance -k gmail -rs -v 2>&1 | tee ../conformance.log; exit "${PIPESTATUS[0]}"
+        shell: bash
+        env:
+          GMAIL_ADDRESS: ${{ secrets.GMAIL_ADDRESS }}
+          GMAIL_APP_PASSWORD: ${{ secrets.GMAIL_APP_PASSWORD }}
+      - name: setup checklist Auto-Expunge warning, account set to ${{ inputs.auto_expunge }} (#97)
+        id: setup
+        if: ${{ !cancelled() }}
+        run: uv run pytest tests/plugins/test_gmail_setup_live.py -rs -v 2>&1 | tee ../setup.log; exit "${PIPESTATUS[0]}"
+        shell: bash
+        env:
+          GMAIL_ADDRESS: ${{ secrets.GMAIL_ADDRESS }}
+          GMAIL_APP_PASSWORD: ${{ secrets.GMAIL_APP_PASSWORD }}
+          GMAIL_AUTO_EXPUNGE: ${{ inputs.auto_expunge }}
+      # The run to record in the issue: each suite's pytest summary line.
+      - name: summary
+        if: ${{ !cancelled() }}
+        working-directory: .
+        shell: bash
+        run: |
+          {
+            echo "## Gmail live checks"
+            echo "- Commit: \`$GITHUB_SHA\`"
+            echo "- Auto-Expunge set to: \`${{ inputs.auto_expunge }}\`"
+            echo "- Conformance (#96): ${{ steps.conformance.outcome }} — \`$(tail -n 1 conformance.log 2>/dev/null)\`"
+            echo "- Setup checklist (#97): ${{ steps.setup.outcome }} — \`$(tail -n 1 setup.log 2>/dev/null)\`"
+          } >> "$GITHUB_STEP_SUMMARY"

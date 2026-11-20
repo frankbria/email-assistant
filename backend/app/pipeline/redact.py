@@ -1,15 +1,20 @@
 """Redaction stage (spec §8.2), redacted_cloud only: names, email addresses, URLs, account and card numbers, one-time
 codes and phone numbers become typed placeholders (`PERSON_1`, `URL_2`, …) before anything leaves the server. The
 mapping stays here; `restore` swaps placeholders in the AI's answer back to the real values.
-shortcut: deterministic regexes plus names known from headers and greeting / sign-off lines; a name that appears only
-mid-sentence and in no header (e.g. "ask Maria about it") goes through. Move to an NER model (e.g. Presidio + spaCy)
-if owners need that, at the cost of a much larger image."""
+Names come from the headers, from greeting / sign-off lines, and from spaCy's small English NER model, which finds a
+name mentioned only mid-sentence ("ask Maria about it").
+shortcut: English model only, and it misses lower-case names and postal addresses; switch to a multilingual or larger
+model (or Presidio) if owners get much non-English mail."""
 
 import re
 from collections.abc import Iterable
+from functools import cache, partial
 from typing import TypeVar
 
+import spacy
 from pydantic import BaseModel
+from spacy.lang.en.stop_words import STOP_WORDS
+from spacy.language import Language
 
 from app.services.ai_provider import AIProposalError
 
@@ -25,25 +30,42 @@ BARE_TLDS = "com|org|net|edu|gov|io|co|uk|us|ca|de|fr|es|it|nl|au|ly|me|app|dev|
 PATTERNS = [
     ("EMAIL", re.compile(r"[\w.+-]+@[\w-]+(?:\.[\w-]+)+")),
     # With a scheme or www., a bare domain with a path (bit.ly/x), or a bare domain on a common TLD (acme.com).
-    ("URL", re.compile(
-        rf"(?<![\w@.-])(?:https?://|www\.){URL_REST}|{DOMAIN}[a-z]{{2,}}/{URL_REST}|{DOMAIN}(?:{BARE_TLDS})\b(?![.-]?\w)(?:[?#]{URL_REST})?",
-        re.IGNORECASE,
-    )),
+    (
+        "URL",
+        re.compile(
+            rf"(?<![\w@.-])(?:https?://|www\.){URL_REST}|{DOMAIN}[a-z]{{2,}}/{URL_REST}|{DOMAIN}(?:{BARE_TLDS})\b(?![.-]?\w)(?:[?#]{URL_REST})?",
+            re.IGNORECASE,
+        ),
+    ),
     # IBANs (whole, also in groups of four) before card numbers (groups of four, or Amex 4-6-5) and long digit runs.
-    ("ACCOUNT", re.compile(r"\b[A-Z]{2}\d{2}(?: ?[A-Z0-9]{4}){2,7}(?: ?[A-Z0-9]{1,3})?\b|\b\d{4}(?:[ -]\d{4}){2,3}\b|\b\d{4}[ -]\d{6}[ -]\d{5}\b|\b\d{8,19}\b")),
+    (
+        "ACCOUNT",
+        re.compile(
+            r"\b[A-Z]{2}\d{2}(?: ?[A-Z0-9]{4}){2,7}(?: ?[A-Z0-9]{1,3})?\b|\b\d{4}(?:[ -]\d{4}){2,3}\b|\b\d{4}[ -]\d{6}[ -]\d{5}\b|\b\d{8,19}\b"
+        ),
+    ),
     # Only digits right after a word that names a code ("code is 482913", "PIN: 1234"), and never part of a date.
-    ("CODE", re.compile(r"\b(?:code|passcode|OTP|PIN)\b(?:\s+(?:is|was))?\s*[:=#]?\s*(\d{3,4}[ -]\d{3,4}|\d{4,8})(?![\w/.-]?\d)", re.IGNORECASE)),
+    (
+        "CODE",
+        re.compile(r"\b(?:code|passcode|OTP|PIN)\b(?:\s+(?:is|was))?\s*[:=#]?\s*(\d{3,4}[ -]\d{3,4}|\d{4,8})(?![\w/.-]?\d)", re.IGNORECASE),
+    ),
     # …or before the words that name it, within the sentence ("482913 is your verification code", "Use 482913 as your PIN").
-    ("CODE", re.compile(
-        r"(?<![\w/.-])(\d{3,4}[ -]\d{3,4}|\d{4,8})(?![\w/.-]?\d)(?=[^.\n]{0,40}?\b(?:code|passcode|OTP|PIN)\b)",
-        re.IGNORECASE,
-    )),
+    (
+        "CODE",
+        re.compile(
+            r"(?<![\w/.-])(\d{3,4}[ -]\d{3,4}|\d{4,8})(?![\w/.-]?\d)(?=[^.\n]{0,40}?\b(?:code|passcode|OTP|PIN)\b)",
+            re.IGNORECASE,
+        ),
+    ),
     # International (+44 20 7946 0958), North American ((555) 123-4567) or national with a trunk 0 (020 7946 0958);
     # PHONE_DIGITS keeps dates (05.12.2026) out.
-    ("PHONE", re.compile(
-        r"\+\d{1,3}(?:[ .-]?\(?\d{1,4}\)?){2,7}(?!\w)|(?<![\w+])(?:\(\d{3}\) ?|\d{3}[ .-]?)\d{3}[ .-]?\d{4}(?!\w)"
-        r"|(?<![\w+.-])0\d{1,4}(?:[ .-]?\d{2,4}){2,4}(?![\w.-]?\d)"
-    )),
+    (
+        "PHONE",
+        re.compile(
+            r"\+\d{1,3}(?:[ .-]?\(?\d{1,4}\)?){2,7}(?!\w)|(?<![\w+])(?:\(\d{3}\) ?|\d{3}[ .-]?)\d{3}[ .-]?\d{4}(?!\w)"
+            r"|(?<![\w+.-])0\d{1,4}(?:[ .-]?\d{2,4}){2,4}(?![\w.-]?\d)"
+        ),
+    ),
 ]
 PHONE_DIGITS = 9
 WORD = r"[A-ZÀ-Þ](?:[^\W\d_]|['’-](?=[^\W\d_]))+"  # José, O'Brien
@@ -54,6 +76,29 @@ SIGN_OFF = re.compile(
     rf"\b(?:[Rr]egards|Thanks|Cheers|Best|Sincerely|Yours|Love)[,!.]?[ \t]*(?:\n[ \t]*){{1,2}}({WORD}(?: {WORD})?)[ \t]*$",
     re.MULTILINE,
 )
+NAME = re.compile(rf"(?<![\w@.]){WORD}(?: {WORD})*(?![\w@.])")
+
+
+@cache
+def named_entity_model() -> Language:
+    """Loaded once per process (about two seconds); only the stages the entity recognizer needs."""
+    return spacy.load("en_core_web_sm", exclude=["parser", "tagger", "attribute_ruler", "lemmatizer", "senter"])
+
+
+def people_named_in(text: str) -> set[str]:
+    """The name-shaped parts of what the model tags as people: never a placeholder, digit or address, and a particle or
+    initial ("Ludwig van Beethoven", "J. K. Rowling") drops out rather than the whole name."""
+    people = [without_trailing_stop_words(entity.text) for entity in named_entity_model()(text).ents if entity.label_ == "PERSON"]
+    return {name for person in people for name in NAME.findall(person)}
+
+
+def without_trailing_stop_words(entity: str) -> str:
+    """The model can take the next sentence's first word as a surname ("Hi Frank Please send…"); a first name can be a
+    stop word itself ("Will Smith"), so only the end is trimmed."""
+    words = entity.split()
+    while words and words[-1].lower() in STOP_WORDS:
+        words.pop()
+    return " ".join(words)
 
 
 class Redaction:
@@ -68,9 +113,9 @@ class Redaction:
 
     def redact(self, text: str) -> str:
         self.taken |= set(PLACEHOLDER.findall(text))
-        names = self.names | {found for pattern in (GREETING, SIGN_OFF) for found in pattern.findall(text)}
+        names = self.names | people_named_in(text) | {found for pattern in (GREETING, SIGN_OFF) for found in pattern.findall(text)}
         for kind, pattern in PATTERNS:
-            text = pattern.sub(lambda match: self.swap(match, kind), text)
+            text = pattern.sub(partial(self.swap, kind=kind), text)
         parts = {part for name in names for part in re.split(r"[\s,]+", name) if len(part) > 1 and part[0].isupper()}
         # Whole names before their parts, so "Ana Lopez" is one person rather than two.
         for name in sorted(names | parts, key=lambda name: (-len(name), name)):
@@ -91,7 +136,7 @@ class Redaction:
             self.values[f"{kind}_{number}"] = value
         start, end = match.span(group)
         whole = match.group(0)
-        return whole[: start - match.start()] + self.placeholders[value] + whole[end - match.start():]
+        return whole[: start - match.start()] + self.placeholders[value] + whole[end - match.start() :]
 
     def restore(self, text: str) -> str:
         """Raises AIProposalError for a placeholder the AI made up: the owner must never see "Hi PERSON_9"."""

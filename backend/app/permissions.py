@@ -95,8 +95,10 @@ def parse_permissions(text: str) -> dict[str, PermissionLevel]:
 
 
 def render_permissions(levels: dict[str, PermissionLevel]) -> str:
-    lines = ["# One permission per verb: autonomous, ask or never_auto. Kept in sync with the settings screen.",
-             "# A verb can't go above its highest level (after the #)."]
+    lines = [
+        "# One permission per verb: autonomous, ask or never_auto. Kept in sync with the settings screen.",
+        "# A verb can't go above its highest level (after the #).",
+    ]
     for verb, (ceiling, reason) in CEILINGS.items():
         lines.append(f"{verb}: {levels.get(verb) or DEFAULTS[verb]}  # highest: {ceiling} ({reason})")
     return "\n".join(lines) + "\n"

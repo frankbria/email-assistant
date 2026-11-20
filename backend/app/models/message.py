@@ -7,9 +7,8 @@ from datetime import datetime
 from typing import Literal
 
 from beanie import Document, PydanticObjectId
-from pymongo import ASCENDING, DESCENDING, IndexModel
-
 from mailbox_contract import Address
+from pymongo import ASCENDING, DESCENDING, IndexModel
 
 
 class Message(Document):

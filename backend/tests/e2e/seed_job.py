@@ -47,7 +47,9 @@ async def reset() -> None:
     await client.close()
 
 
-async def seed_job(verb: str, draft: str | None, forward_to: str | None, ask_owner: str | None, noise_rationale: str | None) -> dict[str, str]:
+async def seed_job(
+    verb: str, draft: str | None, forward_to: str | None, ask_owner: str | None, noise_rationale: str | None
+) -> dict[str, str]:
     """`ask_owner`: the problem that sends the job to the owner, with `verb` as its one suggestion, as ask_owner_job makes it."""
     client = await connect()
     owner = await client[get_settings().current_mongodb_db]["user"].find_one({}, {"_id": 1})
@@ -61,16 +63,34 @@ async def seed_job(verb: str, draft: str | None, forward_to: str | None, ask_own
     sender = new_mailbox()
     title = f"Ana asks to meet Thursday ({uuid.uuid4().hex[:8]})"  # tests run in parallel against one queue
     ref = sender.deliver_to(mailbox, subject=title, body=QUESTION)
-    message = Message.model_validate({
-        "owner_id": str(owner["_id"]), "plugin_id": plugin.id, "ref": ref, "message_id": ref,
-        "sender": {"name": "Ana", "email": sender.address}, "to": [{"email": mailbox.address}], "cc": [],
-        "date": datetime.now(UTC), "subject": title, "snippet": "", "pipeline_done": True,
-    })
+    message = Message.model_validate(
+        {
+            "owner_id": str(owner["_id"]),
+            "plugin_id": plugin.id,
+            "ref": ref,
+            "message_id": ref,
+            "sender": {"name": "Ana", "email": sender.address},
+            "to": [{"email": mailbox.address}],
+            "cc": [],
+            "date": datetime.now(UTC),
+            "subject": title,
+            "snippet": "",
+            "pipeline_done": True,
+        }
+    )
     await message.insert()
     assert message.id is not None
-    job = Job(owner_id=str(owner["_id"]), verb=verb, title=title, evidence=[QUESTION],
-              artifacts=Artifacts(draft=draft, forward_to=forward_to, noise_rationale=noise_rationale), message_ids=[message.id],
-              ask_owner=ask_owner is not None, suggested_verbs=[verb] if ask_owner else [], problems=[ask_owner] if ask_owner else [])
+    job = Job(
+        owner_id=str(owner["_id"]),
+        verb=verb,
+        title=title,
+        evidence=[QUESTION],
+        artifacts=Artifacts(draft=draft, forward_to=forward_to, noise_rationale=noise_rationale),
+        message_ids=[message.id],
+        ask_owner=ask_owner is not None,
+        suggested_verbs=[verb] if ask_owner else [],
+        problems=[ask_owner] if ask_owner else [],
+    )
     await job.insert()
     await client.close()
     return {"id": str(job.id), "title": title, "sender": sender.address}
@@ -95,7 +115,11 @@ def main() -> None:
     if arguments.command == "reset":
         asyncio.run(reset())
     elif arguments.command == "job":
-        print(json.dumps(asyncio.run(seed_job(arguments.verb, arguments.draft, arguments.forward_to, arguments.ask_owner, arguments.noise_rationale))))
+        print(
+            json.dumps(
+                asyncio.run(seed_job(arguments.verb, arguments.draft, arguments.forward_to, arguments.ask_owner, arguments.noise_rationale))
+            )
+        )
     else:
         print(json.dumps(inbox(arguments.address)))
 

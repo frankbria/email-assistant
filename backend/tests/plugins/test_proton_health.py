@@ -9,13 +9,13 @@ import time
 from pathlib import Path
 
 import pytest
-from mcp import Client
-
 from imap_mailbox.mailbox import MailboxError
 from imap_mailbox.server import build_server
 from mailbox_contract import ErrorCode, Health
+from mcp import Client
 from proton_plugin.mailbox import ProtonMailbox
 from proton_plugin.settings import ProtonSettings
+
 from tests.utils.mail_server import MAIL_HOST, wait_until_ready
 from tests.utils.tls_relay import start_tls_relay, write_certificate
 

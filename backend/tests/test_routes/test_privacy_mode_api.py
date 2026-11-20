@@ -25,8 +25,12 @@ Best regards,
 Ana"""
 # The AI only ever sees placeholders, so that is all it can answer with.
 ANSWER = Proposal(
-    needs_owner=False, verb="todo", title="Pay PERSON_1's March invoice for PERSON_2", evidence=["Call me on PHONE_1"],
-    link="URL_1", confidence=0.9,
+    needs_owner=False,
+    verb="todo",
+    title="Pay PERSON_1's March invoice for PERSON_2",
+    evidence=["Call me on PHONE_1"],
+    link="URL_1",
+    confidence=0.9,
 )
 
 
@@ -60,3 +64,19 @@ async def test_in_full_cloud_mode_the_default_the_ai_sees_the_mail_as_it_is(test
 
     [prompt] = ai.prompts
     assert all(real in prompt for real in (SENDER, PHONE, URL, "Frank")) and "PERSON_1" not in prompt
+
+
+async def test_a_name_mentioned_only_mid_sentence_never_reaches_the_ai_and_comes_back_in_the_job(test_db, async_client, mailbox: Mailbox):
+    await add_owner(test_db, OWNER_ID)
+    await UserSettings(user_id=OWNER_ID, privacy_mode="redacted_cloud").insert()
+    body = BODY.replace("Questions?", "If the late fee looks wrong, ask Maria about it first.")
+    mailbox.deliver(sender=f"Ana Lopez <{SENDER}>", subject="Invoice from Ana Lopez", body=body)
+    # Whole names before parts, then by name: Ana Lopez, Frank, Maria.
+    ai = FakeAIProvider(result=ANSWER.model_copy(update={"title": "Ask PERSON_3 about the late fee"}))
+
+    await run_pass(test_db, mailbox, ai)
+
+    [prompt] = ai.prompts
+    assert "Maria" not in prompt and "ask PERSON_3 about it" in prompt
+    [card] = (await async_client.get("/api/v1/jobs")).json()
+    assert card["job"]["title"] == "Ask Maria about the late fee"

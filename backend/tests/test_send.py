@@ -21,14 +21,30 @@ CANT_SEND = {"MAILBOX_SMTP_PORT": "1"}  # nothing listens there: IMAP works, eve
 async def job_for(mailbox: Mailbox, sender: Mailbox, verb: Verb, artifacts: Artifacts) -> tuple[Job, str]:
     ref = sender.deliver_to(mailbox, subject="Q4 budget", body="Could we meet Thursday at 3pm?")
     mailbox.create_folder("Archive")
-    message = Message.model_validate({
-        "owner_id": OWNER, "plugin_id": PLUGIN, "ref": ref, "message_id": ref, "sender": {"email": sender.address},
-        "to": [{"email": mailbox.address}], "cc": [], "date": datetime.now(UTC), "subject": "Q4 budget", "snippet": "",
-    })
+    message = Message.model_validate(
+        {
+            "owner_id": OWNER,
+            "plugin_id": PLUGIN,
+            "ref": ref,
+            "message_id": ref,
+            "sender": {"email": sender.address},
+            "to": [{"email": mailbox.address}],
+            "cc": [],
+            "date": datetime.now(UTC),
+            "subject": "Q4 budget",
+            "snippet": "",
+        }
+    )
     await message.insert()
     assert message.id is not None
-    job = Job(owner_id=OWNER, verb=verb, title="Ana asks to meet", evidence=["Could we meet Thursday at 3pm?"],
-              artifacts=artifacts, message_ids=[message.id])
+    job = Job(
+        owner_id=OWNER,
+        verb=verb,
+        title="Ana asks to meet",
+        evidence=["Could we meet Thursday at 3pm?"],
+        artifacts=artifacts,
+        message_ids=[message.id],
+    )
     await job.insert()
     return job, ref
 
@@ -116,10 +132,20 @@ async def test_a_send_that_went_through_is_never_repeated_when_only_the_archive_
     """Sent, then the archive failed (no Archive folder): retrying only archives."""
     owner, ana = new_mailbox(), new_mailbox()
     ref = ana.deliver_to(owner, subject="Q4 budget", body="Could we meet?")
-    message = Message.model_validate({
-        "owner_id": OWNER, "plugin_id": PLUGIN, "ref": ref, "message_id": ref, "sender": {"email": ana.address},
-        "to": [], "cc": [], "date": datetime.now(UTC), "subject": "Q4 budget", "snippet": "",
-    })
+    message = Message.model_validate(
+        {
+            "owner_id": OWNER,
+            "plugin_id": PLUGIN,
+            "ref": ref,
+            "message_id": ref,
+            "sender": {"email": ana.address},
+            "to": [],
+            "cc": [],
+            "date": datetime.now(UTC),
+            "subject": "Q4 budget",
+            "snippet": "",
+        }
+    )
     await message.insert()
     assert message.id is not None
     job = Job(owner_id=OWNER, verb="reply", title="t", artifacts=Artifacts(draft="Yes!"), message_ids=[message.id])
@@ -149,10 +175,20 @@ async def test_a_send_whose_history_entry_was_lost_gets_it_on_retry(test_db, mai
 
 async def test_an_interrupted_send_ends_retryable(test_db, monkeypatch):
     monkeypatch.setenv("FAKE_MODE_SEND", "slow")
-    message = Message.model_validate({
-        "owner_id": OWNER, "plugin_id": "fake", "ref": "<r@x>", "message_id": "<r@x>", "sender": {"email": "a@example.com"},
-        "to": [], "cc": [], "date": datetime.now(UTC), "subject": "s", "snippet": "",
-    })
+    message = Message.model_validate(
+        {
+            "owner_id": OWNER,
+            "plugin_id": "fake",
+            "ref": "<r@x>",
+            "message_id": "<r@x>",
+            "sender": {"email": "a@example.com"},
+            "to": [],
+            "cc": [],
+            "date": datetime.now(UTC),
+            "subject": "s",
+            "snippet": "",
+        }
+    )
     await message.insert()
     assert message.id is not None
     job = Job(owner_id=OWNER, verb="reply", title="t", artifacts=Artifacts(draft="Yes"), message_ids=[message.id])
