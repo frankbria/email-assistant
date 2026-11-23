@@ -3,6 +3,7 @@
 # tick(now) takes the time so the 60 s cadence and backoff are tested without waiting.
 import json
 import os
+import signal
 import socket
 import subprocess
 import sys
@@ -16,7 +17,7 @@ from urllib.error import HTTPError
 
 import pytest
 from proton_plugin.settings import ProtonSettings
-from proton_plugin.watchdog import BACKOFF_SECONDS, Watchdog, serve_status
+from proton_plugin.watchdog import BACKOFF_SECONDS, LOGIN_GRACE_SECONDS, Watchdog, serve_status
 
 from tests.utils.mail_server import wait_until_ready
 from tests.utils.tls_relay import write_certificate
@@ -229,3 +230,94 @@ def test_crash_looping_plugin_backs_off_then_asks_for_the_owner(bridge_layout):
     gaps = [later - earlier for earlier, later in pairwise(starts[1:])]
     assert gaps == [round_up(seconds) for seconds in BACKOFF_SECONDS[:-1]]
     assert watchdog.status()["plugin"]["state"] == "needs_owner"
+
+
+def test_a_rejected_login_is_retried_with_backoff_before_it_needs_the_owner(bridge_layout):
+    """Bridge opens its port before it has loaded the account and rejects logins until then
+    ("no such user"): retry with growing gaps for the grace period, then ask the owner."""
+    Watchdog(settings(bridge_layout), plugin_command=None).tick(now=0)  # starts Bridge
+    wait_for(Path(bridge_layout["pid_file"]).exists, lambda: bridge_started(bridge_layout))
+    rejecting = Watchdog(settings(bridge_layout, password=WRONG_SECRET), plugin_command=None)
+    wait_for(
+        lambda: rejecting.mailbox.health().checks[-1].layer == "imap_login",
+        lambda: "Bridge to reject the wrong password at imap_login",
+    )
+
+    now, delays = 0.0, []
+    while now < LOGIN_GRACE_SECONDS:
+        delays.append(rejecting.tick(now=now))
+        assert rejecting.status()["bridge"]["state"] == "restarting"
+        now += delays[-1]
+    rejecting.tick(now=now)
+
+    assert delays == sorted(delays) and delays[0] < delays[-1] <= 60
+    assert sum(delays) >= 120
+    status = rejecting.status()["bridge"]
+    assert status["state"] == "needs_owner" and status["restarts"] == 0
+
+
+def test_a_companion_service_is_started_only_while_its_port_is_down(tmp_path: Path):
+    """The gateway/adapter on this machine: started when nothing answers on its port."""
+    port, imap_port, smtp_port = free_ports(3)
+    starts, pid_file = tmp_path / "starts", tmp_path / "companion.pid"
+    serve = (
+        f"import http.server, os, pathlib; pathlib.Path({str(pid_file)!r}).write_text(str(os.getpid())); "
+        f"http.server.HTTPServer(('127.0.0.1', {port}), http.server.BaseHTTPRequestHandler).serve_forever()"
+    )
+    start = (
+        f"import pathlib, subprocess, sys; open({str(starts)!r}, 'a').write('x'); "
+        f"subprocess.Popen([sys.executable, '-c', {serve!r}], start_new_session=True)"
+    )
+    cert, _ = write_certificate(tmp_path, "bridge")
+    layout = {
+        "cert": cert,
+        "key": cert,
+        "pid_file": tmp_path / "unused.pid",
+        "bridge_log": tmp_path / "unused.log",
+        "imap_port": imap_port,
+        "smtp_port": smtp_port,
+    }
+    watchdog = Watchdog(
+        settings(layout, bridge_restart_command=None, companion_start_commands={port: [sys.executable, "-c", start]}),
+        plugin_command=None,
+    )
+    try:
+        watchdog.tick(now=0)
+        wait_for(
+            lambda: socket.socket().connect_ex(("127.0.0.1", port)) == 0,
+            lambda: f"the companion service to answer on port {port}",
+        )
+        watchdog.tick(now=60)
+
+        assert starts.read_text() == "x"
+    finally:
+        if pid_file.exists():
+            os.kill(int(pid_file.read_text()), signal.SIGTERM)
+
+
+def test_a_companion_start_is_not_repeated_within_a_check_interval(tmp_path: Path):
+    """Checks come every few seconds while Bridge loads; a service still binding its port
+    isn't started a second time until a full check interval has passed."""
+    port, imap_port, smtp_port = free_ports(3)
+    starts = tmp_path / "starts"
+    start = f"open({str(starts)!r}, 'a').write('x')"  # never binds, like a slow service
+    cert, _ = write_certificate(tmp_path, "bridge")
+    layout = {
+        "cert": cert,
+        "key": cert,
+        "pid_file": tmp_path / "unused.pid",
+        "bridge_log": tmp_path / "unused.log",
+        "imap_port": imap_port,
+        "smtp_port": smtp_port,
+    }
+    watchdog = Watchdog(
+        settings(layout, bridge_restart_command=None, companion_start_commands={port: [sys.executable, "-c", start]}),
+        plugin_command=None,
+    )
+
+    for now in (1, 6, 16, 36):
+        watchdog.tick(now=now)
+    assert starts.read_text() == "x"
+
+    watchdog.tick(now=61)
+    assert starts.read_text() == "xx"

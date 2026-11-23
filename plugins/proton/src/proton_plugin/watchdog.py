@@ -1,12 +1,14 @@
 """Watchdog for the Bridge machine (spec §6.3): checks Bridge and the plugin every 60 s,
 restarts whichever is down with backoff, stops on owner-only failures or after repeated
-failed restarts, and serves a token-protected status the app reads when the plugin is down.
+failed restarts, starts configured companion services whose port is down, and serves a
+token-protected status the app reads when the plugin is down.
 
 Run as its own always-on process: python -m proton_plugin.watchdog
 """
 
 import hmac
 import logging
+import socket
 import subprocess
 import sys
 import threading
@@ -25,6 +27,9 @@ logger = logging.getLogger(__name__)
 CHECK_INTERVAL_SECONDS = 60
 # Wait after the 1st, 2nd, … failed restart. After the last one, restarts stop.
 BACKOFF_SECONDS = (30, 60, 120, 300, 900)
+# Bridge opens its port before it has loaded the account and rejects logins ("no such user")
+# until then, so a rejected login is retried, with growing gaps, this long before it counts.
+LOGIN_GRACE_SECONDS = 150
 
 
 class BridgeStatus(BaseModel):
@@ -59,54 +64,82 @@ class Watchdog:
         self.checked_at: datetime | None = None
         self._next_restart_at = 0.0
         self._next_plugin_start_at = 0.0
+        self._login_rejected_since: float | None = None
+        self._companion_started_at: dict[int, float] = {}
         self._lock = threading.Lock()
 
     def status(self) -> dict[str, object]:
         with self._lock:
             return WatchdogStatus(bridge=self.bridge, plugin=self.plugin, checked_at=self.checked_at).model_dump(mode="json")
 
-    def tick(self, now: float) -> None:
-        """One round of checks. `now` is a monotonic time in seconds."""
+    def tick(self, now: float) -> float:
+        """One round of checks. `now` is a monotonic time in seconds. Returns the seconds to wait
+        before the next round."""
         self._supervise_plugin(now)
+        self._supervise_companions(now)
         health = self.mailbox.health()
         failing = next((check for check in health.checks if not check.ok), None)
         with self._lock:
             self.checked_at = datetime.now(UTC)
             self.bridge.checks += 1
+            login_rejected = failing is not None and failing.layer == "imap_login" and not health.repair_actions
+            if not login_rejected:
+                self._login_rejected_since = None
+            elif self._login_rejected_since is None:
+                self._login_rejected_since = now
             if failing is None:
                 self.bridge = self.bridge.model_copy(
                     update={"state": "ok", "detail": "", "first_failing_layer": None, "failed_restarts": 0}
                 )
                 self._next_restart_at = now
-                return
+                return CHECK_INTERVAL_SECONDS
             self.bridge.first_failing_layer = failing.layer
+            if self._login_rejected_since is not None and now - self._login_rejected_since < LOGIN_GRACE_SECONDS:
+                self.bridge.state = "restarting"
+                self.bridge.detail = f"Bridge may still be loading the account; checking again. {failing.detail}"
+                return min(CHECK_INTERVAL_SECONDS, max(5.0, now - self._login_rejected_since))
             if not health.repair_actions:
                 # Owner-only (e.g. Bridge needs re-login), or no restart command configured.
                 self.bridge.state, self.bridge.detail = "needs_owner", failing.detail
-                return
+                return CHECK_INTERVAL_SECONDS
             if now < self._next_restart_at:  # still within the last restart's wait
                 self.bridge.state, self.bridge.detail = "restarting", failing.detail
-                return
+                return CHECK_INTERVAL_SECONDS
             if self.bridge.failed_restarts >= len(BACKOFF_SECONDS):
                 self.bridge.state = "needs_owner"
                 self.bridge.detail = f"Bridge didn't come back after {self.bridge.failed_restarts} restarts. {failing.detail}"
-                return
+                return CHECK_INTERVAL_SECONDS
             self.bridge.state, self.bridge.detail = "restarting", failing.detail
             self.bridge.failed_restarts += 1
             self.bridge.restarts += 1
             self._next_restart_at = now + BACKOFF_SECONDS[self.bridge.failed_restarts - 1]
         self._restart_bridge()
+        return CHECK_INTERVAL_SECONDS
 
     def _restart_bridge(self) -> None:
         command = self.settings.bridge_restart_command
         if not command:
             return
-        try:
-            # No output capture: Bridge started in the background would inherit our pipes.
-            subprocess.run(command, check=False, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, timeout=60)
-        except (OSError, subprocess.SubprocessError) as error:
+        error = run_start_command(command)
+        if error is not None:
             with self._lock:
                 self.bridge.detail = f"Restarting Bridge failed: {error}"
+
+    def _supervise_companions(self, now: float) -> None:
+        """Start each companion service (e.g. a local gateway) that isn't answering on its port.
+        A port's command runs at most once per check interval, since checks come every few
+        seconds while Bridge loads and a service may still be binding its port."""
+        for port, command in self.settings.companion_start_commands.items():
+            try:
+                socket.create_connection(("127.0.0.1", port), timeout=3).close()
+            except OSError:
+                # -inf, not 0: monotonic time starts near 0 after a boot.
+                if now - self._companion_started_at.get(port, float("-inf")) < CHECK_INTERVAL_SECONDS:
+                    continue
+                self._companion_started_at[port] = now
+                error = run_start_command(command)
+                if error is not None:
+                    logger.warning("Starting the service for port %s failed: %s", port, error)
 
     def _supervise_plugin(self, now: float) -> None:
         """Start the plugin, and restart it with the same backoff as Bridge when it dies."""
@@ -144,6 +177,16 @@ class Watchdog:
             except subprocess.TimeoutExpired:
                 process.kill()
                 process.wait(timeout=10)
+
+
+def run_start_command(command: list[str]) -> str | None:
+    """Run a command that launches a service in the background and returns; the error, if any."""
+    try:
+        # No output capture: a service started in the background would inherit our pipes.
+        subprocess.run(command, check=False, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, timeout=60)
+    except (OSError, subprocess.SubprocessError) as error:
+        return str(error)
+    return None
 
 
 def serve_status(watchdog: Watchdog, host: str, port: int, token: str) -> ThreadingHTTPServer:
@@ -186,10 +229,11 @@ def main() -> None:
     try:
         while True:
             try:
-                watchdog.tick(time.monotonic())
+                delay = watchdog.tick(time.monotonic())
             except Exception:  # the watchdog is the last line of defence: never die
                 logger.exception("Watchdog check failed; trying again next interval")
-            time.sleep(CHECK_INTERVAL_SECONDS)
+                delay = CHECK_INTERVAL_SECONDS
+            time.sleep(delay)
     finally:
         watchdog.stop()
 
